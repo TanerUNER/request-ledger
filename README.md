@@ -283,7 +283,7 @@ This project is currently developed for personal use and product delivery workfl
 
 ## 📬 Contact
 
-- **Developer:** Taner ÜNER
+- **Developer:** Taner ÜNER (He has AI agents 😂)
 - **GitHub:** [github.com/TanerUNER](https://github.com/TanerUNER)
 - **Email:** [mail.taneruner@gmail.com](mailto:mail.taneruner@gmail.com)
 - **Support:** [Buy Me a Coffee](https://www.buymeacoffee.com/tnruner)
