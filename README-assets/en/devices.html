@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:1280px;height:500px;overflow:hidden}
+  body{
+    position:relative;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:
+      radial-gradient(720px 360px at 78% 8%,rgba(255,95,67,.13),transparent 65%),
+      radial-gradient(620px 380px at 12% 100%,rgba(111,129,106,.14),transparent 62%),
+      #f7f5f2;
+    color:#1d2328;
+  }
+  .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(30,35,40,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(30,35,40,.035) 1px,transparent 1px);background-size:40px 40px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.55),transparent 92%)}
+  .head{text-align:center;position:absolute;left:0;right:0;top:34px}
+  .eyebrow{font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:#c14930;margin-bottom:7px}
+  h2{margin:0;font-size:38px;letter-spacing:-.045em;line-height:1.05;font-weight:760}
+  .head p{margin:9px 0 0;font-size:13px;color:#6a726f}
+  .devices{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;align-items:flex-end;gap:54px}
+  .unit{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .monitor .frame{background:#1c242b;border-radius:14px;padding:8px 8px 0;box-shadow:0 20px 34px rgba(32,28,20,.18)}
+  .monitor .screen{width:320px;height:190px;border-radius:6px;overflow:hidden;background:#fff}
+  .monitor .stand{width:64px;height:30px;margin:0 auto;background:linear-gradient(180deg,#2b353d,#1b2228)}
+  .monitor .base{width:160px;height:8px;margin:0 auto 0;border-radius:0 0 8px 8px;background:linear-gradient(180deg,#303b44,#171d22)}
+  .laptop .frame{background:#1a2228;border-radius:10px 10px 3px 3px;padding:7px 7px 9px;box-shadow:0 20px 34px rgba(32,28,20,.18)}
+  .laptop .screen{width:306px;height:180px;border-radius:4px;overflow:hidden;background:#fff}
+  .laptop .base{width:340px;height:11px;margin-left:-17px;border-radius:2px 2px 8px 8px;background:linear-gradient(180deg,#2c363e,#151b20)}
+  .tablet .frame{background:#1c242b;border-radius:18px;padding:7px;box-shadow:0 20px 34px rgba(32,28,20,.18)}
+  .tablet .screen{width:226px;height:174px;border-radius:12px;overflow:hidden;background:#fff}
+  img{display:block;width:100%;height:100%;object-fit:cover;object-position:top left}
+  .caption{text-align:center}
+  .caption b{display:block;font-size:11px;letter-spacing:.02em;color:#2b3237}
+  .caption span{display:block;margin-top:2px;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:#919793}
+  .shadowline{position:absolute;left:110px;right:110px;bottom:62px;height:1px;background:linear-gradient(90deg,transparent,rgba(40,45,40,.14),transparent)}
+  .pill{position:absolute;right:36px;top:38px;display:flex;align-items:center;gap:7px;border:1px solid rgba(30,35,40,.12);background:rgba(255,255,255,.66);border-radius:999px;padding:7px 11px;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#56605c}
+  .pill i{width:6px;height:6px;border-radius:50%;background:#6f816a;box-shadow:0 0 0 3px rgba(111,129,106,.14)}
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div class="head">
+  <div class="eyebrow">Responsive by design</div>
+  <h2>Every screen, same flow.</h2>
+  <p>A focused workspace that adapts from tablet to widescreen desktop.</p>
+</div>
+<div class="pill"><i></i> 1024 px → 1440 px</div>
+
+<div class="devices">
+  <div class="unit monitor">
+    <div class="frame"><div class="screen"><img src="screens/01-dashboard-desktop.png" alt="Desktop"></div></div>
+    <div class="stand"></div><div class="base"></div>
+    <div class="caption"><b>Desktop</b><span>1440 px</span></div>
+  </div>
+  <div class="unit laptop">
+    <div class="frame"><div class="screen"><img src="screens/01-dashboard-desktop.png" alt="Laptop"></div></div>
+    <div class="base"></div>
+    <div class="caption"><b>Laptop</b><span>1280 px</span></div>
+  </div>
+  <div class="unit tablet">
+    <div class="frame"><div class="screen"><img src="screens/02-dashboard-tablet.png" alt="Tablet"></div></div>
+    <div class="caption"><b>Tablet</b><span>1024 px</span></div>
+  </div>
+</div>
+<div class="shadowline"></div>
+</body>
+</html>
