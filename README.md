@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="index.html"><img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge"></a>
+  <a href="https://taneruner.github.io/request-ledger/"><img alt="Request Ledger - GitHub Pages" src="https://img.shields.io/badge/GitHub%20Pages-Visit-orange?style=for-the-badge"></a>
   <img alt="Version" src="https://img.shields.io/badge/version-1.6.1-1d2328?style=for-the-badge">
   <img alt="Languages" src="https://img.shields.io/badge/EN%20/%20TR-bilingual-6f816a?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
