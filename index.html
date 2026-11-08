@@ -412,7 +412,7 @@
   .req:hover{border-color:var(--line-2);box-shadow:0 5px 16px rgba(26,26,26,.045)}
   .req--missing{border-color:#efdcb8}
   .req--ready{border-color:#d9e6dd}
-  .req.is-locked [data-dropzone],.req.is-locked [data-attachbox]{pointer-events:none}
+  .req.is-locked [data-dropzone],.req.is-locked [data-attachbox],.req.is-locked [data-file-dropzone]{pointer-events:none}
   .req.is-locked .req__body-pad input:disabled,.req.is-locked .req__body-pad textarea:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed}
   .req.is-locked .req__body-pad .cselect__trigger:disabled{opacity:.62;cursor:not-allowed}
   .req.is-locked .req__body-pad button:disabled{opacity:.45;cursor:not-allowed}
@@ -466,6 +466,7 @@
   .req__body-pad{padding:14px 16px 11px}
   .req__errors{margin:0 0 11px;padding:8px 10px;border-radius:8px;background:var(--amber-soft);border:1px solid #efdcb8;color:#7d5712;font-size:10.5px;line-height:1.45}
   .formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 13px}
+  .media-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 13px;align-items:start}
   .field{min-width:0}
   .field--full{grid-column:1/-1}
   .field label{display:block;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2);font-weight:600;margin-bottom:5px}
@@ -908,6 +909,7 @@
     .welcome__right .btn{flex:1}
     .datechip{flex:0 0 auto}
     .formgrid{grid-template-columns:1fr}
+    .media-row{grid-template-columns:1fr}
     .settingssection__head{flex-direction:column;align-items:stretch}
     .settingssection__head .btn{width:100%}
     #settingsModal .modal__card{height:calc(100vh - 20px)}
@@ -1057,7 +1059,7 @@
           <div class="projectgroup">
             <button class="projectbtn" type="button" id="projectBtn" title="Dışa aktarım dizinini seç">
               <span class="projectbtn__dot" aria-hidden="true"></span>
-              <span id="projectName">Ortak Zemin</span>
+              <span id="projectName">Projem</span>
             </button>
             <button class="targetbtn" type="button" id="targetFolderBtn" title="Dışa aktarım dizinini seç" aria-label="Dışa aktarım dizinini seç">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -1471,7 +1473,7 @@
               <div><dt>Uygulama geliştiricisi</dt><dd>Taner ÜNER</dd></div>
               <div><dt>Sürüm</dt><dd id="aboutVersion">1.6.1</dd></div>
               <div><dt>Uygulama reposu</dt><dd><a href="https://github.com/TanerUNER" target="_blank" rel="noopener">github.com/TanerUNER</a></dd></div>
-              <div><dt>İletişim</dt><dd><a href="mailto:mail.taneruner@gmail.com">mail.taneruner@gmail.com</a></dd></div>
+              <div><dt>İletişim</dt><dd><a href="mailto:mail.taneruner@gmail.com">mail.taneruner@gmail.com</a> · <a href="https://www.buymeacoffee.com/tnruner" target="_blank" rel="noopener">Buy me a coffee</a></dd></div>
               <div><dt>Güncelleme Geçmişi</dt><dd><div class="changeloglinks" id="changelogLinks"></div></dd></div>
             </dl>
           </section>
@@ -1520,7 +1522,7 @@
       <div class="helpstep"><b>1. Yeni istek ekle</b><span>Her güncelleme, yeni özellik, soru veya kaldırma isteği için ayrı bir satır aç. Türü seçtiğinde yalnızca o türe ait alanlar görünür.</span></div>
       <div class="helpstep"><b>2. Ayarları kullan</b><span>Ayarlar üç sekmeye ayrıldı: Sistem, Yapılandırma ve Hakkında. Dil ve tema seçimi Kaydet’e basmadan otomatik saklanır.</span></div>
       <div class="helpstep"><b>3. Ajanları tanımla</b><span>Ajanlar artık zorunlu değil. Yapılandırma sekmesinden istersen ajan ekle; seçim yapmadan da dışa aktarabilirsin.</span></div>
-      <div class="helpstep"><b>4. Görsel ve dosya ekle</b><span>Satır açıkken Ctrl+V ile ekran görüntüsünü ekle. Tasarım türünde örnek .html / .css dosyası da ekleyebilirsin.</span></div>
+      <div class="helpstep"><b>4. Görsel ve dosya ekle</b><span>Satır açıkken Ctrl+V ile ekran görüntüsünü ekle. Dosyalar alanına her türde dosya sürükleyebilir veya dosya seçebilirsin.</span></div>
       <div class="helpstep"><b>5. Tik ile onayla</b><span>Zorunlu alanlar dolunca satırdaki tiki tıkla. Tik tıklanmayan satır varsa dışa aktarma kapalı kalır.</span></div>
       <div class="helpstep"><b>6. Dışa aktar</b><span>Çıktı biçimini ve planlamayı seç. Hemen aktar ile bu seçimleri kaydet; sonraki dışa aktarımlar modal açılmadan aynı seçimlerle çalışır.</span></div>
       <div class="helpstep"><b>7. Kayıtları yönet</b><span>Kaydet ile anlık kayıt al. Aynı deftere ait bir kayıt varsa uygulama seni uyarır. Kayıt detayından Yeniden adlandır ile yalnızca görünen adı değiştirebilirsin.</span></div>
@@ -2104,6 +2106,14 @@
     "MD dosyası seç": "Select .md file",
     "Ajanı kaldır": "Remove agent",
     "Dosya seç": "Choose file",
+    "Dosyalar": "Files",
+    "Dosya ekle": "Add file",
+    "Dosyayı kaldır": "Remove file",
+    "Dosya depolaması kullanılamıyor.": "File storage is unavailable.",
+    "Dosya eklemek için tarayıcı depolaması kullanılamıyor.": "Browser storage is unavailable for adding files.",
+    "Tüm dosya türleri · en fazla 3 dosya · dosya başına en fazla 10 MB": "All file types · up to 3 files · max 10 MB per file",
+    "Sürükle-bırak veya dosya seç · en fazla 3 dosya · dosya başına en fazla 10 MB": "Drag & drop or choose a file · up to 3 files · max 10 MB per file",
+    "Görseli veya dosyayı bir satırın ilgili alanına bırak.": "Drop the image or file onto the matching area of a request.",
     "Başlık": "Title",
     "Açıklama": "Description",
     "Öncelik": "Priority",
@@ -2279,7 +2289,7 @@
     "Türü seçtiğinde yalnızca o türe ait alanlar görünür. Başlık ve açıklama dışındaki alanlar opsiyoneldir.": "When you select a type, only its fields appear. Fields other than title and description are optional.",
     "3. Görsel ve dosya ekle": "3. Add images and attachments",
     "Satır açıkken": "With the row open,",
-    "ile ekran görüntüsünü ekle. Tasarım türünde örnek": "add a screenshot. For the Design type, add an example",
+    "ile ekran görüntüsünü ekle. Dosyalar alanına her türde dosya sürükleyebilir veya dosya seçebilirsin.": "add a screenshot. Drag any file type onto the Files area or choose a file.",
     "dosyası da ekleyebilirsin.": "file as well.",
     "Zorunlu alanlar dolunca satırdaki tiki tıkla. Tik tıklanmayan satır varsa export açılmaz.": "When required fields are complete, click the row's checkmark. Export is disabled if any row is not confirmed.",
     "5. Dışa aktar": "5. Export",
@@ -2430,7 +2440,7 @@
     "3. Ajanları tanımla": "3. Define agents",
     "Ajanlar artık zorunlu değil. Yapılandırma sekmesinden istersen ajan ekle; seçim yapmadan da dışa aktarabilirsin.": "Agents are no longer mandatory. Add agents from the Configuration tab if you want; you can export without selecting any.",
     "4. Görsel ve dosya ekle": "4. Add images and files",
-    "Satır açıkken Ctrl+V ile ekran görüntüsünü ekle. Tasarım türünde örnek .html / .css dosyası da ekleyebilirsin.": "With the row open, add a screenshot with Ctrl+V. For the Design type, you can also add an example .html / .css file.",
+    "Satır açıkken Ctrl+V ile ekran görüntüsünü ekle. Dosyalar alanına her türde dosya sürükleyebilir veya dosya seçebilirsin.": "With the row open, add a screenshot with Ctrl+V. Drag any file type onto the Files area or choose a file.",
     "5. Tik ile onayla": "5. Confirm with the checkmark",
     "Zorunlu alanlar dolunca satırdaki tiki tıkla. Tik tıklanmayan satır varsa dışa aktarma kapalı kalır.": "When required fields are complete, click the row's checkmark. Export stays disabled if any row is not confirmed.",
     "6. Dışa aktar": "6. Export",
@@ -2442,12 +2452,12 @@
   };
 
   const TYPE_TEMPLATES = {
-    update:  { page:true,  location:true,  console:false, attachments:false, sampleWebsite:false, link:true  },
-    feature: { page:false, location:false, console:false, attachments:false, sampleWebsite:false, link:false },
-    question:{ page:true,  location:true,  console:false, attachments:false, sampleWebsite:false, link:true  },
-    bug:     { page:true,  location:true,  console:true,  attachments:false, sampleWebsite:false, link:true  },
-    remove:  { page:true,  location:true,  console:false, attachments:false, sampleWebsite:false, link:true  },
-    design:  { page:true,  location:true,  console:false, attachments:true,  sampleWebsite:true,  link:true  }
+    update:  { page:true,  location:true,  console:false, attachments:true, sampleWebsite:false, link:true  },
+    feature: { page:false, location:false, console:false, attachments:true, sampleWebsite:false, link:false },
+    question:{ page:true,  location:true,  console:false, attachments:true, sampleWebsite:false, link:true  },
+    bug:     { page:true,  location:true,  console:true,  attachments:true, sampleWebsite:false, link:true  },
+    remove:  { page:true,  location:true,  console:false, attachments:true, sampleWebsite:false, link:true  },
+    design:  { page:true,  location:true,  console:false, attachments:true, sampleWebsite:true,  link:true  }
   };
 
   const ICON_CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
@@ -2459,7 +2469,7 @@
      ============================================================ */
   let state = {
     version: 1,
-    project: "Ortak Zemin",
+    project: "Projem",
     ledgerId: "",
     requests: [],
     agents: [],
@@ -2608,14 +2618,17 @@
     if((match = /^Oto\. Kayıt\s*(.+)$/.exec(core))) return "Auto save " + match[1];
     if(core === "Oto. Kayıt…") return "Auto save…";
     if(core === "Oto. Kayıt hatası") return "Auto save error";
+    if((match = /^(\d+)\s+görsel eklendi\.(.*)$/.exec(core))) return match[1] + " image" + (match[1] === "1" ? "" : "s") + " added." + match[2];
+    if((match = /^(\d+)\s+dosya eklendi\.(.*)$/.exec(core))) return match[1] + " file" + (match[1] === "1" ? "" : "s") + " added." + match[2];
+    if((match = /^(\d+)\s+dosya eklenemedi\.$/.exec(core))) return match[1] + " file" + (match[1] === "1" ? "" : "s") + " could not be added.";
+    if((match = /^Yalnızca ilk (\d+) dosya eklendi\.$/.exec(core))) return "Only the first " + match[1] + " file" + (match[1] === "1" ? " was" : "s were") + " added.";
+    if((match = /^Bir satıra en fazla (\d+) dosya eklenebilir\.$/.exec(core))) return "Up to " + match[1] + " files can be added to a request.";
     if((match = /^(.+)\s+eklendi\.$/.exec(core))) return match[1] + " added.";
     if((match = /^(.+)\s+güncellendi\.$/.exec(core))) return match[1] + " updated.";
     if((match = /^(.+)\s+silindi\.$/.exec(core))) return match[1] + " deleted.";
     if((match = /^(.+)\s+oluşturuldu\.$/.exec(core))) return match[1] + " created.";
     if((match = /^(.+)\s+eklenemedi\.$/.exec(core))) return match[1] + " could not be added.";
     if((match = /^(.+)\s+çok büyük \(en fazla (\d+) MB\)\.$/.exec(core))) return match[1] + " is too large (max " + match[2] + " MB).";
-    if((match = /^(\d+)\s+görsel eklendi\.(.*)$/.exec(core))) return match[1] + " images added." + match[2];
-    if((match = /^(\d+)\s+dosya eklendi\.(.*)$/.exec(core))) return match[1] + " files added." + match[2];
     if((match = /^Hedef klasör:\s*(.+)$/.exec(core))) return "Project folder: " + match[1];
     if((match = /^Dışa aktarım dizini:\s*(.+?) · değiştirmek için tıkla$/.exec(core))) return "Export directory: " + match[1] + " · click to change";
     if((match = /^Dışa aktarım dizini:\s*(.+)$/.exec(core))) return "Export directory: " + match[1];
@@ -3083,7 +3096,7 @@
       if(!raw) return;
       const parsed = JSON.parse(raw);
       if(!parsed || !Array.isArray(parsed.requests)) return;
-      state.project = String(parsed.project || "Ortak Zemin").trim().slice(0, 60) || "Ortak Zemin";
+      state.project = String(parsed.project || "Projem").trim().slice(0, 60) || "Projem";
       state.ledgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId ? parsed.ledgerId : newLedgerId();
       state.requests = parsed.requests.map(function(req, index){ return normalizeRequest(req, index); });
       state.agents = Array.isArray(parsed.agents) ? parsed.agents.map(normalizeAgent) : [];
@@ -3336,7 +3349,7 @@
     });
   }
   function projectNameFromTarget(){
-    return targetFolderHandle && targetFolderHandle.name ? targetFolderHandle.name : "Ortak Zemin";
+    return targetFolderHandle && targetFolderHandle.name ? targetFolderHandle.name : "Projem";
   }
   function syncProjectFromTarget(persist){
     state.project = projectNameFromTarget();
@@ -3846,10 +3859,6 @@
   async function addAttachmentsToRow(rowId, files){
     const req = getReq(rowId);
     if(!req) return;
-    if(req.type !== "design"){
-      showToast("Dosya eki yalnızca Tasarım türünde kullanılabilir.", "error");
-      return;
-    }
     if(idbFailed || !idb){
       showToast("Dosya eklemek için tarayıcı depolaması kullanılamıyor.", "error");
       return;
@@ -3862,14 +3871,13 @@
       return;
     }
     const use = incoming.slice(0, slot);
-    if(incoming.length > slot) showToast("Yalnızca ilk " + slot + " dosya eklendi.", "error");
+    const skipped = Math.max(0, incoming.length - slot);
     let added = 0;
     let failed = 0;
     for(let i = 0; i < use.length; i++){
       const file = use[i];
       if(file.size > MAX_FILE_MB * 1024 * 1024){
         failed++;
-        showToast(file.name + " çok büyük (en fazla " + MAX_FILE_MB + " MB).", "error");
         continue;
       }
       try{
@@ -3896,7 +3904,6 @@
       }catch(err){
         console.error(err);
         failed++;
-        showToast(file.name + " eklenemedi.", "error");
       }
     }
     const finalRow = getRowEl(req.id);
@@ -3905,21 +3912,28 @@
       updateRowUI(finalRow, req);
     }
     refreshGlobal();
-    if(added){
-      showToast(added + " dosya eklendi." + (failed ? " " + failed + " dosya eklenemedi." : ""), failed ? "error" : "ok");
+    const parts = [];
+    if(added) parts.push(added + " dosya eklendi.");
+    if(failed) parts.push(failed + " dosya eklenemedi.");
+    if(skipped){
+      showToast("Yalnızca ilk " + slot + " dosya eklendi.", "error");
+    }else if(failed && !added){
+      showToast(failed + " dosya eklenemedi.", "error");
+    }else if(parts.length){
+      showToast(parts[0], failed ? "error" : "ok");
     }
   }
   function renderAttachments(row, req){
-    const box = $("[data-attachbox]", row);
+    const box = $("[data-file-dropzone]", row);
     if(!box) return;
     box.innerHTML = "";
     if(!req.attachments.length){
       const empty = document.createElement("div");
-      empty.className = "attach-empty";
+      empty.className = "dz-empty";
       empty.innerHTML =
-        '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M21 11.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.4 3.4 0 0 1 4.8 4.8l-9.2 9.2a1.8 1.8 0 0 1-2.5-2.5l8.5-8.5"/></svg>' +
-        '<b>Örnek dosya ekle</b>' +
-        '<span>.html, .css, .js, .pdf vb. — en fazla ' + MAX_ATTACHMENTS + ' dosya</span>' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg>' +
+        '<b>Dosya ekle</b>' +
+        '<span>Tüm dosya türleri · en fazla ' + MAX_ATTACHMENTS + ' dosya · dosya başına en fazla ' + MAX_FILE_MB + ' MB</span>' +
         '<button class="btn btn--ghost btn--small" type="button" data-action="add-attachment">Dosya seç</button>';
       box.appendChild(empty);
       return;
@@ -3937,8 +3951,10 @@
       body.className = "attachitem__body";
       const name = document.createElement("b");
       name.textContent = att.name;
+      name.title = att.name;
       const meta = document.createElement("small");
-      meta.textContent = formatBytes(att.size) + (att.ext ? " · " + att.ext.toUpperCase() : "");
+      const typeLabel = att.ext ? att.ext.toUpperCase() : String(att.type || "dosya").toUpperCase();
+      meta.textContent = formatBytes(att.size) + " · " + typeLabel;
       body.appendChild(name);
       body.appendChild(meta);
       const del = document.createElement("button");
@@ -3947,6 +3963,7 @@
       del.dataset.action = "remove-attachment";
       del.dataset.attachmentId = att.id;
       del.setAttribute("aria-label", att.name + " dosyasını kaldır");
+      del.title = "Dosyayı kaldır";
       del.textContent = "×";
       item.appendChild(icon);
       item.appendChild(body);
@@ -3962,6 +3979,10 @@
       list.appendChild(add);
     }
     box.appendChild(list);
+    const hint = document.createElement("div");
+    hint.className = "dz-hint";
+    hint.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><span>Sürükle-bırak veya dosya seç · en fazla ' + MAX_ATTACHMENTS + ' dosya · dosya başına en fazla ' + MAX_FILE_MB + ' MB</span>';
+    box.appendChild(hint);
   }
   function removeAttachment(req, attachmentId){
     const index = req.attachments.findIndex(function(att){ return att.id === attachmentId; });
@@ -4010,7 +4031,7 @@
      Render
      ============================================================ */
   function updateProjectLabels(){
-    const name = state.project || "Ortak Zemin";
+    const name = state.project || "Projem";
     const hasTarget = Boolean(targetFolderHandle && targetFolderHandle.name);
     const displayName = hasTarget ? name : translateString("Projem");
     const topName = hasTarget ? name : translateString("Dışa aktarım dizini seçilmedi");
@@ -4222,8 +4243,10 @@
           '<div class="field" data-block="location"><label for="location-' + req.id + '">Sayfadaki konum <span class="muted">(opsiyonel)</span></label><textarea class="textarea" id="location-' + req.id + '" data-field="location" rows="2" maxlength="200" placeholder="Örn. tablo üstü araç çubuğu, sağ üstteki filtreler…"></textarea></div>' +
           '<div class="field field--full" data-block="console"><label for="console-' + req.id + '">Console Hatası veya Sayfa Hatası <span class="muted">(opsiyonel)</span></label><textarea class="textarea" id="console-' + req.id + '" data-field="consoleError" rows="3" maxlength="2000" placeholder="Örn. Uncaught TypeError: … / 404 sayfa hatası…"></textarea></div>' +
           '<div class="field field--full" data-block="description"><label for="desc-' + req.id + '">Açıklama <span class="reqmark">*</span></label><textarea class="textarea" id="desc-' + req.id + '" data-field="description" rows="4" maxlength="5000"></textarea></div>' +
-          '<div class="field field--full" data-block="images"><label>Görseller <span class="muted">(opsiyonel)</span></label><div class="dropzone" data-dropzone></div></div>' +
-          '<div class="field field--full" data-block="attachments"><label>Örnek dosya eki (.html, .css vb.) <span class="muted">(opsiyonel)</span></label><div class="attachbox" data-attachbox></div></div>' +
+          '<div class="media-row">' +
+            '<div class="field" data-block="images"><label>Görseller <span class="muted">(opsiyonel)</span></label><div class="dropzone" data-dropzone></div></div>' +
+            '<div class="field" data-block="attachments"><label>Dosyalar <span class="muted">(opsiyonel)</span></label><div class="dropzone" data-file-dropzone></div></div>' +
+          '</div>' +
           '<div class="field" data-block="sampleWebsite"><label for="sample-' + req.id + '">Örnek web sitesi <span class="muted">(opsiyonel)</span></label><input class="input" type="url" id="sample-' + req.id + '" data-field="sampleWebsite" maxlength="500" placeholder="https://…"></div>' +
           '<div class="field" data-block="link"><label for="link-' + req.id + '">İlgili bağlantı <span class="muted">(opsiyonel)</span></label><input class="input" type="url" id="link-' + req.id + '" data-field="link" maxlength="500" placeholder="https://…"></div>' +
           '<div class="field" data-block="note"><label for="note-' + req.id + '">Ek not <span class="muted">(opsiyonel)</span></label><textarea class="textarea" id="note-' + req.id + '" data-field="note" rows="3" maxlength="2000" placeholder="İstersen ek bir açıklama ekle…"></textarea></div>' +
@@ -5881,7 +5904,7 @@
         lines.push("- **" + translateString("Görseller") + ":** " + req.images.length + " " + translateString("adet") + " (" + translateString("Markdown metninde yer almaz") + ")");
       }
       if(mode === "none" && template.attachments && req.attachments.length){
-        lines.push("- **" + translateString("Örnek Dosya") + ":** " + req.attachments.length + " " + translateString("adet") + " (" + translateString("Markdown metninde yer almaz") + ")");
+        lines.push("- **" + translateString("Dosyalar") + ":** " + req.attachments.length + " " + translateString("adet") + " (" + translateString("Markdown metninde yer almaz") + ")");
       }
       if(template.console && req.consoleError && req.consoleError.trim()){
         lines.push("", "### " + translateString("Console Hatası veya Sayfa Hatası"), "", req.consoleError.trim(), "");
@@ -5907,7 +5930,7 @@
         }
       }
       if(template.attachments && req.attachments.length){
-        lines.push("### " + translateString("Örnek Dosya"), "");
+        lines.push("### " + translateString("Dosyalar"), "");
         for(let i = 0; i < req.attachments.length; i++){
           const att = req.attachments[i];
           if(mode === "zip"){
@@ -6648,7 +6671,7 @@
     req.attachments = keptFiles;
   }
   async function applyRestore(data, entries){
-    const project = String(data.project || "Ortak Zemin").trim().slice(0, 60) || "Ortak Zemin";
+    const project = String(data.project || "Projem").trim().slice(0, 60) || "Projem";
     const stats = { missingImages: 0, missingFiles: 0 };
     await idbClearAll().catch(function(){});
     clearImageURLs();
@@ -7018,7 +7041,8 @@
       const head = document.createElement("div");
       head.className = "changelog__head";
       const title = document.createElement("h3");
-      title.textContent = "v" + entry.version + " · " + entry.date;
+      const area = state.language === "en" ? "web app" : "web uygulaması";
+      title.textContent = "v" + entry.version + " (" + area + ") · " + entry.date;
       const badge = document.createElement("span");
       badge.className = "changelog__badge";
       badge.textContent = translateString("Sürüm");
@@ -7056,7 +7080,8 @@
     recentChangelog().forEach(function(entry){
       const link = document.createElement("a");
       link.href = "#";
-      link.textContent = "v" + entry.version + " · " + entry.date;
+      const area = state.language === "en" ? "web app" : "web uygulaması";
+      link.textContent = "v" + entry.version + " (" + area + ") · " + entry.date;
       link.addEventListener("click", function(event){
         event.preventDefault();
         openChangelog(entry.version);
@@ -7599,7 +7624,6 @@
           return;
         }
         if(action === "add-attachment"){
-          if(req.type !== "design"){ showToast("Dosya eki yalnızca Tasarım türünde kullanılabilir.", "error"); return; }
           if(idbFailed || !idb){ showToast("Dosya depolaması kullanılamıyor.", "error"); return; }
           activeRowId = req.id;
           lastExpandedId = req.id;
@@ -7626,6 +7650,14 @@
           pendingImageRowId = req.id;
           const input = $("#globalImageInput");
           if(input){ input.value = ""; input.click(); }
+          return;
+        }
+        if(!action && event.target.closest("[data-file-dropzone]") && !event.target.closest("button") && !req.attachments.length){
+          if(idbFailed || !idb){ showToast("Dosya depolaması kullanılamıyor.", "error"); return; }
+          activeRowId = req.id;
+          pendingAttachmentRowId = req.id;
+          const input = $("#globalAttachmentInput");
+          if(input){ input.value = ""; input.click(); }
         }
       });
       list.addEventListener("input", function(event){
@@ -7639,18 +7671,18 @@
         onFieldChange(row, req, field, target.value, target);
       });
       list.addEventListener("dragover", function(event){
-        const dropzone = event.target.closest("[data-dropzone]");
+        const dropzone = event.target.closest("[data-dropzone],[data-file-dropzone]");
         if(!dropzone) return;
         event.preventDefault();
         if(event.dataTransfer) event.dataTransfer.dropEffect = "copy";
         dropzone.classList.add("is-drag");
       });
       list.addEventListener("dragleave", function(event){
-        const dropzone = event.target.closest("[data-dropzone]");
+        const dropzone = event.target.closest("[data-dropzone],[data-file-dropzone]");
         if(dropzone) dropzone.classList.remove("is-drag");
       });
       list.addEventListener("drop", function(event){
-        const dropzone = event.target.closest("[data-dropzone]");
+        const dropzone = event.target.closest("[data-dropzone],[data-file-dropzone]");
         if(!dropzone) return;
         event.preventDefault();
         dropzone.classList.remove("is-drag");
@@ -7663,7 +7695,11 @@
         }
         activeRowId = row.dataset.id;
         if(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length){
-          addFilesToRow(row.dataset.id, event.dataTransfer.files);
+          if(dropzone.hasAttribute("data-file-dropzone")){
+            addAttachmentsToRow(row.dataset.id, event.dataTransfer.files);
+          }else{
+            addFilesToRow(row.dataset.id, event.dataTransfer.files);
+          }
         }
       });
     }
@@ -7745,14 +7781,14 @@
       addFilesToRow(targetReq.id, files);
     });
     document.addEventListener("dragover", function(event){
-      if(event.dataTransfer && Array.prototype.indexOf.call(event.dataTransfer.types || [], "Files") !== -1 && !event.target.closest("[data-dropzone]")){
+      if(event.dataTransfer && Array.prototype.indexOf.call(event.dataTransfer.types || [], "Files") !== -1 && !event.target.closest("[data-dropzone]") && !event.target.closest("[data-file-dropzone]")){
         event.preventDefault();
       }
     });
     document.addEventListener("drop", function(event){
-      if(event.dataTransfer && Array.prototype.indexOf.call(event.dataTransfer.types || [], "Files") !== -1 && !event.target.closest("[data-dropzone]")){
+      if(event.dataTransfer && Array.prototype.indexOf.call(event.dataTransfer.types || [], "Files") !== -1 && !event.target.closest("[data-dropzone]") && !event.target.closest("[data-file-dropzone]")){
         event.preventDefault();
-        showToast("Görseli bir satırın görsel alanına bırak.", "error");
+        showToast("Görseli veya dosyayı bir satırın ilgili alanına bırak.", "error");
       }
     });
     window.addEventListener("pagehide", function(){
