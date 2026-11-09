@@ -56,6 +56,9 @@
   let saveSettingsTimer = null;
   let activeModal = null;
   let lastFocus = null;
+  /* Owned by the server lifecycle UI; declared early because save paths check
+     it before the onboarding module is evaluated. */
+  let serverBlocked = false;
   let confirmAction = null;
   let confirmAltAction = null;
   let pendingExportOptions = null;

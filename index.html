@@ -681,6 +681,19 @@
   .serverstop code{font-family:var(--mono);font-size:10px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 4px}
   html[data-theme="dark"] .serverstop{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
   html[data-theme="dark"] .serverstop code{background:var(--card);border-color:var(--line)}
+  /* Blocked server state: the page stays visible for context but every
+     interactive surface behind it is inert until the same port returns. */
+  .serverblocked{position:fixed;inset:0;z-index:145;display:grid;place-items:center;padding:20px;background:rgba(26,22,16,.38);backdrop-filter:blur(3px)}
+  .serverblocked[hidden]{display:none}
+  .serverblocked__card{width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 80px rgba(32,28,20,.24);padding:26px 26px 22px;text-align:left}
+  .serverblocked__icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-dark);margin-bottom:13px}
+  .serverblocked__card h2{font-size:20px;letter-spacing:-.025em;margin:5px 0 8px;line-height:1.18}
+  .serverblocked__card p{margin:0 0 9px;font-size:11.5px;line-height:1.55;color:var(--muted)}
+  .serverblocked__card code{font-family:var(--mono);font-size:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+  .serverblocked__hint{font-size:10.5px;color:var(--muted-2)}
+  .serverblocked__actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+  html[data-theme="dark"] .serverblocked{background:rgba(10,9,8,.62)}
+  html[data-theme="dark"] .serverblocked__card{box-shadow:0 30px 80px rgba(0,0,0,.5)}
 
   /* ---------- Footer / toast ---------- */
   footer{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:4px 2px 22px;font-size:9.5px;color:var(--muted-2)}
@@ -1402,6 +1415,22 @@
         <span id="storageNote">Görseller ve dosyalar IndexedDB’de tutulur</span>
       </footer>
     </main>
+  </div>
+</div>
+
+<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle">
+  <div class="serverblocked__card">
+    <div class="serverblocked__icon" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
+    </div>
+    <div class="eyebrow">Server</div>
+    <h2 id="serverBlockedTitle">Sunucu durduruldu</h2>
+    <p>Bu pencere sunucuya bağlıydı. Düzenleme ve uzantı köprüsü durduruldu; defter tarayıcıda korunuyor.</p>
+    <p>Yeniden başlatmak için <code>start.cmd</code> çalıştır.</p>
+    <p class="serverblocked__hint" id="serverBlockedHint">Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.</p>
+    <div class="serverblocked__actions">
+      <button class="btn btn--primary" type="button" id="serverBlockedRetry">Yeniden bağlan</button>
+    </div>
   </div>
 </div>
 
@@ -3416,6 +3445,9 @@ const SEO_TITLE = document.title;
   let saveSettingsTimer = null;
   let activeModal = null;
   let lastFocus = null;
+  /* Owned by the server lifecycle UI; declared early because save paths check
+     it before the onboarding module is evaluated. */
+  let serverBlocked = false;
   let confirmAction = null;
   let confirmAltAction = null;
   let pendingExportOptions = null;
@@ -4108,9 +4140,11 @@ const SEO_TITLE = document.title;
     if(!projectId) return;
     try{
       const payload = ledgerPayload();
+      payload.ledgerId = normalizeLedgerId(state.ledgerId) || payload.ledgerId;
       payload.updatedAt = nowISO();
       localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
       state.updatedAt = payload.updatedAt;
+      setProjectLedgerId(projectId, payload.ledgerId);
     }catch(err){
       console.warn("Proje defteri yazılamadı", err);
     }
@@ -4118,6 +4152,7 @@ const SEO_TITLE = document.title;
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
     resetLedgerState(projectName, fallbackLanguage);
+    state.ledgerId = resolveProjectLedgerId(projectId);
     let raw = null;
     try{ raw = localStorage.getItem(projectLedgerKey(projectId)); }catch(err){ raw = null; }
     if(!raw){
@@ -4127,10 +4162,9 @@ const SEO_TITLE = document.title;
     try{
       const parsed = JSON.parse(raw);
       if(!parsed || !Array.isArray(parsed.requests)) return;
-      /* The registry owns the project name. The ledger may still carry an
-         older name until the next save overwrites it. */
-      const hasLedgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId;
-      state.ledgerId = hasLedgerId ? parsed.ledgerId : newLedgerId();
+      /* The registry owns the project name and the one ledger id. The ledger
+         may still carry an older name or a stale id until the next save. */
+      state.ledgerId = resolveProjectLedgerId(projectId);
       state.requests = parsed.requests.map(function(req, index){ return normalizeRequest(req, index); });
       state.agents = Array.isArray(parsed.agents) ? parsed.agents.map(normalizeAgent) : [];
       state.language = parsed.language === "tr" ? "tr" : "en";
@@ -4144,7 +4178,6 @@ const SEO_TITLE = document.title;
         }
       });
       state.updatedAt = parsed.updatedAt || null;
-      if(!hasLedgerId) persistProjectLedger(projectId);
     }catch(err){
       console.warn("Kayıt okunamadı", err);
       showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");
@@ -4155,6 +4188,9 @@ const SEO_TITLE = document.title;
       setSaveStatus("saved");
       return;
     }
+    /* A stopped server is a blocked app: no ledger/bridge writes until the
+       page reconnects. */
+    if(typeof serverBlocked !== "undefined" && serverBlocked) return;
     try{
       const payload = ledgerPayload();
       payload.updatedAt = nowISO();
@@ -4177,6 +4213,7 @@ const SEO_TITLE = document.title;
   }
   function scheduleSave(){
     if(!activeProjectId) return;
+    if(typeof serverBlocked !== "undefined" && serverBlocked) return;
     stateDirtySinceExport = true;
     setSaveStatus("saving");
     clearTimeout(saveTimer);
@@ -4213,6 +4250,9 @@ const SEO_TITLE = document.title;
     const value = normalizeProjectName(name);
     return value === "Ortak Zemin" || value === "Common Ground";
   }
+  function normalizeLedgerId(value){
+    return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
+  }
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     const id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -4225,6 +4265,10 @@ const SEO_TITLE = document.title;
       name: name,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      /* The project registry owns the one ledger identity for this project.
+         It is written at creation and whenever a bridge choice/adoption
+         changes the ledger. */
+      ledgerId: normalizeLedgerId(record.ledgerId),
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -4298,6 +4342,7 @@ const SEO_TITLE = document.title;
             : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
+          ledgerId: normalizeLedgerId(legacy.ledgerId) || newLedgerId(),
           exportTarget: "",
           archiveCollapsed: false
         };
@@ -4318,6 +4363,7 @@ const SEO_TITLE = document.title;
       if(project.id !== activeProjectId) continue;
       project.name = normalizeProjectName(state.project) || project.name;
       project.updatedAt = updatedAt || project.updatedAt;
+      project.ledgerId = normalizeLedgerId(state.ledgerId) || project.ledgerId;
       if(targetFolderHandle && targetFolderHandle.name){
         project.exportTarget = String(targetFolderHandle.name).slice(0, 120);
       }
@@ -4350,6 +4396,7 @@ const SEO_TITLE = document.title;
       if(patch && typeof patch === "object"){
         if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
         if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
+        if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
         if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
         if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
       }
@@ -4390,6 +4437,50 @@ const SEO_TITLE = document.title;
     }catch(err){
       return null;
     }
+  }
+  /* One ledger identity per project. The registry is the source of truth once
+     it carries an id; the ledger payload is kept in sync so a bridge peer or a
+     backup never sees a second id for the same project. */
+  function setProjectLedgerId(projectId, ledgerId){
+    const value = normalizeLedgerId(ledgerId);
+    if(!projectId || !value) return "";
+    const registry = readRegistry();
+    if(registry){
+      let changed = false;
+      for(const project of registry.projects){
+        if(project.id !== projectId) continue;
+        if(project.ledgerId !== value){
+          project.ledgerId = value;
+          changed = true;
+        }
+        break;
+      }
+      if(changed) writeRegistry(registry);
+    }
+    const payload = readProjectLedgerPayload(projectId);
+    if(payload && normalizeLedgerId(payload.ledgerId) !== value){
+      try{
+        payload.ledgerId = value;
+        localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      }catch(err){ /* the next save retries */ }
+    }
+    return value;
+  }
+  function resolveProjectLedgerId(projectId, preferredLedgerId){
+    const preferred = normalizeLedgerId(preferredLedgerId);
+    if(!projectId) return preferred || newLedgerId();
+    if(preferred){
+      setProjectLedgerId(projectId, preferred);
+      return preferred;
+    }
+    const project = findProjectRecord(projectId);
+    const registryId = project ? normalizeLedgerId(project.ledgerId) : "";
+    if(registryId) return registryId;
+    const payload = readProjectLedgerPayload(projectId);
+    const payloadId = payload ? normalizeLedgerId(payload.ledgerId) : "";
+    const next = payloadId || newLedgerId();
+    setProjectLedgerId(projectId, next);
+    return next;
   }
   /* Phase 1 stored media and snapshots globally. The one-time scope migration
      stamps every record without a projectId into the migrated project, or the
@@ -9424,11 +9515,13 @@ const SEO_TITLE = document.title;
   function performCreateProject(name){
     cancelScheduledSave();
     const stamp = nowISO();
+    const ledgerId = newLedgerId();
     const project = {
       id: newProjectId(),
       name: name,
       createdAt: stamp,
       updatedAt: stamp,
+      ledgerId: ledgerId,
       exportTarget: "",
       archiveCollapsed: false
     };
@@ -9444,7 +9537,7 @@ const SEO_TITLE = document.title;
       version: 2,
       project: project.name,
       projectCreated: true,
-      ledgerId: newLedgerId(),
+      ledgerId: ledgerId,
       updatedAt: stamp,
       requests: [],
       agents: [],
@@ -10843,6 +10936,7 @@ const SEO_TITLE = document.title;
   const BRIDGE_TOMBSTONE_MAX = 500;
 
   let bridgeConnected = false;
+  let bridgeServerStopped = false;
   let bridgeLastHeard = 0;
   let bridgeConflictOpen = false;
   let bridgeResolved = false;
@@ -10890,6 +10984,7 @@ const SEO_TITLE = document.title;
   }
 
   function bridgeEnabled(){
+    if(bridgeServerStopped) return false;
     try{
       if(bridgeFilePage()) return true;
       var origin = window.location.origin;
@@ -10897,6 +10992,36 @@ const SEO_TITLE = document.title;
       return origin !== BRIDGE_FILE_ORIGIN && bridgeOriginAllowed(origin);
     }
     catch(err){ return false; }
+  }
+  function bridgeServerStoppedState(){ return bridgeServerStopped; }
+  /* Tell connected panels about an explicit user stop before disabling the
+     bridge. Ordinary disconnect (BYE) is not the same thing: a stopped server
+     is a deliberate, persistent state. */
+  function bridgeAnnounceServerStop(){
+    if(bridgeServerStopped) return;
+    try{
+      window.postMessage({
+        source:"request-ledger-web",
+        type:"RL_APP_SERVER_STOP",
+        v:BRIDGE_VERSION,
+        ledgerId:state.ledgerId,
+        projectId:activeProjectId,
+        projectName:state.project
+      }, bridgePostTarget());
+    }catch(err){ /* ignore */ }
+  }
+  function bridgeSetServerStopped(stopped){
+    bridgeServerStopped = stopped === true;
+    if(bridgeServerStopped){
+      bridgeConnected = false;
+      bridgeConflictOpen = false;
+      bridgePeerSnapshot = null;
+      if(bridgeHeartbeat){
+        clearInterval(bridgeHeartbeat);
+        bridgeHeartbeat = null;
+      }
+    }
+    updateBridgeIndicator();
   }
 
   function bridgeEventOrigin(){
@@ -11370,11 +11495,20 @@ const SEO_TITLE = document.title;
       bridgeResolved = true;
       bridgeConflictOpen = false;
       bridgeForceApply = true;
+      /* The panel's ACK carries the winning ledger id even if its snapshot is
+         lost in transit. Persisting it here keeps the choice across a server
+         stop/start and prevents the same prompt from returning. */
+      if(typeof data.ledgerId === "string" && data.ledgerId){
+        state.ledgerId = data.ledgerId;
+        setProjectLedgerId(activeProjectId, data.ledgerId);
+      }
       if(bridgePeerSnapshot){
         const peer = bridgePeerSnapshot;
         bridgePeerSnapshot = null;
         bridgeApply(peer, "replace");
         bridgeForceApply = false;
+      }else{
+        saveNow();
       }
     }
   }
@@ -11534,7 +11668,8 @@ const SEO_TITLE = document.title;
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
-        conflict:function(){ return bridgeConflictOpen; }
+        conflict:function(){ return bridgeConflictOpen; },
+        serverStopped:function(){ return bridgeServerStoppedState(); }
       });
     }catch(err){ /* ignore */ }
   }
@@ -12150,6 +12285,7 @@ const SEO_TITLE = document.title;
 
   let onboardingOpen = false;
   let serverStopNotice = false;
+  let serverReconnectTimer = null;
   let pendingPortMove = null;
   let movedFromPort = null;
   let onboardingMode = "html";
@@ -12529,8 +12665,73 @@ const SEO_TITLE = document.title;
     onboardingHeartbeatTimer = null;
   }
 
+  function stopServerReconnectWatch(){
+    if(!serverReconnectTimer) return;
+    clearInterval(serverReconnectTimer);
+    serverReconnectTimer = null;
+  }
+
+  /* The page is still in the browser's cache after the server stops. Poll the
+     same origin and reload as soon as start.cmd brings the same port back, so
+     the pair reconnects automatically instead of asking the user to refresh. */
+  function startServerReconnectWatch(stoppedPid){
+    if(serverReconnectTimer) return;
+    const previousPid = Number(stoppedPid) || 0;
+    /* The user asked for a stop and the shutdown request succeeded, so the old
+       process is expected to be gone. The pid check still protects the case
+       where it lingers; the first poll is delayed past the shutdown window. */
+    const hint = $("#serverBlockedHint");
+    if(hint) hint.textContent = translateString("Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.");
+    serverReconnectTimer = setInterval(function(){
+      if(!serverBlocked) return;
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(!serverBlocked) return;
+        if(!data || data.app !== "request-ledger" || data.server !== true) return;
+        /* The old process can answer for a moment while it closes. With a
+           known pid only a different pid is the restarted server. */
+        if(previousPid && Number(data.pid) === previousPid) return;
+        stopServerReconnectWatch();
+        if(hint) hint.textContent = translateString("Sunucu yeniden başladı; bağlanılıyor…");
+        try{ window.location.reload(); }catch(err){ /* ignore */ }
+      }).catch(function(){ /* server not back yet */ });
+    }, 3000);
+  }
+
+  function setServerBlocked(blocked){
+    serverBlocked = blocked === true;
+    const overlay = $("#serverBlocked");
+    const main = document.getElementById("main");
+    const header = document.querySelector("header");
+    const footer = document.querySelector("footer");
+    if(main) main.inert = serverBlocked;
+    if(header) header.inert = serverBlocked;
+    if(footer) footer.inert = serverBlocked;
+    document.body.classList.toggle("is-server-blocked", serverBlocked);
+    if(overlay){
+      overlay.hidden = !serverBlocked;
+      if(serverBlocked){
+        const retry = $("#serverBlockedRetry");
+        try{ (retry || overlay).focus(); }catch(err){ /* ignore */ }
+      }
+    }
+    if(!serverBlocked){
+      stopServerReconnectWatch();
+    }
+  }
+
   async function sendServerShutdown(){
     let stopped = false;
+    let stoppedPid = 0;
+    try{
+      const before = await fetch("/__rl/status", { method:"GET", cache:"no-store" });
+      if(before.ok){
+        const info = await before.json();
+        stoppedPid = Number(info && info.pid) || 0;
+      }
+    }catch(err){ /* the shutdown below reports the failure */ }
     try{
       const response = await fetch("/__rl/shutdown", { method:"POST", cache:"no-store", keepalive:true });
       stopped = response.ok;
@@ -12542,9 +12743,16 @@ const SEO_TITLE = document.title;
       catch(err){ stopped = false; }
     }
     if(stopped){
+      /* Tell the connected panels before the bridge is disabled. The stop is
+         deliberate: the app becomes blocked, the bridge sends nothing, and the
+         panel switches to "App server stopped". */
+      try{ if(typeof bridgeAnnounceServerStop === "function") bridgeAnnounceServerStop(); }catch(err){ /* ignore */ }
+      try{ if(typeof bridgeSetServerStopped === "function") bridgeSetServerStopped(true); }catch(err){ /* ignore */ }
       onboardingServer = null;
       serverStopNotice = true;
       stopServerHeartbeat();
+      setServerBlocked(true);
+      startServerReconnectWatch(stoppedPid);
       renderOnboarding();
       updateRailMode();
       updateServerStopNote();
@@ -12852,6 +13060,24 @@ const SEO_TITLE = document.title;
     });
     const settingsOpen = $("#openOnboardingBtn");
     if(settingsOpen) settingsOpen.addEventListener("click", openOnboarding);
+    const blockedRetry = $("#serverBlockedRetry");
+    if(blockedRetry) blockedRetry.addEventListener("click", function(){
+      const hint = $("#serverBlockedHint");
+      if(hint) hint.textContent = translateString("Sunucu kontrol ediliyor…");
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(data && data.app === "request-ledger" && data.server === true){
+          stopServerReconnectWatch();
+          window.location.reload();
+          return;
+        }
+        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
+      }).catch(function(){
+        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
+      });
+    });
 
     const railStop = $("#railStopBtn");
     if(railStop) railStop.addEventListener("click", stopLocalServer);

@@ -533,6 +533,52 @@ async function main() {
     check("Use extension ledger replaces only the same project",
       afterExtChoice.test.requests.some((item) => item.title === "Extension winner request") &&
       afterExtChoice.legacy.requests.some((item) => item.title === "Legacy request"), afterExtChoice);
+    const extensionAfterChoice = await readExtension(cdp);
+    check("the chosen ledger id is persisted in both registries",
+      afterExtChoice.registry.projects.find((item) => item.id === P_TEST).ledgerId === afterExtChoice.test.ledgerId &&
+      extensionAfterChoice.registry.projects.find((item) => item.id === P_TEST).ledgerId === extensionAfterChoice.test.ledgerId &&
+      afterExtChoice.test.ledgerId === extensionAfterChoice.test.ledgerId, {
+        appRegistry: afterExtChoice.registry,
+        panelRegistry: extensionAfterChoice.registry
+      });
+
+    /* Exact owner defect: type in the app after the choice. A first keystroke
+       must only save/patch; it must never open "Two ledgers found". */
+    const typed = await evaluate(cdp, pageSession, `(() => {
+      const input = document.getElementById('title-IST-004');
+      if (!input) return false;
+      input.value = 'Extension winner request typed';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(1200);
+    const afterTyping = await readApp(cdp, pageSession);
+    check("typing in the app does not open a conflict dialog",
+      typed === true && await evaluate(cdp, pageSession,
+        "!document.getElementById('confirmModal').classList.contains('is-open')") === true);
+    check("typing keeps the chosen ledger id",
+      afterTyping.test.ledgerId === extensionAfterChoice.test.ledgerId, {
+        app: afterTyping.test.ledgerId,
+        panel: extensionAfterChoice.test.ledgerId
+      });
+
+    /* Reload after the typed write: the same choice must survive with no
+       prompt, and both projects must still be intact. */
+    await cdp.send("Page.reload", {}, pageSession);
+    await sleep(2400);
+    pageSession = await attach(cdp, pageTarget.targetId);
+    await dismissOnboarding(cdp, pageSession);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(P_TEST)), "test project after typed reload", 15000);
+    const typedReload = await readApp(cdp, pageSession);
+    check("typed data survives reload without a conflict",
+      typedReload.test.requests.some((item) => item.title === "Extension winner request typed") &&
+      typedReload.legacy.requests.some((item) => item.title === "Legacy request") &&
+      await evaluate(cdp, pageSession,
+        "!document.getElementById('confirmModal').classList.contains('is-open')") === true, typedReload);
+    check("reload keeps the chosen ledger id from the registry",
+      typedReload.registry.projects.find((item) => item.id === P_TEST).ledgerId === typedReload.test.ledgerId &&
+      typedReload.test.ledgerId === (await readExtension(cdp)).test.ledgerId, typedReload);
 
     /* Empty side adopts the non-empty side. App empty, extension has data:
        no conflict; app takes the extension ledger id and request. */

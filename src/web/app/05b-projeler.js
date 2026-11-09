@@ -25,6 +25,9 @@
     const value = normalizeProjectName(name);
     return value === "Ortak Zemin" || value === "Common Ground";
   }
+  function normalizeLedgerId(value){
+    return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
+  }
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     const id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -37,6 +40,10 @@
       name: name,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      /* The project registry owns the one ledger identity for this project.
+         It is written at creation and whenever a bridge choice/adoption
+         changes the ledger. */
+      ledgerId: normalizeLedgerId(record.ledgerId),
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -110,6 +117,7 @@
             : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
+          ledgerId: normalizeLedgerId(legacy.ledgerId) || newLedgerId(),
           exportTarget: "",
           archiveCollapsed: false
         };
@@ -130,6 +138,7 @@
       if(project.id !== activeProjectId) continue;
       project.name = normalizeProjectName(state.project) || project.name;
       project.updatedAt = updatedAt || project.updatedAt;
+      project.ledgerId = normalizeLedgerId(state.ledgerId) || project.ledgerId;
       if(targetFolderHandle && targetFolderHandle.name){
         project.exportTarget = String(targetFolderHandle.name).slice(0, 120);
       }
@@ -162,6 +171,7 @@
       if(patch && typeof patch === "object"){
         if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
         if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
+        if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
         if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
         if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
       }
@@ -202,6 +212,50 @@
     }catch(err){
       return null;
     }
+  }
+  /* One ledger identity per project. The registry is the source of truth once
+     it carries an id; the ledger payload is kept in sync so a bridge peer or a
+     backup never sees a second id for the same project. */
+  function setProjectLedgerId(projectId, ledgerId){
+    const value = normalizeLedgerId(ledgerId);
+    if(!projectId || !value) return "";
+    const registry = readRegistry();
+    if(registry){
+      let changed = false;
+      for(const project of registry.projects){
+        if(project.id !== projectId) continue;
+        if(project.ledgerId !== value){
+          project.ledgerId = value;
+          changed = true;
+        }
+        break;
+      }
+      if(changed) writeRegistry(registry);
+    }
+    const payload = readProjectLedgerPayload(projectId);
+    if(payload && normalizeLedgerId(payload.ledgerId) !== value){
+      try{
+        payload.ledgerId = value;
+        localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      }catch(err){ /* the next save retries */ }
+    }
+    return value;
+  }
+  function resolveProjectLedgerId(projectId, preferredLedgerId){
+    const preferred = normalizeLedgerId(preferredLedgerId);
+    if(!projectId) return preferred || newLedgerId();
+    if(preferred){
+      setProjectLedgerId(projectId, preferred);
+      return preferred;
+    }
+    const project = findProjectRecord(projectId);
+    const registryId = project ? normalizeLedgerId(project.ledgerId) : "";
+    if(registryId) return registryId;
+    const payload = readProjectLedgerPayload(projectId);
+    const payloadId = payload ? normalizeLedgerId(payload.ledgerId) : "";
+    const next = payloadId || newLedgerId();
+    setProjectLedgerId(projectId, next);
+    return next;
   }
   /* Phase 1 stored media and snapshots globally. The one-time scope migration
      stamps every record without a projectId into the migrated project, or the

@@ -357,6 +357,7 @@
     bridgeOffline:{ tr:"Uygulama açık değil", en:"App not open" },
     bridgeConflictShort:{ tr:"Defter seçimi bekliyor", en:"Ledger choice pending" },
     bridgeDifferentProject:{ tr:"Farklı proje açık", en:"Different project open" },
+    bridgeServerStopped:{ tr:"Uygulama sunucusu durduruldu", en:"App server stopped" },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
     bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },
@@ -704,6 +705,10 @@
     return value === "Ortak Zemin" || value === "Common Ground";
   }
 
+  function normalizeLedgerId(value){
+    return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
+  }
+
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     var id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -716,6 +721,9 @@
       name: name,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      /* The extension registry carries the same one ledger identity as the
+         app registry; adoption and conflict choices keep it aligned. */
+      ledgerId: normalizeLedgerId(record.ledgerId),
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -851,7 +859,7 @@
     return Promise.resolve();
   }
 
-  function touchActiveProject(name, updatedAt){
+  function touchActiveProject(name, updatedAt, ledgerId){
     if(!activeProjectId) return;
     var registry = readRegistry();
     if(!registry) return;
@@ -859,6 +867,7 @@
     if(!project) return;
     project.name = normalizeProjectName(name) || project.name;
     project.updatedAt = updatedAt || project.updatedAt;
+    if(normalizeLedgerId(ledgerId)) project.ledgerId = normalizeLedgerId(ledgerId);
     registry.activeId = activeProjectId;
     writeRegistry(registry);
   }
@@ -872,6 +881,7 @@
     if(patch && typeof patch === "object"){
       if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
       if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
+      if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
       if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
       if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
     }
@@ -908,6 +918,37 @@
     }catch(err){
       return null;
     }
+  }
+
+  function setProjectLedgerId(projectId, ledgerId){
+    var value = normalizeLedgerId(ledgerId);
+    if(!projectId || !value) return "";
+    updateProjectRecord(projectId, { ledgerId:value });
+    var payload = readProjectLedgerPayload(projectId);
+    if(payload && normalizeLedgerId(payload.ledgerId) !== value){
+      try{
+        payload.ledgerId = value;
+        localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      }catch(err){ /* the next save retries */ }
+    }
+    return value;
+  }
+
+  function resolveProjectLedgerId(projectId, preferredLedgerId){
+    var preferred = normalizeLedgerId(preferredLedgerId);
+    if(!projectId) return preferred || newLedgerId();
+    if(preferred){
+      setProjectLedgerId(projectId, preferred);
+      return preferred;
+    }
+    var project = findProjectRecord(projectId);
+    var registryId = project ? normalizeLedgerId(project.ledgerId) : "";
+    if(registryId) return registryId;
+    var payload = readProjectLedgerPayload(projectId);
+    var payloadId = payload ? normalizeLedgerId(payload.ledgerId) : "";
+    var next = payloadId || newLedgerId();
+    setProjectLedgerId(projectId, next);
+    return next;
   }
 
   function projectRequestCount(projectId){
@@ -1053,10 +1094,23 @@
     if(!Array.isArray(app.requests)) app.requests = [];
     if(!Array.isArray(app.agents)) app.agents = [];
     app.project = project.name;
-    if(!loaded && !app.ledgerId) app.ledgerId = newLedgerId();
+    var recordLedgerId = project && typeof project.ledgerId === "string" ? normalizeLedgerId(project.ledgerId) : "";
+    var loadedLedgerId = normalizeLedgerId(app.ledgerId);
+    if(recordLedgerId){
+      /* The registry is authoritative so a removed/rewritten payload cannot
+         mint a second id for an existing project. */
+      app.ledgerId = recordLedgerId;
+    }else if(loadedLedgerId){
+      setProjectLedgerId(projectId, loadedLedgerId);
+    }else{
+      app.ledgerId = newLedgerId();
+      setProjectLedgerId(projectId, app.ledgerId);
+    }
+    if(!app.ledgerId) app.ledgerId = newLedgerId();
     /* Persist the empty ledger immediately; opening a project twice must keep
        the same ledgerId instead of minting a new one each time. */
-    if((!loaded || !app.ledgerId) && core && core.storage && core.storage.saveState &&
+    if((!loaded || normalizeLedgerId(loaded && loaded.ledgerId) !== app.ledgerId) &&
+       core && core.storage && core.storage.saveState &&
        !(typeof bridgeAdoptingProject !== "undefined" && bridgeAdoptingProject)){
       /* Do not seed an empty ledger while the app payload is still adopting:
          the app's ledgerId/data must win the first write. */
@@ -1187,12 +1241,14 @@
     var hadProject = !!activeProjectId;
     var id = newProjectId();
     var stamp = nowISO();
+    var ledgerId = newLedgerId();
     var registry = readRegistry() || emptyProjectRegistry();
     registry.projects.push({
       id: id,
       name: value,
       createdAt: stamp,
       updatedAt: stamp,
+      ledgerId: ledgerId,
       exportTarget: "",
       archiveCollapsed: false
     });
@@ -1205,7 +1261,7 @@
       version: 2,
       project: value,
       projectCreated: true,
-      ledgerId: newLedgerId(),
+      ledgerId: ledgerId,
       updatedAt: stamp,
       requests: [],
       agents: [],
@@ -1720,7 +1776,16 @@
           if(record){
             app.project = record.name;
             folderDirs.export = record.exportTarget || "";
-            if(!loaded && !app.ledgerId) app.ledgerId = newLedgerId();
+            /* The registry owns the one ledger id; a missing payload must not
+               mint a second identity for the same project. */
+            if(normalizeLedgerId(record.ledgerId)){
+              app.ledgerId = normalizeLedgerId(record.ledgerId);
+            }else if(normalizeLedgerId(app.ledgerId)){
+              setProjectLedgerId(activeProjectId, app.ledgerId);
+            }else{
+              app.ledgerId = newLedgerId();
+              setProjectLedgerId(activeProjectId, app.ledgerId);
+            }
           }else{
             app.project = "";
           }
@@ -1954,7 +2019,7 @@
       }
     }else{
       if(activeProjectId){
-        touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO());
+        touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO(), app && app.ledgerId);
         resetProjectSnapshot();
       }
       writeSyncStamp();
@@ -1998,6 +2063,23 @@
     app = loaded || defaultApp();
     if(!Array.isArray(app.requests)) app.requests = [];
     if(!Array.isArray(app.agents)) app.agents = [];
+    /* The registry owns the one ledger id. A storage refresh can run before
+       core.storage has switched scopes (or can find no payload); defaultApp()
+       must never mint a second id for an existing project. */
+    if(activeProjectId){
+      var liveProject = activeProjectRecord();
+      var registryLedgerId = liveProject && typeof liveProject.ledgerId === "string"
+        ? liveProject.ledgerId
+        : "";
+      if(registryLedgerId){
+        app.ledgerId = registryLedgerId;
+      }else if(normalizeLedgerId(app.ledgerId)){
+        setProjectLedgerId(activeProjectId, app.ledgerId);
+      }else{
+        app.ledgerId = newLedgerId();
+        setProjectLedgerId(activeProjectId, app.ledgerId);
+      }
+    }
     if(activeProjectId) applyStoredProject();
     else app.project = "";
     if(typeof app.project !== "string") app.project = "";
@@ -2253,6 +2335,14 @@
     if(!message || typeof message !== "object") return;
     if(message.type === "RL_BRIDGE_DATA_CHANGED"){
       if(message.projectId === activeProjectId) bridgeRefreshFromStorage();
+      return;
+    }
+    if(message.type === "RL_BRIDGE_SERVER_STOP"){
+      handleBridgeServerStop(true);
+      return;
+    }
+    if(message.type === "RL_BRIDGE_SERVER_RESUME"){
+      clearBridgeServerStop(true);
       return;
     }
     /* App-initiated picks are consumed by the dock frame only. The worker
@@ -2546,7 +2636,8 @@
     /* live bridge: host relays the web app's ledger envelopes */
     if(data.type === "RL_APP_HELLO" || data.type === "RL_APP_SNAPSHOT" ||
        data.type === "RL_APP_PATCH" || data.type === "RL_APP_ACK" ||
-       data.type === "RL_APP_BYE" || data.type === "RL_BRIDGE_CONTEXT" ||
+       data.type === "RL_APP_BYE" || data.type === "RL_APP_SERVER_STOP" ||
+       data.type === "RL_BRIDGE_CONTEXT" ||
        data.type === "RL_APP_TABS_REQUEST" || data.type === "RL_APP_PICK_REQUEST" ||
        data.type === "RL_APP_PICK_CANCEL" || data.type === "RL_APP_CAPTURE_REQUEST" ||
        data.type === "RL_APP_CAPTURE_CANCEL"){
@@ -11650,7 +11741,7 @@
   }
 
   function bridgePost(type, extra){
-    if(!hasHost) return;
+    if(!hasHost || bridgeServerStopped) return;
     var target = bridgeTargetOrigin();
     if(!target) return; /* no allowlisted page: send nothing */
     var message = bridgeEnvelope(type, extra);
@@ -11663,7 +11754,7 @@
      documented control fields. The host re-checks the origin and strips
      anything outside those fields before the page sees it. */
   function bridgeControlPost(type, extra){
-    if(!hasHost) return;
+    if(!hasHost || bridgeServerStopped) return;
     var target = bridgeTargetOrigin();
     if(!target) return;
     var message = {
@@ -11688,6 +11779,7 @@
   var APP_IMAGE_MAX_CHARS = 8 * 1024 * 1024;
   var bridgePeerLedgerId = "";
   var bridgePeerRequestCount = 0;
+  var bridgeServerStopped = false;
 
   /* The app sends its interface language with every pick/capture control
      request so the injected overlay can never fall back to a stale panel
@@ -11892,7 +11984,7 @@
   }
 
   function bridgeNotifyChange(){
-    if(bridgeSuppress || !hasHost || !activeProjectId) return;
+    if(bridgeSuppress || !hasHost || !activeProjectId || bridgeServerStopped) return;
     /* Never push the panel's project into a different app project. */
     if(bridgePeerProjectId && bridgePeerProjectId !== activeProjectId){
       bridgeProjectMismatch = true;
@@ -11995,18 +12087,21 @@
     var created = !project;
     var displayName = normalizeProjectName(projectName) || importedProjectName(data && data.language);
     var stamp = data && typeof data.updatedAt === "string" && data.updatedAt ? data.updatedAt : bridgeNow();
+    var peerLedgerId = data && typeof data.ledgerId === "string" ? normalizeLedgerId(data.ledgerId) : "";
     if(!project){
       project = {
         id:projectId,
         name:displayName,
         createdAt:stamp,
         updatedAt:stamp,
+        ledgerId:peerLedgerId,
         exportTarget:"",
         archiveCollapsed:false
       };
       registry.projects.push(project);
-    }else if(displayName){
-      project.name = displayName;
+    }else{
+      if(displayName) project.name = displayName;
+      if(peerLedgerId) project.ledgerId = peerLedgerId;
     }
     registry.activeId = projectId;
     if(!writeRegistry(registry)) return false;
@@ -12096,8 +12191,10 @@
       }
 
       if(core && core.storage && core.storage.saveState) core.storage.saveState(app);
-      /* The project registry owns the name; keep it aligned with the app. */
-      touchActiveProject(app.project, app.updatedAt || stamp || bridgeNow());
+      /* The project registry owns the name and the one ledger id; keep both
+         aligned with the app so a stop/start never prompts again. */
+      touchActiveProject(app.project, app.updatedAt || stamp || bridgeNow(), app.ledgerId);
+      if(typeof setProjectLedgerId === "function") setProjectLedgerId(activeProjectId, app.ledgerId);
       if(mode === "replace") bridgeLedgerSynced = true;
       if(typeof resetProjectSnapshot === "function") resetProjectSnapshot();
       bridgeApplyLanguage(app.language);
@@ -12213,6 +12310,7 @@
        typeof data.ledgerId === "string" && data.ledgerId &&
        String(app.ledgerId) !== String(data.ledgerId)){
       app.ledgerId = data.ledgerId;
+      if(typeof setProjectLedgerId === "function") setProjectLedgerId(activeProjectId, app.ledgerId);
       if(core && core.storage && core.storage.saveState){
         try{ core.storage.saveState(app); }catch(err){ /* first save retries */ }
       }
@@ -12302,6 +12400,7 @@
        recording the first mirrored project/request. */
     if(!bridgeLedgerSynced && typeof data.ledgerId === "string" && data.ledgerId){
       app.ledgerId = data.ledgerId;
+      if(typeof setProjectLedgerId === "function") setProjectLedgerId(activeProjectId, app.ledgerId);
       bridgeLedgerSynced = true;
     }
 
@@ -12351,6 +12450,7 @@
   }
 
   function handleBridgeBye(){
+    if(bridgeServerStopped) return;
     bridgeConnected = false;
     bridgeLastHeard = 0;
     bridgePeerProjectId = "";
@@ -12360,6 +12460,50 @@
     updateBridgeUI();
   }
 
+  /* Explicit stop from the app. The extension keeps its own local ledger
+     available, but the bridge is disconnected and applies no traffic until a
+     fresh HELLO proves the same port is back. */
+  function bridgeBroadcastServerStop(){
+    try{
+      if(typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage){
+        chrome.runtime.sendMessage({ type:"RL_SERVER_STOP" }, function(){ /* no panel listener */ });
+      }
+    }catch(err){ /* ignore */ }
+  }
+
+  function bridgeBroadcastServerResume(){
+    try{
+      if(typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage){
+        chrome.runtime.sendMessage({ type:"RL_SERVER_RESUME" }, function(){ /* no panel listener */ });
+      }
+    }catch(err){ /* ignore */ }
+  }
+
+  function handleBridgeServerStop(remote){
+    if(bridgeServerStopped && remote) return;
+    var wasStopped = bridgeServerStopped;
+    bridgeServerStopped = true;
+    bridgeConnected = false;
+    bridgeLastHeard = 0;
+    bridgeConflict = false;
+    bridgePeerHello = null;
+    bridgePeerProjectId = "";
+    bridgePeerLedgerId = "";
+    bridgePeerRequestCount = 0;
+    bridgeProjectMismatch = false;
+    updateBridgeUI();
+    if(!remote) bridgeBroadcastServerStop();
+    if(!wasStopped && role === "dock") toast(lx("bridgeServerStopped"), "error");
+  }
+
+  function clearBridgeServerStop(remote){
+    if(!bridgeServerStopped) return;
+    bridgeServerStopped = false;
+    bridgeLedgerSynced = false;
+    updateBridgeUI();
+    if(!remote) bridgeBroadcastServerResume();
+  }
+
   function onBridgeHostMessage(data){
     if(!data || typeof data !== "object") return;
     if(data.source !== "request-ledger-host") return;
@@ -12367,6 +12511,15 @@
     if(data.type === "RL_BRIDGE_CONTEXT"){
       panelPageToken = typeof data.pageToken === "string" ? data.pageToken : "";
       return;
+    }
+    if(data.type === "RL_APP_SERVER_STOP"){
+      handleBridgeServerStop(false);
+      return;
+    }
+    if(bridgeServerStopped){
+      /* Only a fresh app boot (HELLO) proves the server is back. */
+      if(data.type !== "RL_APP_HELLO") return;
+      clearBridgeServerStop(false);
     }
     bridgeStats.received++;
     if(data.type === "RL_APP_TABS_REQUEST"){
@@ -12425,6 +12578,7 @@
     bridgeConflict = false;
     bridgePeerHello = null;
     bridgeLedgerSynced = true;
+    if(typeof setProjectLedgerId === "function") setProjectLedgerId(activeProjectId, app.ledgerId);
     bridgePost("RL_APP_ACK", { conflict:false, resolution:"extension", ledgerId:app.ledgerId });
     bridgePost("RL_APP_SNAPSHOT", { resolution:"extension" });
     updateBridgeUI();
@@ -12436,13 +12590,15 @@
     var confirm = document.getElementById("rl-bridge-confirm");
     var mismatch = bridgeProjectMismatch || (!!bridgePeerProjectId && !!activeProjectId && bridgePeerProjectId !== activeProjectId);
     if(status){
-      status.classList.toggle("is-on", bridgeConnected && !bridgeConflict && !mismatch);
-      status.classList.toggle("is-off", !bridgeConnected);
+      status.classList.toggle("is-on", bridgeConnected && !bridgeServerStopped && !bridgeConflict && !mismatch);
+      status.classList.toggle("is-off", !bridgeConnected || bridgeServerStopped);
       status.classList.toggle("is-warn", bridgeConflict || mismatch);
-      if(text) text.textContent = bridgeConflict
-        ? lx("bridgeConflictShort")
-        : mismatch ? lx("bridgeDifferentProject")
-        : bridgeConnected ? lx("bridgeConnected") : lx("bridgeOffline");
+      if(text) text.textContent = bridgeServerStopped
+        ? lx("bridgeServerStopped")
+        : bridgeConflict
+          ? lx("bridgeConflictShort")
+          : mismatch ? lx("bridgeDifferentProject")
+          : bridgeConnected ? lx("bridgeConnected") : lx("bridgeOffline");
     }
     if(confirm) confirm.hidden = !bridgeConflict;
     var appBtn = document.getElementById("rl-bridge-use-app");
@@ -12543,6 +12699,7 @@
     try{
       window.__rlBridgePanel = Object.freeze({
         connected:function(){ return bridgeConnected; },
+        serverStopped:function(){ return bridgeServerStopped; },
         conflict:function(){ return bridgeConflict; },
         projectId:function(){ return activeProjectId || ""; },
         projectName:function(){ return app && typeof app.project === "string" ? app.project : ""; },

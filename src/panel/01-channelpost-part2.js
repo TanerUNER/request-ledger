@@ -343,7 +343,16 @@
           if(record){
             app.project = record.name;
             folderDirs.export = record.exportTarget || "";
-            if(!loaded && !app.ledgerId) app.ledgerId = newLedgerId();
+            /* The registry owns the one ledger id; a missing payload must not
+               mint a second identity for the same project. */
+            if(normalizeLedgerId(record.ledgerId)){
+              app.ledgerId = normalizeLedgerId(record.ledgerId);
+            }else if(normalizeLedgerId(app.ledgerId)){
+              setProjectLedgerId(activeProjectId, app.ledgerId);
+            }else{
+              app.ledgerId = newLedgerId();
+              setProjectLedgerId(activeProjectId, app.ledgerId);
+            }
           }else{
             app.project = "";
           }
@@ -577,7 +586,7 @@
       }
     }else{
       if(activeProjectId){
-        touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO());
+        touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO(), app && app.ledgerId);
         resetProjectSnapshot();
       }
       writeSyncStamp();

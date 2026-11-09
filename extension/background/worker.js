@@ -690,6 +690,22 @@ function handlePanelMessage(message, sendResponse) {
       return false;
     }
 
+    case "RL_SERVER_STOP": {
+      /* An explicit stop from the app bridge reaches every extension panel,
+         not only the tab that hosts the app page. */
+      sendToPanel({ type: "RL_BRIDGE_SERVER_STOP" });
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    case "RL_SERVER_RESUME": {
+      /* A fresh HELLO after restart clears the stopped state on the connected
+         panel; let the other open panels leave "App server stopped" too. */
+      sendToPanel({ type: "RL_BRIDGE_SERVER_RESUME" });
+      sendResponse({ ok: true });
+      return false;
+    }
+
     case "RL_TABS_LIST":
       collectTabs(normalizeTabId(message.excludeTabId)).then(
         function (tabs) { sendResponse({ ok: true, tabs: tabs }); },

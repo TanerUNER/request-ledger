@@ -558,6 +558,19 @@
   .serverstop code{font-family:var(--mono);font-size:10px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 4px}
   html[data-theme="dark"] .serverstop{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
   html[data-theme="dark"] .serverstop code{background:var(--card);border-color:var(--line)}
+  /* Blocked server state: the page stays visible for context but every
+     interactive surface behind it is inert until the same port returns. */
+  .serverblocked{position:fixed;inset:0;z-index:145;display:grid;place-items:center;padding:20px;background:rgba(26,22,16,.38);backdrop-filter:blur(3px)}
+  .serverblocked[hidden]{display:none}
+  .serverblocked__card{width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 80px rgba(32,28,20,.24);padding:26px 26px 22px;text-align:left}
+  .serverblocked__icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-dark);margin-bottom:13px}
+  .serverblocked__card h2{font-size:20px;letter-spacing:-.025em;margin:5px 0 8px;line-height:1.18}
+  .serverblocked__card p{margin:0 0 9px;font-size:11.5px;line-height:1.55;color:var(--muted)}
+  .serverblocked__card code{font-family:var(--mono);font-size:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+  .serverblocked__hint{font-size:10.5px;color:var(--muted-2)}
+  .serverblocked__actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+  html[data-theme="dark"] .serverblocked{background:rgba(10,9,8,.62)}
+  html[data-theme="dark"] .serverblocked__card{box-shadow:0 30px 80px rgba(0,0,0,.5)}
 
   /* ---------- Footer / toast ---------- */
   footer{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:4px 2px 22px;font-size:9.5px;color:var(--muted-2)}
@@ -1279,6 +1292,22 @@
         <span id="storageNote">Görseller ve dosyalar IndexedDB’de tutulur</span>
       </footer>
     </main>
+  </div>
+</div>
+
+<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle">
+  <div class="serverblocked__card">
+    <div class="serverblocked__icon" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
+    </div>
+    <div class="eyebrow">Server</div>
+    <h2 id="serverBlockedTitle">Sunucu durduruldu</h2>
+    <p>Bu pencere sunucuya bağlıydı. Düzenleme ve uzantı köprüsü durduruldu; defter tarayıcıda korunuyor.</p>
+    <p>Yeniden başlatmak için <code>start.cmd</code> çalıştır.</p>
+    <p class="serverblocked__hint" id="serverBlockedHint">Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.</p>
+    <div class="serverblocked__actions">
+      <button class="btn btn--primary" type="button" id="serverBlockedRetry">Yeniden bağlan</button>
+    </div>
   </div>
 </div>
 

@@ -197,11 +197,13 @@
   function performCreateProject(name){
     cancelScheduledSave();
     const stamp = nowISO();
+    const ledgerId = newLedgerId();
     const project = {
       id: newProjectId(),
       name: name,
       createdAt: stamp,
       updatedAt: stamp,
+      ledgerId: ledgerId,
       exportTarget: "",
       archiveCollapsed: false
     };
@@ -217,7 +219,7 @@
       version: 2,
       project: project.name,
       projectCreated: true,
-      ledgerId: newLedgerId(),
+      ledgerId: ledgerId,
       updatedAt: stamp,
       requests: [],
       agents: [],

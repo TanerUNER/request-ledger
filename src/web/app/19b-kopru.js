@@ -24,6 +24,7 @@
   const BRIDGE_TOMBSTONE_MAX = 500;
 
   let bridgeConnected = false;
+  let bridgeServerStopped = false;
   let bridgeLastHeard = 0;
   let bridgeConflictOpen = false;
   let bridgeResolved = false;
@@ -71,6 +72,7 @@
   }
 
   function bridgeEnabled(){
+    if(bridgeServerStopped) return false;
     try{
       if(bridgeFilePage()) return true;
       var origin = window.location.origin;
@@ -78,6 +80,36 @@
       return origin !== BRIDGE_FILE_ORIGIN && bridgeOriginAllowed(origin);
     }
     catch(err){ return false; }
+  }
+  function bridgeServerStoppedState(){ return bridgeServerStopped; }
+  /* Tell connected panels about an explicit user stop before disabling the
+     bridge. Ordinary disconnect (BYE) is not the same thing: a stopped server
+     is a deliberate, persistent state. */
+  function bridgeAnnounceServerStop(){
+    if(bridgeServerStopped) return;
+    try{
+      window.postMessage({
+        source:"request-ledger-web",
+        type:"RL_APP_SERVER_STOP",
+        v:BRIDGE_VERSION,
+        ledgerId:state.ledgerId,
+        projectId:activeProjectId,
+        projectName:state.project
+      }, bridgePostTarget());
+    }catch(err){ /* ignore */ }
+  }
+  function bridgeSetServerStopped(stopped){
+    bridgeServerStopped = stopped === true;
+    if(bridgeServerStopped){
+      bridgeConnected = false;
+      bridgeConflictOpen = false;
+      bridgePeerSnapshot = null;
+      if(bridgeHeartbeat){
+        clearInterval(bridgeHeartbeat);
+        bridgeHeartbeat = null;
+      }
+    }
+    updateBridgeIndicator();
   }
 
   function bridgeEventOrigin(){
@@ -551,11 +583,20 @@
       bridgeResolved = true;
       bridgeConflictOpen = false;
       bridgeForceApply = true;
+      /* The panel's ACK carries the winning ledger id even if its snapshot is
+         lost in transit. Persisting it here keeps the choice across a server
+         stop/start and prevents the same prompt from returning. */
+      if(typeof data.ledgerId === "string" && data.ledgerId){
+        state.ledgerId = data.ledgerId;
+        setProjectLedgerId(activeProjectId, data.ledgerId);
+      }
       if(bridgePeerSnapshot){
         const peer = bridgePeerSnapshot;
         bridgePeerSnapshot = null;
         bridgeApply(peer, "replace");
         bridgeForceApply = false;
+      }else{
+        saveNow();
       }
     }
   }
@@ -715,7 +756,8 @@
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
-        conflict:function(){ return bridgeConflictOpen; }
+        conflict:function(){ return bridgeConflictOpen; },
+        serverStopped:function(){ return bridgeServerStoppedState(); }
       });
     }catch(err){ /* ignore */ }
   }

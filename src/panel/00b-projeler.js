@@ -42,6 +42,10 @@
     return value === "Ortak Zemin" || value === "Common Ground";
   }
 
+  function normalizeLedgerId(value){
+    return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
+  }
+
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     var id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -54,6 +58,9 @@
       name: name,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      /* The extension registry carries the same one ledger identity as the
+         app registry; adoption and conflict choices keep it aligned. */
+      ledgerId: normalizeLedgerId(record.ledgerId),
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -189,7 +196,7 @@
     return Promise.resolve();
   }
 
-  function touchActiveProject(name, updatedAt){
+  function touchActiveProject(name, updatedAt, ledgerId){
     if(!activeProjectId) return;
     var registry = readRegistry();
     if(!registry) return;
@@ -197,6 +204,7 @@
     if(!project) return;
     project.name = normalizeProjectName(name) || project.name;
     project.updatedAt = updatedAt || project.updatedAt;
+    if(normalizeLedgerId(ledgerId)) project.ledgerId = normalizeLedgerId(ledgerId);
     registry.activeId = activeProjectId;
     writeRegistry(registry);
   }
@@ -210,6 +218,7 @@
     if(patch && typeof patch === "object"){
       if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
       if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
+      if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
       if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
       if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
     }
@@ -246,6 +255,37 @@
     }catch(err){
       return null;
     }
+  }
+
+  function setProjectLedgerId(projectId, ledgerId){
+    var value = normalizeLedgerId(ledgerId);
+    if(!projectId || !value) return "";
+    updateProjectRecord(projectId, { ledgerId:value });
+    var payload = readProjectLedgerPayload(projectId);
+    if(payload && normalizeLedgerId(payload.ledgerId) !== value){
+      try{
+        payload.ledgerId = value;
+        localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      }catch(err){ /* the next save retries */ }
+    }
+    return value;
+  }
+
+  function resolveProjectLedgerId(projectId, preferredLedgerId){
+    var preferred = normalizeLedgerId(preferredLedgerId);
+    if(!projectId) return preferred || newLedgerId();
+    if(preferred){
+      setProjectLedgerId(projectId, preferred);
+      return preferred;
+    }
+    var project = findProjectRecord(projectId);
+    var registryId = project ? normalizeLedgerId(project.ledgerId) : "";
+    if(registryId) return registryId;
+    var payload = readProjectLedgerPayload(projectId);
+    var payloadId = payload ? normalizeLedgerId(payload.ledgerId) : "";
+    var next = payloadId || newLedgerId();
+    setProjectLedgerId(projectId, next);
+    return next;
   }
 
   function projectRequestCount(projectId){
@@ -391,10 +431,23 @@
     if(!Array.isArray(app.requests)) app.requests = [];
     if(!Array.isArray(app.agents)) app.agents = [];
     app.project = project.name;
-    if(!loaded && !app.ledgerId) app.ledgerId = newLedgerId();
+    var recordLedgerId = project && typeof project.ledgerId === "string" ? normalizeLedgerId(project.ledgerId) : "";
+    var loadedLedgerId = normalizeLedgerId(app.ledgerId);
+    if(recordLedgerId){
+      /* The registry is authoritative so a removed/rewritten payload cannot
+         mint a second id for an existing project. */
+      app.ledgerId = recordLedgerId;
+    }else if(loadedLedgerId){
+      setProjectLedgerId(projectId, loadedLedgerId);
+    }else{
+      app.ledgerId = newLedgerId();
+      setProjectLedgerId(projectId, app.ledgerId);
+    }
+    if(!app.ledgerId) app.ledgerId = newLedgerId();
     /* Persist the empty ledger immediately; opening a project twice must keep
        the same ledgerId instead of minting a new one each time. */
-    if((!loaded || !app.ledgerId) && core && core.storage && core.storage.saveState &&
+    if((!loaded || normalizeLedgerId(loaded && loaded.ledgerId) !== app.ledgerId) &&
+       core && core.storage && core.storage.saveState &&
        !(typeof bridgeAdoptingProject !== "undefined" && bridgeAdoptingProject)){
       /* Do not seed an empty ledger while the app payload is still adopting:
          the app's ledgerId/data must win the first write. */
@@ -525,12 +578,14 @@
     var hadProject = !!activeProjectId;
     var id = newProjectId();
     var stamp = nowISO();
+    var ledgerId = newLedgerId();
     var registry = readRegistry() || emptyProjectRegistry();
     registry.projects.push({
       id: id,
       name: value,
       createdAt: stamp,
       updatedAt: stamp,
+      ledgerId: ledgerId,
       exportTarget: "",
       archiveCollapsed: false
     });
@@ -543,7 +598,7 @@
       version: 2,
       project: value,
       projectCreated: true,
-      ledgerId: newLedgerId(),
+      ledgerId: ledgerId,
       updatedAt: stamp,
       requests: [],
       agents: [],

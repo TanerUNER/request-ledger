@@ -17,6 +17,7 @@
 
   let onboardingOpen = false;
   let serverStopNotice = false;
+  let serverReconnectTimer = null;
   let pendingPortMove = null;
   let movedFromPort = null;
   let onboardingMode = "html";
@@ -396,8 +397,73 @@
     onboardingHeartbeatTimer = null;
   }
 
+  function stopServerReconnectWatch(){
+    if(!serverReconnectTimer) return;
+    clearInterval(serverReconnectTimer);
+    serverReconnectTimer = null;
+  }
+
+  /* The page is still in the browser's cache after the server stops. Poll the
+     same origin and reload as soon as start.cmd brings the same port back, so
+     the pair reconnects automatically instead of asking the user to refresh. */
+  function startServerReconnectWatch(stoppedPid){
+    if(serverReconnectTimer) return;
+    const previousPid = Number(stoppedPid) || 0;
+    /* The user asked for a stop and the shutdown request succeeded, so the old
+       process is expected to be gone. The pid check still protects the case
+       where it lingers; the first poll is delayed past the shutdown window. */
+    const hint = $("#serverBlockedHint");
+    if(hint) hint.textContent = translateString("Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.");
+    serverReconnectTimer = setInterval(function(){
+      if(!serverBlocked) return;
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(!serverBlocked) return;
+        if(!data || data.app !== "request-ledger" || data.server !== true) return;
+        /* The old process can answer for a moment while it closes. With a
+           known pid only a different pid is the restarted server. */
+        if(previousPid && Number(data.pid) === previousPid) return;
+        stopServerReconnectWatch();
+        if(hint) hint.textContent = translateString("Sunucu yeniden başladı; bağlanılıyor…");
+        try{ window.location.reload(); }catch(err){ /* ignore */ }
+      }).catch(function(){ /* server not back yet */ });
+    }, 3000);
+  }
+
+  function setServerBlocked(blocked){
+    serverBlocked = blocked === true;
+    const overlay = $("#serverBlocked");
+    const main = document.getElementById("main");
+    const header = document.querySelector("header");
+    const footer = document.querySelector("footer");
+    if(main) main.inert = serverBlocked;
+    if(header) header.inert = serverBlocked;
+    if(footer) footer.inert = serverBlocked;
+    document.body.classList.toggle("is-server-blocked", serverBlocked);
+    if(overlay){
+      overlay.hidden = !serverBlocked;
+      if(serverBlocked){
+        const retry = $("#serverBlockedRetry");
+        try{ (retry || overlay).focus(); }catch(err){ /* ignore */ }
+      }
+    }
+    if(!serverBlocked){
+      stopServerReconnectWatch();
+    }
+  }
+
   async function sendServerShutdown(){
     let stopped = false;
+    let stoppedPid = 0;
+    try{
+      const before = await fetch("/__rl/status", { method:"GET", cache:"no-store" });
+      if(before.ok){
+        const info = await before.json();
+        stoppedPid = Number(info && info.pid) || 0;
+      }
+    }catch(err){ /* the shutdown below reports the failure */ }
     try{
       const response = await fetch("/__rl/shutdown", { method:"POST", cache:"no-store", keepalive:true });
       stopped = response.ok;
@@ -409,9 +475,16 @@
       catch(err){ stopped = false; }
     }
     if(stopped){
+      /* Tell the connected panels before the bridge is disabled. The stop is
+         deliberate: the app becomes blocked, the bridge sends nothing, and the
+         panel switches to "App server stopped". */
+      try{ if(typeof bridgeAnnounceServerStop === "function") bridgeAnnounceServerStop(); }catch(err){ /* ignore */ }
+      try{ if(typeof bridgeSetServerStopped === "function") bridgeSetServerStopped(true); }catch(err){ /* ignore */ }
       onboardingServer = null;
       serverStopNotice = true;
       stopServerHeartbeat();
+      setServerBlocked(true);
+      startServerReconnectWatch(stoppedPid);
       renderOnboarding();
       updateRailMode();
       updateServerStopNote();
@@ -719,6 +792,24 @@
     });
     const settingsOpen = $("#openOnboardingBtn");
     if(settingsOpen) settingsOpen.addEventListener("click", openOnboarding);
+    const blockedRetry = $("#serverBlockedRetry");
+    if(blockedRetry) blockedRetry.addEventListener("click", function(){
+      const hint = $("#serverBlockedHint");
+      if(hint) hint.textContent = translateString("Sunucu kontrol ediliyor…");
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(data && data.app === "request-ledger" && data.server === true){
+          stopServerReconnectWatch();
+          window.location.reload();
+          return;
+        }
+        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
+      }).catch(function(){
+        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
+      });
+    });
 
     const railStop = $("#railStopBtn");
     if(railStop) railStop.addEventListener("click", stopLocalServer);

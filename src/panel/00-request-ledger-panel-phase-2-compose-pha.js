@@ -357,6 +357,7 @@
     bridgeOffline:{ tr:"Uygulama açık değil", en:"App not open" },
     bridgeConflictShort:{ tr:"Defter seçimi bekliyor", en:"Ledger choice pending" },
     bridgeDifferentProject:{ tr:"Farklı proje açık", en:"Different project open" },
+    bridgeServerStopped:{ tr:"Uygulama sunucusu durduruldu", en:"App server stopped" },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
     bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },

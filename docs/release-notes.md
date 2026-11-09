@@ -73,8 +73,8 @@ Updates and fixes:
 Executed on 2026-11-09:
 
 ```
-node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 19 files, zip 924 KB
-                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1600 KB)
+node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 19 files, zip 932 KB
+                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1618 KB)
 node scripts/check-inline.cjs                  -> Inline scripts OK: 2 block(s) in index.html
 node scripts/build.cjs --check                 -> Release check OK: web 1.9.2, extension 1.9.5, 19 files
 node tests/e2e/extension.e2e.cjs               -> 28/28 checks passed
@@ -82,8 +82,8 @@ node tests/e2e/bridge.e2e.cjs                  -> 34/34 checks passed
 node tests/e2e/picker.e2e.cjs                  -> 26/26 checks passed
 node tests/e2e/capture-tools.e2e.cjs           -> 20/20 checks passed
 node tests/e2e/file-bridge.e2e.cjs             -> 32/32 checks passed
-node tests/e2e/server-lifecycle.e2e.cjs        -> 11/11 checks passed
-node tests/e2e/project-consistency.e2e.cjs     -> 33/33 checks passed
+node tests/e2e/project-consistency.e2e.cjs     -> 38/38 checks passed
+node tests/e2e/server-lifecycle.e2e.cjs        -> 23/23 checks passed
 ```
 
 ## Previous release verification — 1.9.1 / 1.9.4

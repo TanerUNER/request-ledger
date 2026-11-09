@@ -10,6 +10,23 @@
     app = loaded || defaultApp();
     if(!Array.isArray(app.requests)) app.requests = [];
     if(!Array.isArray(app.agents)) app.agents = [];
+    /* The registry owns the one ledger id. A storage refresh can run before
+       core.storage has switched scopes (or can find no payload); defaultApp()
+       must never mint a second id for an existing project. */
+    if(activeProjectId){
+      var liveProject = activeProjectRecord();
+      var registryLedgerId = liveProject && typeof liveProject.ledgerId === "string"
+        ? liveProject.ledgerId
+        : "";
+      if(registryLedgerId){
+        app.ledgerId = registryLedgerId;
+      }else if(normalizeLedgerId(app.ledgerId)){
+        setProjectLedgerId(activeProjectId, app.ledgerId);
+      }else{
+        app.ledgerId = newLedgerId();
+        setProjectLedgerId(activeProjectId, app.ledgerId);
+      }
+    }
     if(activeProjectId) applyStoredProject();
     else app.project = "";
     if(typeof app.project !== "string") app.project = "";
@@ -265,6 +282,14 @@
     if(!message || typeof message !== "object") return;
     if(message.type === "RL_BRIDGE_DATA_CHANGED"){
       if(message.projectId === activeProjectId) bridgeRefreshFromStorage();
+      return;
+    }
+    if(message.type === "RL_BRIDGE_SERVER_STOP"){
+      handleBridgeServerStop(true);
+      return;
+    }
+    if(message.type === "RL_BRIDGE_SERVER_RESUME"){
+      clearBridgeServerStop(true);
       return;
     }
     /* App-initiated picks are consumed by the dock frame only. The worker
@@ -558,7 +583,8 @@
     /* live bridge: host relays the web app's ledger envelopes */
     if(data.type === "RL_APP_HELLO" || data.type === "RL_APP_SNAPSHOT" ||
        data.type === "RL_APP_PATCH" || data.type === "RL_APP_ACK" ||
-       data.type === "RL_APP_BYE" || data.type === "RL_BRIDGE_CONTEXT" ||
+       data.type === "RL_APP_BYE" || data.type === "RL_APP_SERVER_STOP" ||
+       data.type === "RL_BRIDGE_CONTEXT" ||
        data.type === "RL_APP_TABS_REQUEST" || data.type === "RL_APP_PICK_REQUEST" ||
        data.type === "RL_APP_PICK_CANCEL" || data.type === "RL_APP_CAPTURE_REQUEST" ||
        data.type === "RL_APP_CAPTURE_CANCEL"){
