@@ -488,7 +488,7 @@
     bridgeSendTimer = setTimeout(function(){
       bridgeSendTimer = null;
       bridgePost("RL_APP_PATCH");
-    }, 300);
+    }, 120);
   }
 
   function bridgeHasData(requests, project, projectCreated){
@@ -603,7 +603,9 @@
     bridgeSuppress++;
     try{
       if(activeProjectId && activeProjectId !== projectId) saveNow();
-      openProjectById(projectId);
+      /* A HELLO/adoption is not a user action: preserve the closed section or
+         the section the user explicitly opened. */
+      openProjectById(projectId, { preserveSection:true });
       bridgeLoadTombstones();
       bridgeResetKnownIds();
       bridgeLedgerSynced = false;

@@ -167,7 +167,7 @@
     var count = h("span", "archive__n");
     count.id = "rl-project-count";
     head.appendChild(count);
-    var add = h("button", "atab archive__new", lx("projectNew"));
+    var add = h("button", "btn btn--small archive__new", lx("projectNew"));
     add.type = "button";
     add.id = "rl-archive-project-new";
     add.setAttribute("data-project-act", "new");

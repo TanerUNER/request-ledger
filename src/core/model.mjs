@@ -288,8 +288,15 @@ export const UPDATE_FIELDS = ["type", "title", "page", "location", "consoleError
 export function updateRequest(req, patch) {
   if (!req) return null;
   let contentChanged = false;
+  let hasConfirmed = false;
+  let nextConfirmed = false;
   Object.keys(patch || {}).forEach((key) => {
-    if (key === "confirmed" || key === "collapsed" || key === "createdAt" || key === "updatedAt" || key === "_showErrors") return;
+    if (key === "confirmed") {
+      hasConfirmed = true;
+      nextConfirmed = Boolean(patch.confirmed);
+      return;
+    }
+    if (key === "collapsed" || key === "createdAt" || key === "updatedAt" || key === "_showErrors") return;
     req[key] = patch[key];
     if (UPDATE_FIELDS.indexOf(key) >= 0) contentChanged = true;
   });
@@ -297,7 +304,12 @@ export function updateRequest(req, patch) {
     if (req.confirmed) req.confirmed = false;
     req.updatedAt = nowISO();
   }
-  if (Object.prototype.hasOwnProperty.call(patch || {}, "confirmed")) req.confirmed = Boolean(patch.confirmed);
+  if (hasConfirmed) {
+    req.confirmed = nextConfirmed;
+    /* Confirmation is user-visible content and must carry a new revision, or
+       item-level bridge merges keep the receiver's older confirmed value. */
+    req.updatedAt = nowISO();
+  }
   return req;
 }
 

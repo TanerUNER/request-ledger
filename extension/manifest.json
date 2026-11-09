@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Request Ledger",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "minimum_chrome_version": "114",
   "description": "Local-first request ledger for collecting, prioritizing, and exporting development requests.",
   "icons": {

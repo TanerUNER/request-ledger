@@ -1056,9 +1056,10 @@
     resetProjectSnapshot();
   }
 
-  function openProjectById(projectId){
+  function openProjectById(projectId, opts){
     var project = findProjectRecord(projectId);
     if(!project) return false;
+    var preserveSection = Boolean(opts && opts.preserveSection);
     var registry = readRegistry();
     if(registry){
       registry.activeId = projectId;
@@ -1074,9 +1075,18 @@
     updateMarquee();
     syncProjectGate(true);
     broadcastState();
-    if(role === "flyout" && state.section === "project") showSection("list");
-    else if(role === "flyout" && state.section) renderFlyout(state.section);
-    else if(role === "dock" && state.active) refreshSection(state.active);
+    if(preserveSection){
+      /* Bridge adoption only refreshes the current explicit section. It must
+         never open a section on the user's behalf. */
+      if(role === "flyout" && state.section) renderFlyout(state.section);
+      else if(role === "dock" && state.active) refreshSection(state.active);
+    }else if(role === "flyout" && state.section === "project"){
+      showSection("list");
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }else if(role === "dock" && state.active){
+      refreshSection(state.active);
+    }
     loadArchive().catch(function(){ /* the archive is decorative until opened */ });
     /* Phase 2c: a local project switch re-handshakes with the app. No data is
        sent when the app is on a different project. */
@@ -1966,7 +1976,14 @@
     syncProjectGate();
 
     if(role === "dock" && state.active) refreshSection(state.active);
-    if(role === "flyout" && state.section) renderFlyout(state.section);
+    if(role === "flyout" && state.section === "list"){
+      /* A bridge patch refreshes rows/counts in place: a full render would
+         reset the selected archive tab, search focus and scroll position. */
+      updateList();
+      renderArchiveProjectTree();
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }
     broadcastState();
   }
 
@@ -6534,7 +6551,7 @@
     var count = h("span", "archive__n");
     count.id = "rl-project-count";
     head.appendChild(count);
-    var add = h("button", "atab archive__new", lx("projectNew"));
+    var add = h("button", "btn btn--small archive__new", lx("projectNew"));
     add.type = "button";
     add.id = "rl-archive-project-new";
     add.setAttribute("data-project-act", "new");
@@ -11805,7 +11822,7 @@
     bridgeSendTimer = setTimeout(function(){
       bridgeSendTimer = null;
       bridgePost("RL_APP_PATCH");
-    }, 300);
+    }, 120);
   }
 
   function bridgeHasData(requests, project, projectCreated){
@@ -11920,7 +11937,9 @@
     bridgeSuppress++;
     try{
       if(activeProjectId && activeProjectId !== projectId) saveNow();
-      openProjectById(projectId);
+      /* A HELLO/adoption is not a user action: preserve the closed section or
+         the section the user explicitly opened. */
+      openProjectById(projectId, { preserveSection:true });
       bridgeLoadTombstones();
       bridgeResetKnownIds();
       bridgeLedgerSynced = false;

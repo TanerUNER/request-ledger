@@ -286,7 +286,7 @@ function releaseNotes(webVersion, extVersion) {
     "",
     "1. Keep `start.cmd`, `stop.cmd` and `scripts/serve.cjs` next to `request-ledger.html`.",
     "2. Run `start.cmd`. It starts the server on a free port without a console window and opens the browser.",
-    "3. The app heartbeats while it is open; the server stops 15 seconds after the last heartbeat.",
+    "3. The app heartbeats while it is open; the server stays up while a tab is live and waits at least 5 minutes after the last page is gone.",
     "4. Run `stop.cmd` to read `.rl-server.lock` and stop the server explicitly.",
     "",
     "## Extension (Chrome / Edge 114+)",

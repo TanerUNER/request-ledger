@@ -37,7 +37,14 @@
     syncProjectGate();
 
     if(role === "dock" && state.active) refreshSection(state.active);
-    if(role === "flyout" && state.section) renderFlyout(state.section);
+    if(role === "flyout" && state.section === "list"){
+      /* A bridge patch refreshes rows/counts in place: a full render would
+         reset the selected archive tab, search focus and scroll position. */
+      updateList();
+      renderArchiveProjectTree();
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }
     broadcastState();
   }
 

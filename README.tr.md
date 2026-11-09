@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img alt="Web uygulaması 1.9.1" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.9.1-d13e27?style=for-the-badge">
-  <img alt="Uzantı 1.9.4" src="https://img.shields.io/badge/uzant%C4%B1-1.9.4-4f614b?style=for-the-badge">
+  <img alt="Web uygulaması 1.9.2" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.9.2-d13e27?style=for-the-badge">
+  <img alt="Uzantı 1.9.5" src="https://img.shields.io/badge/uzant%C4%B1-1.9.5-4f614b?style=for-the-badge">
   <img alt="Tek dosya" src="https://img.shields.io/badge/tek%20dosya-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-%C3%A7ift%20dilli-1d2328?style=for-the-badge">
   <img alt="MIT lisansı" src="https://img.shields.io/badge/lisans-MIT-444?style=for-the-badge">
@@ -106,7 +106,7 @@ uygulama sizi uyarır, önce ZIP yedeği indirmeyi önerir ve yeni kaynakta geri
 | **Nasıl başlatılır** | `request-ledger.html` veya `index.html` dosyasını doğrudan açın ya da statik olarak yayınlayın. | Windows’ta `start.cmd`, her yerde `node scripts/serve.cjs 8080`. |
 | **En iyi olduğu yer** | Kopyalanabilen, arşivlenebilen veya çevrimdışı açılan taşınabilir dosya. | Sabit yerel adres, görünür sunucu durumu, durdurma düğmesi ve hatırlanan port. |
 | **Uzantı köprüsü** | Uzantı kuruluysa ve dosya URL’lerine erişim izni varsa çalışır. | Uygulama sekmesi açıkken `localhost` veya `127.0.0.1` üzerinde çalışır. |
-| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; açıkça durdurulur veya son sinyalden 15 saniye sonra kapanır. |
+| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; canlı sekme varken açık kalır, açıkça durdurulur veya canlı sayfa kalmadıktan en az 5 dakika sonra kapanır. |
 | **Gereksinim** | Güncel bir tarayıcı. | `PATH` üzerinde Node.js 18 veya daha yenisi. |
 
 `start.cmd` sunucuyu konsol penceresi olmadan başlatır, tarayıcıyı açar ve süreç kimliği ile portu

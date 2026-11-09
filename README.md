@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img alt="Web app 1.9.1" src="https://img.shields.io/badge/web%20app-1.9.1-d13e27?style=for-the-badge">
-  <img alt="Extension 1.9.4" src="https://img.shields.io/badge/extension-1.9.4-4f614b?style=for-the-badge">
+  <img alt="Web app 1.9.2" src="https://img.shields.io/badge/web%20app-1.9.2-d13e27?style=for-the-badge">
+  <img alt="Extension 1.9.5" src="https://img.shields.io/badge/extension-1.9.5-4f614b?style=for-the-badge">
   <img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-bilingual-1d2328?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
@@ -102,7 +102,7 @@ you, offers a ZIP backup first, and prompts for a restore on the new origin.
 | **How to start** | Open `request-ledger.html` or `index.html` directly, or host it statically. | Run `start.cmd` on Windows, or `node scripts/serve.cjs 8080` anywhere. |
 | **Best at** | A portable file you can copy, archive or open offline. | A stable local URL, the visible server status, a stop button and a remembered port. |
 | **Extension bridge** | Works when the extension is installed and allowed to access file URLs. | Works on `localhost` or `127.0.0.1` while the app tab is open. |
-| **Local server** | Not available; the file cannot start one. | Started by the launcher, stopped explicitly or 15 seconds after the last heartbeat. |
+| **Local server** | Not available; the file cannot start one. | Started by the launcher; it stays up while a tab is live and is stopped explicitly or after at least 5 minutes without a live page. |
 | **Requires** | A modern browser. | Node.js 18 or newer on `PATH`. |
 
 `start.cmd` starts the server without a console window, opens the browser and writes

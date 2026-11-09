@@ -421,18 +421,53 @@ async function main() {
       title.value = 'Bridge request A edited';
       title.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
-    await sleep(500);
-    await evaluate(cdp, flyoutSession, `document.querySelector('[data-act="ready"]').click()`);
-    await sleep(1400);
-
+    const editStart = Date.now();
     const appGotRequest = await waitFor(async () => {
       const app = await readActive(cdp, pageSession);
       return app.requests.some((req) => req.title === "Bridge request A edited") ? app : null;
-    }, "app receives the extension edit", 15000);
+    }, "app receives the extension edit", 5000);
+    const editElapsed = Date.now() - editStart;
     check("extension request edit reaches the app", appGotRequest.requests.some((req) => req.title === "Bridge request A edited"));
     check("extension request description reaches the app", appGotRequest.requests.some((req) => /Edited in the extension/.test(req.description || "")));
+    check("panel edit reaches the app within 1 s", editElapsed < 1000, editElapsed);
     const appRows = await evaluate(cdp, pageSession, "document.querySelectorAll('.req').length");
     check("app renders the mirrored row", appRows === 1, appRows);
+
+    /* App -> panel without reload: edit the title in the app while the panel
+       detail is open, then wait for the panel input itself to update. */
+    await evaluate(cdp, pageSession, `(() => {
+      const row = document.querySelector('.req');
+      if (row && !row.classList.contains('is-open')) row.querySelector('[data-action="toggle"]').click();
+      const input = document.querySelector('.req [data-field="title"]');
+      input.value = 'Bridge request A from app';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    const reverseStart = Date.now();
+    const panelGotEdit = await waitFor(async () => {
+      return evaluate(cdp, flyoutSession,
+        "(document.getElementById('rl-title-input') || {}).value === 'Bridge request A from app'");
+    }, "panel receives the app edit", 5000);
+    const reverseElapsed = Date.now() - reverseStart;
+    check("app edit reaches the panel without reload", panelGotEdit === true);
+    check("app edit reaches the panel within 1 s", reverseElapsed < 1000, reverseElapsed);
+
+    /* Confirmation must bump the revision: wait for the previous edit to
+       settle, then toggle Ready and expect the app row to lock in place. */
+    await sleep(700);
+    const readyStart = Date.now();
+    await evaluate(cdp, flyoutSession, `document.querySelector('[data-act="ready"]').click()`);
+    const readyApp = await waitFor(async () => {
+      const app = await readActive(cdp, pageSession);
+      const req = app.requests.find((entry) => entry.id === "IST-001");
+      return req && req.confirmed === true ? req : null;
+    }, "app receives Ready", 5000);
+    const readyElapsed = Date.now() - readyStart;
+    check("extension Ready reaches the app", readyApp.confirmed === true, readyApp);
+    check("extension Ready reaches the app within 1 s", readyElapsed < 1000, readyElapsed);
+    const appLocked = await waitFor(() => evaluate(cdp, pageSession,
+      "!!document.querySelector('.req.req--ready')"), "app row ready");
+    check("app re-renders the confirmed row", appLocked === true);
 
     /* ---------- reload both surfaces, reopen the project ---------- */
 
@@ -449,8 +484,8 @@ async function main() {
 
     const appAfter = await readActive(cdp, pageSession);
     const panelAfter = await readActive(cdp, flyoutSession);
-    check("app keeps the mirrored data after reload", appAfter.project === "Bridge App Renamed" && appAfter.requests.some((req) => req.title === "Bridge request A edited"), { project: appAfter.project, count: appAfter.count });
-    check("extension keeps the mirrored data after reload", panelAfter.project === "Bridge App Renamed" && panelAfter.requests.some((req) => req.title === "Bridge request A edited"), { project: panelAfter.project, count: panelAfter.count });
+    check("app keeps the mirrored data after reload", appAfter.project === "Bridge App Renamed" && appAfter.requests.some((req) => req.title === "Bridge request A from app"), { project: appAfter.project, count: appAfter.count });
+    check("extension keeps the mirrored data after reload", panelAfter.project === "Bridge App Renamed" && panelAfter.requests.some((req) => req.title === "Bridge request A from app"), { project: panelAfter.project, count: panelAfter.count });
     check("both surfaces share one project and ledger id", appAfter.activeId === panelAfter.activeId && appAfter.activeId === appProjectId && appAfter.ledgerId === panelAfter.ledgerId, { appProject: appAfter.activeId, panelProject: panelAfter.activeId, appLedger: appAfter.ledgerId, panelLedger: panelAfter.ledgerId });
 
     /* ---------- no echo loop ---------- */
@@ -508,8 +543,8 @@ async function main() {
     const isolatedPanelA = await readProject(cdp, flyoutSession, appProjectId);
     check("different projects sync nothing to each other",
       isolatedAppB.requests.some((req) => req.title === "Bridge request B") &&
-      !isolatedAppB.requests.some((req) => req.title === "Bridge request A edited") &&
-      isolatedPanelA.requests.some((req) => req.title === "Bridge request A edited") &&
+      !isolatedAppB.requests.some((req) => req.title === "Bridge request A from app") &&
+      isolatedPanelA.requests.some((req) => req.title === "Bridge request A from app") &&
       !isolatedPanelA.requests.some((req) => req.title === "Bridge request B"),
       { appB: isolatedAppB.requests.map((req) => req.title), panelA: isolatedPanelA.requests.map((req) => req.title) });
 

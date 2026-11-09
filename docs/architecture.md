@@ -61,8 +61,10 @@ The e2e suite needs a local server: `node scripts/serve.cjs 8080` in another ter
 `scripts/serve.cjs` is a zero-dependency static server bound to `127.0.0.1`.
 
 - `--port 0` picks a free port; `--open` opens the default browser.
-- `POST /__rl/heartbeat` resets the idle timer; `POST /__rl/shutdown` stops the process.
-- In ephemeral mode (`--port 0`) the server stops 15 seconds after the last heartbeat.
+- `POST /__rl/heartbeat` marks a live page and resets the idle timer.
+- `POST /__rl/pagehide` marks the page gone; a reload starts a new heartbeat within the grace period.
+- In ephemeral mode (`--port 0`) the server never idle-stops while a live page exists and waits at least 5 minutes after the last page is gone.
+- An occupied requested port is probed. If it is the same app, that instance is stopped and the same port is reused; otherwise fallback to a free port is explicit and warned.
 - `--lock <file>` writes `{ pid, port, url, startedAt }` and removes it on exit.
 
 `start.cmd` launches Node with `Start-Process -WindowStyle Hidden`, passes `--port 0 --open` and

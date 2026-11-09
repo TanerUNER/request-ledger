@@ -6,20 +6,21 @@
 
     node scripts/serve.cjs [port]                 (default 8080)
     node scripts/serve.cjs --port 0 --open        (free port, open the browser)
-    node scripts/serve.cjs --port 0 --auto-stop   (stop 15 s after the last heartbeat)
+    node scripts/serve.cjs --port 0 --auto-stop   (stop after the page is gone)
 
   Optional flags:
     --port <n> | --port=<n> | <n>   port to bind; 0 picks a free port
     --open                          open the default browser after listening
     --fallback-port-0               if the requested port is busy, retry on port 0
-    --auto-stop[=seconds]           stop after N seconds (default 15) without a heartbeat
+    --auto-stop[=seconds]           stop after N seconds without a live page (default 300)
     --no-auto-stop                  never stop on idle
     --lock <file>                   write { pid, port, url, startedAt } while running
     --root <dir>                    directory to serve (default: repository root)
 
   Lifecycle protocol used by the page and start.cmd:
     GET  /__rl/status      server identity and liveness
-    POST /__rl/heartbeat   resets the idle timer
+    POST /__rl/heartbeat   marks a live page and resets the idle timer
+    POST /__rl/pagehide    marks the page gone (reload/navigation/close)
     POST /__rl/shutdown    stops the server
 
   Serving matters: browsers treat file:// as an opaque origin, so storage and
@@ -35,7 +36,7 @@ const { spawn } = require("node:child_process");
 /* ---------- arguments ---------- */
 
 function parseArgs(argv) {
-  const options = { port: 8080, portGiven: false, open: false, autoStop: false, autoStopMs: 15000, lock: "", root: "", fallbackPortZero: false };
+  const options = { port: 8080, portGiven: false, open: false, autoStop: false, autoStopMs: 300000, lock: "", root: "", fallbackPortZero: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--open") {
@@ -95,6 +96,9 @@ const lockFile = options.lock ? path.resolve(process.cwd(), options.lock) : "";
 const portFile = path.join(root, ".rl-port");
 const startedAt = new Date().toISOString();
 let lastHeartbeat = Date.now();
+let heartbeatSeen = false;
+let livePage = false;
+let fallbackFromPort = 0;
 let shuttingDown = false;
 let actualPort = options.port;
 
@@ -123,6 +127,14 @@ function baseUrl() {
   return "http://localhost:" + actualPort;
 }
 
+/* A fallback port is a different browser origin. Carry the requested port
+   so the page can warn and point at the data left on the old origin. */
+function pageUrl() {
+  var url = baseUrl() + entryPage();
+  if (fallbackFromPort) url += "?rl-moved=" + fallbackFromPort;
+  return url;
+}
+
 function sendJson(response, status, payload) {
   const body = JSON.stringify(payload);
   response.writeHead(status, {
@@ -138,7 +150,7 @@ function writeLock() {
   const payload = {
     pid: process.pid,
     port: actualPort,
-    url: baseUrl() + entryPage(),
+    url: pageUrl(),
     startedAt: startedAt,
   };
   try {
@@ -228,6 +240,63 @@ function portIsFree(port) {
   });
 }
 
+function requestJson(port, method, pathname) {
+  return new Promise(function (resolve) {
+    const request = http.request({
+      host: "127.0.0.1",
+      port: port,
+      path: pathname,
+      method: method,
+      timeout: 900,
+    }, function (response) {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", function (chunk) { body += chunk; });
+      response.on("end", function () {
+        try { resolve({ status: response.statusCode, data: JSON.parse(body) }); }
+        catch (error) { resolve({ status: response.statusCode, data: null }); }
+      });
+    });
+    request.on("timeout", function () { request.destroy(); resolve(null); });
+    request.on("error", function () { resolve(null); });
+    request.end();
+  });
+}
+
+async function probeLedgerServer(port) {
+  const found = await requestJson(port, "GET", "/__rl/status");
+  if (!found || found.status !== 200 || !found.data) return null;
+  return found.data.app === "request-ledger" && found.data.server === true ? found.data : null;
+}
+
+async function waitForPortFree(port, timeoutMs) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    if (await portIsFree(port)) return true;
+    await new Promise(function (resolve) { setTimeout(resolve, 150); });
+  }
+  return false;
+}
+
+async function resolveStartupPort() {
+  if (options.port === 0) return 0;
+  if (await portIsFree(options.port)) return options.port;
+  /* The requested port belongs to the same app: stop that instance and reuse
+     the exact port instead of silently splitting the origin. */
+  const sameApp = await probeLedgerServer(options.port);
+  if (sameApp) {
+    console.log("Request Ledger: reusing port " + options.port + " (stopping the previous instance)");
+    await requestJson(options.port, "POST", "/__rl/shutdown");
+    if (await waitForPortFree(options.port, 5000)) return options.port;
+  }
+  if (options.fallbackPortZero) {
+    fallbackFromPort = options.port;
+    console.error("Request Ledger: port " + options.port + " is in use; starting on a free port instead.");
+    return 0;
+  }
+  throw new Error("port " + options.port + " is in use");
+}
+
 async function resolveRebindPort(port) {
   if (port === 0) return findFreePort();
   return (await portIsFree(port)) ? port : null;
@@ -272,10 +341,13 @@ const server = http.createServer(function (request, response) {
       version: 1,
       pid: process.pid,
       port: actualPort,
-      url: baseUrl() + entryPage(),
+      url: pageUrl(),
       startedAt: startedAt,
       autoStopSeconds: options.autoStop ? Math.round(options.autoStopMs / 1000) : 0,
       idleMs: Date.now() - lastHeartbeat,
+      livePage: livePage,
+      heartbeatSeen: heartbeatSeen,
+      fallbackFromPort: fallbackFromPort,
     });
     return;
   }
@@ -287,7 +359,22 @@ const server = http.createServer(function (request, response) {
       return;
     }
     lastHeartbeat = Date.now();
-    sendJson(response, 200, { ok: true, idleMs: 0 });
+    heartbeatSeen = true;
+    livePage = true;
+    sendJson(response, 200, { ok: true, idleMs: 0, livePage: true });
+    return;
+  }
+
+  if (pathname === "/__rl/pagehide") {
+    if (request.method !== "POST" && request.method !== "GET") {
+      response.writeHead(405, { allow: "POST, GET" });
+      response.end("method not allowed");
+      return;
+    }
+    /* A reload/navigation fires pagehide too. The new page heartbeats within
+       seconds; the long grace period keeps the server alive across that gap. */
+    livePage = false;
+    sendJson(response, 200, { ok: true, livePage: false });
     return;
   }
 
@@ -387,15 +474,25 @@ const server = http.createServer(function (request, response) {
   });
 });
 
-function startListening() {
-  server.listen(options.port, "127.0.0.1", function () {
+async function startListening() {
+  let port;
+  try {
+    port = await resolveStartupPort();
+  } catch (error) {
+    console.error("Request Ledger: " + error.message);
+    removeLock();
+    process.exit(1);
+    return;
+  }
+  options.port = port;
+  server.listen(port, "127.0.0.1", function () {
     actualPort = server.address().port;
     writeLock();
     writePortFile(actualPort);
-    const url = baseUrl() + entryPage();
+    const url = pageUrl();
     console.log("Request Ledger: " + url);
     if (options.autoStop) {
-      console.log("Request Ledger: auto-stop after " + Math.round(options.autoStopMs / 1000) + " s without a heartbeat");
+      console.log("Request Ledger: idle stop after " + Math.round(options.autoStopMs / 1000) + " s with no live page");
     }
     if (options.open) openBrowser(url);
   });
@@ -403,6 +500,7 @@ function startListening() {
 
 server.on("error", function (error) {
   if (error.code === "EADDRINUSE" && options.fallbackPortZero && options.port !== 0) {
+    fallbackFromPort = options.port;
     console.error("Request Ledger: port " + options.port + " is in use; starting on a free port instead.");
     options.port = 0;
     actualPort = 0;
@@ -419,7 +517,11 @@ startListening();
 if (options.autoStop) {
   const timer = setInterval(function () {
     if (shuttingDown) return;
-    if (Date.now() - lastHeartbeat >= options.autoStopMs) stopServer("idle");
+    /* A live page owns the server. Background throttling must not close it.
+       Only a pagehide marker (or a server that never saw a page) allows the
+       long grace timer to fire. */
+    if (livePage) return;
+    if (!heartbeatSeen || Date.now() - lastHeartbeat >= options.autoStopMs) stopServer("idle");
   }, 1000);
   timer.unref();
 }

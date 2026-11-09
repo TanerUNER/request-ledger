@@ -396,9 +396,10 @@
     resetProjectSnapshot();
   }
 
-  function openProjectById(projectId){
+  function openProjectById(projectId, opts){
     var project = findProjectRecord(projectId);
     if(!project) return false;
+    var preserveSection = Boolean(opts && opts.preserveSection);
     var registry = readRegistry();
     if(registry){
       registry.activeId = projectId;
@@ -414,9 +415,18 @@
     updateMarquee();
     syncProjectGate(true);
     broadcastState();
-    if(role === "flyout" && state.section === "project") showSection("list");
-    else if(role === "flyout" && state.section) renderFlyout(state.section);
-    else if(role === "dock" && state.active) refreshSection(state.active);
+    if(preserveSection){
+      /* Bridge adoption only refreshes the current explicit section. It must
+         never open a section on the user's behalf. */
+      if(role === "flyout" && state.section) renderFlyout(state.section);
+      else if(role === "dock" && state.active) refreshSection(state.active);
+    }else if(role === "flyout" && state.section === "project"){
+      showSection("list");
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }else if(role === "dock" && state.active){
+      refreshSection(state.active);
+    }
     loadArchive().catch(function(){ /* the archive is decorative until opened */ });
     /* Phase 2c: a local project switch re-handshakes with the app. No data is
        sent when the app is on a different project. */

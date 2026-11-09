@@ -43,7 +43,7 @@ del "%PIDFILE%" >nul 2>&1
 del "%OUTFILE%" >nul 2>&1
 del "%ERRFILE%" >nul 2>&1
 
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$ErrorActionPreference = 'SilentlyContinue'; $p = Start-Process -FilePath 'node' -ArgumentList @('scripts/serve.cjs','--port','%PORT%','--fallback-port-0','--open','--auto-stop=15','--lock','.rl-server.lock') -WorkingDirectory '%CD%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%OUTFILE%' -RedirectStandardError '%ERRFILE%'; $p.Id | Out-File -Encoding ascii '%PIDFILE%'"
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$ErrorActionPreference = 'SilentlyContinue'; $p = Start-Process -FilePath 'node' -ArgumentList @('scripts/serve.cjs','--port','%PORT%','--fallback-port-0','--open','--auto-stop=300','--lock','.rl-server.lock') -WorkingDirectory '%CD%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%OUTFILE%' -RedirectStandardError '%ERRFILE%'; $p.Id | Out-File -Encoding ascii '%PIDFILE%'"
 
 set /a TRIES=0
 :waitlock

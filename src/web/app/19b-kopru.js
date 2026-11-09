@@ -246,7 +246,7 @@
     bridgeSendTimer = setTimeout(function(){
       bridgeSendTimer = null;
       bridgePost("RL_APP_PATCH");
-    }, 300);
+    }, 120);
   }
 
   function bridgeHasData(requests, project, projectCreated){

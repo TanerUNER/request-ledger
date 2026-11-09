@@ -26,6 +26,7 @@
   let onboardingProbeTimer = null;
   let onboardingProbeCount = 0;
   let onboardingHeartbeatTimer = null;
+  let onboardingServerLifecycle = false;
   let onboardingBridgeListener = false;
 
   function onboardingStored(key, fallback){
@@ -339,6 +340,11 @@
         port: Number(data.port),
         url: typeof data.url === "string" && data.url ? data.url : window.location.origin + window.location.pathname
       };
+      storePort(onboardingServer.port);
+      const fallbackFrom = normalisePort(data.fallbackFromPort);
+      if(fallbackFrom != null && fallbackFrom > 0 && fallbackFrom !== onboardingServer.port){
+        movedFromPort = fallbackFrom;
+      }
       return onboardingServer;
     }catch(err){
       onboardingServer = null;
@@ -346,6 +352,19 @@
     }finally{
       clearTimeout(timer);
     }
+  }
+
+  function sendServerPageHide(){
+    if(!onboardingServerDetected()) return;
+    try{
+      if(navigator.sendBeacon){
+        navigator.sendBeacon("/__rl/pagehide");
+        return;
+      }
+    }catch(err){ /* fall through */ }
+    try{
+      fetch("/__rl/pagehide", { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
+    }catch(err){ /* ignore */ }
   }
 
   function startServerHeartbeat(){
@@ -358,6 +377,17 @@
     };
     beat();
     onboardingHeartbeatTimer = setInterval(beat, SERVER_HEARTBEAT_MS);
+    if(!onboardingServerLifecycle){
+      onboardingServerLifecycle = true;
+      /* Background tabs throttle timers; a visible tab re-announces itself at
+         once. pagehide only marks the server as page-less; the 5-minute grace
+         covers a reload or a quick navigation. */
+      document.addEventListener("visibilitychange", function(){
+        if(document.visibilityState === "visible") beat();
+      });
+      window.addEventListener("pageshow", beat);
+      window.addEventListener("pagehide", sendServerPageHide);
+    }
   }
 
   function stopServerHeartbeat(){
@@ -467,7 +497,7 @@
     if(modeText){
       if(onboardingMode === "server"){
         modeText.textContent = translateString(onboardingServerDetected()
-          ? "Yerel sunucu modundasın. Sayfa düzenli aralıklarla sinyal gönderir; sinyal kesilirse sunucu 15 saniye sonra kapanır."
+          ? "Yerel sunucu modundasın. Sekme açıkken sunucu kapanmaz; sekme kapandıktan sonra en az 5 dakika bekler."
           : "Yerel sunucu çalışmıyor. Sunucu modu için start.cmd çalıştır.");
       }else{
         modeText.textContent = translateString("Tek dosya modundasın. Bu sayfa yerel sunucu başlatamaz; sunucu modu için aşağıdaki komutu çalıştır.");

@@ -8,10 +8,42 @@
   const PROJECT_LEDGER_PREFIX = "oz-istek-defteri-p-";
   const PROJECT_SCOPE_KEY = "oz-veri-kapsam-v1";
   const THEME_KEY = "gd-theme";
-  const APP_VERSION = "1.9.1";
+  const APP_VERSION = "1.9.2";
 /* Static <title> from <head>; kept for crawlers and restored whenever no project is open. */
 const SEO_TITLE = document.title;
   const CHANGELOG = [
+    {
+      version: "1.9.2",
+      date: "2026-11-09",
+      tr: {
+        features: [
+          "Panelde yapılan düzenlemeler ve Hazır onayı 1 saniye içinde uygulamaya yansır; uygulamadaki düzenlemeler de panelde yeniden yükleme olmadan görünür.",
+          "Yerel sunucu uygulama sekmesi açıkken kapanmaz; arka planda bekleyen sekme sunucuyu düşürmez, F5 aynı portta devam eder."
+        ],
+        updates: [
+          "Projeler ve İstekler bölümü tek sekme şeridi ve tek içerik alanına toparlandı; yinelenen ayırıcı ve sekme görünümü kaldırıldı.",
+          "İstenen port aynı uygulamaya aitse yeniden kullanılır; farklı bir süreçteyse boş porta geçilir ve kullanıcı uyarılır."
+        ],
+        fixes: [
+          "Köprü proje benimsemesi artık panelde bir bölümü kendiliğinden açmaz; kullanıcının son açık bölümü korunur.",
+          "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez."
+        ]
+      },
+      en: {
+        features: [
+          "Panel edits and the Ready toggle reach the app within 1 second; app edits appear in the panel without a reload.",
+          "The local server stays up while the app tab is open; a backgrounded tab cannot kill it and F5 continues on the same port."
+        ],
+        updates: [
+          "Projects and Requests now use one tab strip and one content pane; duplicate dividers and the tab-like project action were removed.",
+          "A requested port held by the same app is reused; an unrelated busy port falls back with a visible warning."
+        ],
+        fixes: [
+          "Bridge project adoption no longer opens a panel section by itself; the user's last explicit section is preserved.",
+          "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation."
+        ]
+      }
+    },
     {
       version: "1.9.1",
       date: "2026-11-09",
@@ -65,7 +97,7 @@ const SEO_TITLE = document.title;
           "Proje başına görseller, dosya ekleri, Kayıtlar, Taslaklar ve dışa aktarma geçmişi; yedek v4 tüm projeleri ve medyayı taşır.",
           "Uzantıyla canlı bağlantı: proje kimliği eşleşen istekler iki yönlü eşitlenir; öğe seçici uygulamadan başka bir sekmede çalışır.",
           "İlk kurulum ekranı: tek HTML dosyası veya yerel sunucu seçimi, uzantı durumu ve yetenek karşılaştırması.",
-          "Yerel sunucu modu: start.cmd/stop.cmd, boş port seçimi, otomatik açılış ve sinyal kesilince 15 saniyede kapanma."
+          "Yerel sunucu modu: start.cmd/stop.cmd, boş port seçimi, otomatik açılış; sunucu canlı sekme varken kapanmaz, sekme kapanınca en az 5 dakika bekler."
         ],
         updates: [
           "Uzantı köprüsü artık her localhost portunda çalışır; 127.0.0.1 izin listesinin dışında kalır.",
@@ -83,7 +115,7 @@ const SEO_TITLE = document.title;
           "Per-project images, attachments, Records, Drafts and export history; backup v4 carries every project and its media.",
           "Live extension bridge: requests with matching project ids sync both ways; the element picker runs on another tab from the app.",
           "First-run onboarding: single HTML file or local server, extension status and a capability comparison.",
-          "Local server mode: start.cmd/stop.cmd, free-port selection, auto-open and shutdown 15 seconds after the heartbeat stops."
+          "Local server mode: start.cmd/stop.cmd, free-port selection, auto-open; the server stays up while a tab is live and waits at least 5 minutes after it closes."
         ],
         updates: [
           "The extension bridge now works on every localhost port; 127.0.0.1 stays outside the allowlist.",
@@ -1125,7 +1157,7 @@ const SEO_TITLE = document.title;
     "Kullanım biçimini ve uzantı durumunu yeniden gör.": "Review the usage mode and the extension status.",
     "Kurulumu aç": "Open setup",
     "Tek dosya modundasın. Bu sayfa yerel sunucu başlatamaz; sunucu modu için aşağıdaki komutu çalıştır.": "You are in single-file mode. This page cannot start a local server; run the command below for server mode.",
-    "Yerel sunucu modundasın. Sayfa düzenli aralıklarla sinyal gönderir; sinyal kesilirse sunucu 15 saniye sonra kapanır.": "You are in local server mode. The page sends a heartbeat; if it stops, the server shuts down after 15 seconds.",
+    "Yerel sunucu modundasın. Sekme açıkken sunucu kapanmaz; sekme kapandıktan sonra en az 5 dakika bekler.": "You are in local server mode. The server stays up while the tab is open and waits at least 5 minutes after it closes.",
     "Yerel sunucu çalışmıyor. Sunucu modu için start.cmd çalıştır.": "The local server is not running. Run start.cmd for server mode.",
     "Sunucu bu sayfayı yerel adresten sunuyor. Kapatmak için Sunucuyu durdur.": "The server is hosting this page locally. Use Stop server to close it.",
     "HTML dosyası yerel sunucu başlatamaz; komut yalnızca sunucu modu içindir.": "An HTML file cannot start a local server; the command is only for server mode.",

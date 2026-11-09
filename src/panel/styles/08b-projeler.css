@@ -13,6 +13,7 @@
   margin-left:auto;width:auto;min-height:22px;padding:0 7px;
   flex-direction:row;font-size:8.5px;color:var(--accent-dark);
   background:var(--accent-soft);
+  border-color:transparent;
 }
 .archive__new:hover{background:var(--card);color:var(--accent-dark)}
 .archive__search{margin:0}

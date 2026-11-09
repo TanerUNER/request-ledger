@@ -481,6 +481,16 @@
     const descriptionInput = $('[data-field="description"]', row);
     if(descriptionInput) descriptionInput.placeholder = type.ph;
 
+    /* Bridge patches can change fields while the row is open. Refresh the
+       form controls in place; never move the caret in the field the user is
+       editing right now. */
+    ["title", "page", "location", "consoleError", "description", "sampleWebsite", "link", "note"].forEach(function(key){
+      const input = $('[data-field="' + key + '"]', row);
+      if(!input || input === document.activeElement) return;
+      const next = req[key] == null ? "" : String(req[key]);
+      if(input.value !== next) input.value = next;
+    });
+
     const errorBox = $(".req__errors", row);
     const showErrors = Boolean(req._showErrors && missing.length);
     if(errorBox){

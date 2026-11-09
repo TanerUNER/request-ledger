@@ -258,6 +258,9 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
   const opened = await openPanel(cdp, pageSession);
   await waitFor(() => evaluate(cdp, opened.flyoutSession,
     "window.__rlBridgePanel && window.__rlBridgePanel.connected()"), mode + " panel connected", 20000);
+  await sleep(900);
+  check(mode + " bridge adoption does not auto-open a section",
+    await evaluate(cdp, opened.flyoutSession, "document.body.getAttribute('data-section') === null"));
   const panelProject = await waitFor(async () => {
     const id = await evaluate(cdp, opened.flyoutSession, "window.__rlBridgePanel.projectId()");
     return id === bridgeState.projectId ? id : null;
@@ -270,12 +273,40 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
      ledger so the screenshot shows the connected project, not the chooser. */
   await sleep(500);
   await dismissConflict(cdp, pageSession);
-  await evaluate(cdp, opened.flyoutSession, "window.RLPanel.open('list')");
-  await sleep(600);
+  await evaluate(cdp, opened.dockSession, "document.querySelector('[data-section=\"list\"]').click()");
+  await sleep(700);
   check(mode + " panel shows the app project and request", await waitFor(async () => {
     const text = await evaluate(cdp, opened.flyoutSession, "document.body.innerText");
     return text.indexOf(name) >= 0 && text.indexOf(name + " request") >= 0 ? text : null;
   }, mode + " panel request"));
+  const layout = await evaluate(cdp, opened.flyoutSession, `(() => {
+    const box = (selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top:r.top, bottom:r.bottom, height:r.height };
+    };
+    return {
+      projects:box('.archive__projects'),
+      tabs:box('.archive-tabs'),
+      tabStrips:document.querySelectorAll('.archive-tabs').length,
+      pane:box('[data-archive-pane="list"]'),
+      progress:box('#rl-list-progress'),
+      row:box('.rrow'),
+      body:box('#rl-sec-body')
+    };
+  })()`);
+  check(mode + " list layout has one tab strip below Projects",
+    layout.tabStrips === 1 && layout.projects && layout.tabs && layout.projects.bottom <= layout.tabs.top + 1,
+    layout);
+  check(mode + " list pane is below the tab strip and shows a row",
+    layout.pane && layout.pane.top >= layout.tabs.bottom - 1 && layout.row && layout.row.top >= layout.progress.bottom - 1,
+    layout);
+  if(mode === "file://"){
+    await cdp.send("Page.bringToFront", {}, pageSession);
+    await sleep(250);
+    await screenshot(cdp, pageSession, "09-panel-list-layout.png");
+  }
 
   const targetTab = await cdp.send("Target.createTarget", { url: TARGET_URL });
   const targetSession = await attach(cdp, targetTab.targetId);
@@ -347,8 +378,8 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
   check(mode + " empty save toast is English", toast === "There are no requests to save.", toast);
 
   await dismissConflict(cdp, pageSession);
-  await evaluate(cdp, opened.flyoutSession, "window.RLPanel.open('list')").catch(() => {});
-  await sleep(500);
+  await evaluate(cdp, opened.dockSession, "document.querySelector('[data-section=\"list\"]').click()").catch(() => {});
+  await sleep(600);
   await cdp.send("Page.bringToFront", {}, pageSession);
   await sleep(300);
   await screenshot(cdp, pageSession, screenshotName);

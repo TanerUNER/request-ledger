@@ -117,6 +117,39 @@ const TYPE_TEMPLATES = {
 
 const CHANGELOG = [
   {
+    version: "1.9.5",
+    area: "extension",
+    date: "2026-11-09",
+    tr: {
+      features: [
+        "Panel düzenlemeleri ve Hazır onayı 1 saniye içinde uygulamaya yansır; uygulamadaki düzenlemeler de panelde yeniden yükleme olmadan görünür.",
+        "Yerel sunucu uygulama sekmesi açıkken kapanmaz; arka planda bekleyen sekme sunucuyu düşürmez, F5 aynı portta devam eder."
+      ],
+      updates: [
+        "Projeler ve İstekler bölümü tek sekme şeridi ve tek içerik alanına toparlandı; yinelenen ayırıcı ve sekme görünümü kaldırıldı.",
+        "İstenen port aynı uygulamaya aitse yeniden kullanılır; farklı bir süreçteyse boş porta geçilir ve kullanıcı uyarılır."
+      ],
+      fixes: [
+        "Köprü proje benimsemesi artık panelde bir bölümü kendiliğinden açmaz; kullanıcının son açık bölümü korunur.",
+        "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez."
+      ]
+    },
+    en: {
+      features: [
+        "Panel edits and the Ready toggle reach the app within 1 second; app edits appear in the panel without a reload.",
+        "The local server stays up while the app tab is open; a backgrounded tab cannot kill it and F5 continues on the same port."
+      ],
+      updates: [
+        "Projects and Requests now use one tab strip and one content pane; duplicate dividers and the tab-like project action were removed.",
+        "A requested port held by the same app is reused; an unrelated busy port falls back with a visible warning."
+      ],
+      fixes: [
+        "Bridge project adoption no longer opens a panel section by itself; the user's last explicit section is preserved.",
+        "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation."
+      ]
+    }
+  },
+  {
     version: "1.9.4",
     area: "extension",
     date: "2026-11-09",
@@ -131,7 +164,7 @@ const CHANGELOG = [
       ],
       updates: [
         "Köprü artık file://, her localhost portu ve 127.0.0.1 kaynaklarını kabul eder; 127.0.0.1 dışındaki uzak kaynaklar reddedilir.",
-        "Yerel sunucu modu boş port seçer, son portu hatırlar ve sinyal kesilince 15 saniyede kapanır.",
+        "Yerel sunucu modu boş port seçer, son portu hatırlar; canlı sekme varken kapanmaz, sekme kapanınca en az 5 dakika bekler.",
         "Arayüz metinleri temizlendi: yinelenen başlıklar, İngilizce arayüzde kalan Türkçe metinler ve yedek açıklamaları sadeleştirildi."
       ],
       fixes: [
@@ -151,7 +184,7 @@ const CHANGELOG = [
       ],
       updates: [
         "The bridge accepts file://, every localhost port and 127.0.0.1 origins; remote origins outside that set are rejected.",
-        "Local server mode picks a free port, remembers the last port and stops 15 seconds after the heartbeat disappears.",
+        "Local server mode picks a free port and remembers the last port; it stays up while a tab is live and waits at least 5 minutes after it closes.",
         "Interface copy cleanup: duplicate headings, Turkish strings left in the English interface and backup descriptions were simplified."
       ],
       fixes: [
@@ -1837,8 +1870,15 @@ const UPDATE_FIELDS = ["type", "title", "page", "location", "consoleError", "des
 function updateRequest(req, patch) {
   if (!req) return null;
   let contentChanged = false;
+  let hasConfirmed = false;
+  let nextConfirmed = false;
   Object.keys(patch || {}).forEach((key) => {
-    if (key === "confirmed" || key === "collapsed" || key === "createdAt" || key === "updatedAt" || key === "_showErrors") return;
+    if (key === "confirmed") {
+      hasConfirmed = true;
+      nextConfirmed = Boolean(patch.confirmed);
+      return;
+    }
+    if (key === "collapsed" || key === "createdAt" || key === "updatedAt" || key === "_showErrors") return;
     req[key] = patch[key];
     if (UPDATE_FIELDS.indexOf(key) >= 0) contentChanged = true;
   });
@@ -1846,7 +1886,12 @@ function updateRequest(req, patch) {
     if (req.confirmed) req.confirmed = false;
     req.updatedAt = nowISO();
   }
-  if (Object.prototype.hasOwnProperty.call(patch || {}, "confirmed")) req.confirmed = Boolean(patch.confirmed);
+  if (hasConfirmed) {
+    req.confirmed = nextConfirmed;
+    /* Confirmation is user-visible content and must carry a new revision, or
+       item-level bridge merges keep the receiver's older confirmed value. */
+    req.updatedAt = nowISO();
+  }
   return req;
 }
 
