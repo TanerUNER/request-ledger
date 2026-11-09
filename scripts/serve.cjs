@@ -99,6 +99,9 @@ let lastHeartbeat = Date.now();
 let heartbeatSeen = false;
 let livePage = false;
 let fallbackFromPort = 0;
+const livePages = new Map();
+let closeGraceTimer = null;
+const CLOSE_GRACE_MS = 5000;
 let shuttingDown = false;
 let actualPort = options.port;
 
@@ -143,6 +146,103 @@ function sendJson(response, status, payload) {
     "content-length": Buffer.byteLength(body),
   });
   response.end(body);
+}
+
+const projectsRoot = path.join(root, "projects");
+
+function safeSlug(value) {
+  const text = String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return text || "project";
+}
+
+function projectFolder(slug) {
+  const safe = safeSlug(slug);
+  const folder = path.join(projectsRoot, safe);
+  if (!folder.startsWith(projectsRoot + path.sep)) throw new Error("invalid project folder");
+  return { slug: safe, folder };
+}
+
+function readProjectMeta(slug) {
+  try {
+    const { folder } = projectFolder(slug);
+    return JSON.parse(fs.readFileSync(path.join(folder, "project.json"), "utf8"));
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeProjectMeta(slug, meta) {
+  const { folder } = projectFolder(slug);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, "project.json"), JSON.stringify(meta, null, 2) + "\n", "utf8");
+}
+
+function ensureProjectFolder(projectId, name, requestedSlug) {
+  const wanted = safeSlug(requestedSlug || name);
+  let slug = wanted;
+  const existing = readProjectMeta(slug);
+  if (existing && existing.projectId && projectId && existing.projectId !== projectId) {
+    slug = (wanted + "-" + safeSlug(String(projectId).slice(-6))).slice(0, 90);
+  }
+  const { folder } = projectFolder(slug);
+  fs.mkdirSync(folder, { recursive: true });
+  const previous = readProjectMeta(slug) || {};
+  const stamp = new Date().toISOString();
+  const meta = {
+    projectId: String(projectId || previous.projectId || ""),
+    name: String(name || previous.name || "Project").slice(0, 80),
+    slug: slug,
+    createdAt: previous.createdAt || stamp,
+    updatedAt: stamp,
+    exportTarget: previous.exportTarget || "",
+    requestCount: Number(previous.requestCount) || 0,
+  };
+  writeProjectMeta(slug, meta);
+  return { slug, folder, meta };
+}
+
+function readJsonBody(request, maxBytes) {
+  return new Promise(function (resolve) {
+    let size = 0;
+    const chunks = [];
+    request.on("data", function (chunk) {
+      size += chunk.length;
+      if (size > (maxBytes || 32 * 1024 * 1024)) {
+        request.destroy();
+        resolve(null);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", function () {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); }
+      catch (error) { resolve(null); }
+    });
+    request.on("error", function () { resolve(null); });
+  });
+}
+
+function writeExportFiles(slug, files) {
+  const { folder } = projectFolder(slug);
+  const exportDir = path.join(folder, "exports");
+  fs.mkdirSync(exportDir, { recursive: true });
+  const written = [];
+  (Array.isArray(files) ? files : []).slice(0, 100).forEach(function (file) {
+    const name = path.basename(String(file && file.name || "")).slice(0, 180);
+    if (!name) return;
+    const data = file.encoding === "base64"
+      ? Buffer.from(String(file.content || ""), "base64")
+      : Buffer.from(String(file.content || ""), "utf8");
+    fs.writeFileSync(path.join(exportDir, name), data);
+    written.push(name);
+  });
+  return { folder: exportDir, files: written };
 }
 
 function writeLock() {
@@ -201,6 +301,42 @@ function openBrowser(url) {
   } catch (error) {
     console.error("Request Ledger: could not open the browser: " + error.message);
   }
+}
+
+function noteLivePage(pageId) {
+  const id = String(pageId || "").trim().slice(0, 120);
+  lastHeartbeat = Date.now();
+  heartbeatSeen = true;
+  if (!id) {
+    /* Legacy/launcher heartbeats have no page identity. They keep the idle
+       timer fresh but must not keep the server alive after the last real app
+       page closed. */
+    return;
+  }
+  livePages.set(id, Date.now());
+  livePage = true;
+  if (closeGraceTimer) {
+    clearTimeout(closeGraceTimer);
+    closeGraceTimer = null;
+  }
+}
+
+function scheduleCloseGrace() {
+  if (closeGraceTimer) clearTimeout(closeGraceTimer);
+  livePage = false;
+  closeGraceTimer = setTimeout(function () {
+    closeGraceTimer = null;
+    if (livePages.size === 0) stopServer("last page closed");
+  }, CLOSE_GRACE_MS);
+  closeGraceTimer.unref && closeGraceTimer.unref();
+}
+
+function notePageGone(pageId) {
+  const id = String(pageId || "").trim().slice(0, 120);
+  if (id) livePages.delete(id);
+  else livePages.clear();
+  livePage = livePages.size > 0;
+  if (livePages.size === 0) scheduleCloseGrace();
 }
 
 function stopServer(reason) {
@@ -325,8 +461,10 @@ function spawnReboundServer(port) {
 
 const server = http.createServer(function (request, response) {
   let pathname;
+  let query = null;
   try {
     pathname = decodeURIComponent((request.url || "/").split("?")[0]);
+    query = new URLSearchParams((request.url || "").split("?")[1] || "");
   } catch (error) {
     response.writeHead(400);
     response.end("bad request");
@@ -346,6 +484,8 @@ const server = http.createServer(function (request, response) {
       autoStopSeconds: options.autoStop ? Math.round(options.autoStopMs / 1000) : 0,
       idleMs: Date.now() - lastHeartbeat,
       livePage: livePage,
+      livePages: livePages.size,
+      closeGraceMs: closeGraceTimer ? CLOSE_GRACE_MS : 0,
       heartbeatSeen: heartbeatSeen,
       fallbackFromPort: fallbackFromPort,
     });
@@ -358,10 +498,8 @@ const server = http.createServer(function (request, response) {
       response.end("method not allowed");
       return;
     }
-    lastHeartbeat = Date.now();
-    heartbeatSeen = true;
-    livePage = true;
-    sendJson(response, 200, { ok: true, idleMs: 0, livePage: true });
+    noteLivePage(query && query.get("page"));
+    sendJson(response, 200, { ok: true, idleMs: 0, livePage: true, livePages: livePages.size });
     return;
   }
 
@@ -372,9 +510,120 @@ const server = http.createServer(function (request, response) {
       return;
     }
     /* A reload/navigation fires pagehide too. The new page heartbeats within
-       seconds; the long grace period keeps the server alive across that gap. */
-    livePage = false;
-    sendJson(response, 200, { ok: true, livePage: false });
+       the 5 s close grace; any heartbeat cancels the pending shutdown. */
+    notePageGone(query && query.get("page"));
+    sendJson(response, 200, { ok: true, livePage: livePages.size > 0, livePages: livePages.size, closeGraceMs: closeGraceTimer ? CLOSE_GRACE_MS : 0 });
+    return;
+  }
+
+  if (pathname === "/__rl/projects") {
+    if (request.method === "GET") {
+      const projects = [];
+      try {
+        if (fs.existsSync(projectsRoot)) {
+          fs.readdirSync(projectsRoot, { withFileTypes: true }).forEach(function (entry) {
+            if (!entry.isDirectory()) return;
+            const meta = readProjectMeta(entry.name);
+            if (meta) projects.push(meta);
+          });
+        }
+      } catch (error) { /* ignore */ }
+      sendJson(response, 200, { ok: true, projects: projects });
+      return;
+    }
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "GET, POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 1024 * 1024).then(function (body) {
+      if (!body || typeof body !== "object") {
+        sendJson(response, 400, { ok: false, error: "invalid body" });
+        return;
+      }
+      try {
+        const result = ensureProjectFolder(body.projectId, body.name, body.slug);
+        sendJson(response, 200, { ok: true, slug: result.slug, folder: path.relative(root, result.folder).split(path.sep).join("/"), meta: result.meta });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/save") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 32 * 1024 * 1024).then(function (body) {
+      if (!body || typeof body !== "object") {
+        sendJson(response, 400, { ok: false, error: "invalid body" });
+        return;
+      }
+      try {
+        const result = ensureProjectFolder(body.projectId, body.name, body.slug);
+        const snapshot = body.snapshot && typeof body.snapshot === "object" ? body.snapshot : {};
+        fs.writeFileSync(path.join(result.folder, "ledger.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+        if (Array.isArray(body.records)) {
+          fs.writeFileSync(path.join(result.folder, "records.json"), JSON.stringify(body.records, null, 2) + "\n", "utf8");
+        }
+        const meta = Object.assign({}, result.meta, {
+          updatedAt: new Date().toISOString(),
+          requestCount: Array.isArray(snapshot.requests) ? snapshot.requests.length : 0,
+        });
+        writeProjectMeta(result.slug, meta);
+        sendJson(response, 200, { ok: true, slug: result.slug, folder: path.relative(root, result.folder).split(path.sep).join("/") });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/export") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 64 * 1024 * 1024).then(function (body) {
+      if (!body || typeof body !== "object") {
+        sendJson(response, 400, { ok: false, error: "invalid body" });
+        return;
+      }
+      try {
+        const result = ensureProjectFolder(body.projectId, body.name, body.slug);
+        const written = writeExportFiles(result.slug, body.files);
+        sendJson(response, 200, { ok: true, slug: result.slug, folder: path.relative(root, result.folder).split(path.sep).join("/"), files: written.files });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/export-target") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 1024 * 1024).then(function (body) {
+      if (!body || typeof body !== "object") {
+        sendJson(response, 400, { ok: false, error: "invalid body" });
+        return;
+      }
+      try {
+        const result = ensureProjectFolder(body.projectId, body.name, body.slug);
+        const meta = Object.assign({}, result.meta, { exportTarget: String(body.target || "").slice(0, 200) });
+        writeProjectMeta(result.slug, meta);
+        sendJson(response, 200, { ok: true, slug: result.slug, exportTarget: meta.exportTarget });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    });
     return;
   }
 

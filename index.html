@@ -2876,6 +2876,7 @@ const SEO_TITLE = document.title;
     "Oluşturma": "Created",
     "Güncelleme": "Updated",
     "Dışa aktarım hedefi": "Export target",
+    "Klasör": "Folder",
     "Dışa aktarım hedefini seç": "Select export target",
     "Dışa aktarım hedefini kaldır": "Remove export target",
     "Projeyi aç": "Open project",
@@ -4250,6 +4251,101 @@ const SEO_TITLE = document.title;
     const value = normalizeProjectName(name);
     return value === "Ortak Zemin" || value === "Common Ground";
   }
+  function serverFolderMode(){
+    return window.location.protocol === "http:" && Number(window.location.port) > 0;
+  }
+
+  async function serverProjectFolder(projectId, name, currentFolder){
+    if(!serverFolderMode()) return "";
+    const project = projectId ? findProjectRecord(projectId) : null;
+    const body = {
+      projectId: projectId || "",
+      name: name || (project ? project.name : ""),
+      slug: currentFolder || (project && project.folder) || ""
+    };
+    try{
+      const response = await fetch("/__rl/projects", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify(body)
+      });
+      const data = await response.json();
+      if(!response.ok || !data || data.ok !== true || !data.slug) return "";
+      if(projectId) updateProjectRecord(projectId, { folder:data.slug });
+      return data.slug;
+    }catch(err){
+      return "";
+    }
+  }
+
+  async function serverSaveProject(projectId){
+    if(!serverFolderMode()) return false;
+    const id = projectId || activeProjectId;
+    if(!id) return false;
+    const project = findProjectRecord(id);
+    if(!project) return false;
+    const slug = project.folder || await serverProjectFolder(id, project.name, project.folder);
+    if(!slug) return false;
+    try{
+      const response = await fetch("/__rl/save", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify({
+          projectId:id,
+          name:project.name,
+          slug:slug,
+          snapshot:ledgerPayload(),
+          records: (typeof records !== "undefined" && Array.isArray(records)) ? records : []
+        })
+      });
+      const data = await response.json();
+      return response.ok && data && data.ok === true;
+    }catch(err){
+      return false;
+    }
+  }
+
+  async function serverExportFile(filename, blob, projectId){
+    if(!serverFolderMode()) return false;
+    const id = projectId || activeProjectId;
+    const project = id ? findProjectRecord(id) : null;
+    if(!project) return false;
+    const slug = project.folder || await serverProjectFolder(id, project.name, project.folder);
+    if(!slug) return false;
+    try{
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      for(let i = 0; i < bytes.length; i += 0x8000){
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      const response = await fetch("/__rl/export", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify({
+          projectId:id,
+          name:project.name,
+          slug:slug,
+          files:[{ name:filename, encoding:"base64", content:btoa(binary) }]
+        })
+      });
+      const data = await response.json();
+      return response.ok && data && data.ok === true;
+    }catch(err){
+      return false;
+    }
+  }
+
+  async function serverProjectList(){
+    if(!serverFolderMode()) return [];
+    try{
+      const response = await fetch("/__rl/projects", { cache:"no-store" });
+      const data = await response.json();
+      return data && data.ok && Array.isArray(data.projects) ? data.projects : [];
+    }catch(err){
+      return [];
+    }
+  }
+
   function normalizeLedgerId(value){
     return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
   }
@@ -4269,6 +4365,7 @@ const SEO_TITLE = document.title;
          It is written at creation and whenever a bridge choice/adoption
          changes the ledger. */
       ledgerId: normalizeLedgerId(record.ledgerId),
+      folder: typeof record.folder === "string" ? record.folder.slice(0, 120) : "",
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -4397,6 +4494,7 @@ const SEO_TITLE = document.title;
         if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
         if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
         if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
+        if(typeof patch.folder === "string") project.folder = patch.folder.slice(0, 120);
         if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
         if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
       }
@@ -4974,6 +5072,18 @@ const SEO_TITLE = document.title;
       }catch(err){
         console.error("Hedef klasöre yazılamadı", err);
         if(!silent) showToast("Hedef klasöre kaydedilemedi; dosya indiriliyor.", "error");
+      }
+    }
+    if(!useTarget && activeProjectId && typeof serverFolderMode === "function"){
+      if(serverFolderMode()){
+        const stored = await serverExportFile(filename, blob, activeProjectId).catch(function(){ return false; });
+        if(stored){
+          if(!silent) showToast("Proje klasörüne kaydedildi: " + filename);
+          return "project";
+        }
+        if(!silent) showToast("Proje klasörüne yazılamadı; dosya indiriliyor.", "error");
+      }else{
+        if(!silent) showToast("Sunucu modu klasör kaydı için gerekli; dosya indiriliyor.", "error");
       }
     }
     downloadBlob(blob, filename);
@@ -6673,6 +6783,20 @@ const SEO_TITLE = document.title;
     drafts = [];
     historyItems = [];
     renderHistoryTree();
+    if(typeof serverProjectList === "function" && serverFolderMode()){
+      serverProjectList().then(function(list){
+        let changed = false;
+        (list || []).forEach(function(item){
+          if(!item || !item.projectId) return;
+          const project = findProjectRecord(item.projectId);
+          if(project && item.slug && project.folder !== item.slug){
+            updateProjectRecord(item.projectId, { folder:item.slug });
+            changed = true;
+          }
+        });
+        if(changed) renderArchiveProjects();
+      }).catch(function(){ /* folder list is best effort */ });
+    }
     Promise.all([loadHistory(), loadSnapshots()]).catch(function(err){
       console.warn("Proje arşivi yüklenemedi", err);
     });
@@ -6732,6 +6856,7 @@ const SEO_TITLE = document.title;
     const snapshot = await createSnapshot("record");
     await saveSnapshot("record", snapshot, rootReady);
     saveNow();
+    if(typeof serverSaveProject === "function") await serverSaveProject(activeProjectId);
     historyTab = "records";
     renderHistoryTree();
     if(snapshot.fileName) showToast("Kayıt oluşturuldu: " + snapshot.fileName);
@@ -6750,6 +6875,7 @@ const SEO_TITLE = document.title;
     if(index >= 0) records[index] = fresh;
     else records.unshift(fresh);
     try{ await idbCollectionPut(RECORDS_STORE, fresh); }catch(err){}
+    if(typeof serverSaveProject === "function") await serverSaveProject(activeProjectId);
     sortSnapshots();
     historyTab = "records";
     renderHistoryTree();
@@ -6765,6 +6891,9 @@ const SEO_TITLE = document.title;
     if(!state.requests.length){
       showToast("Kaydedilecek istek yok.", "error");
       return;
+    }
+    if(typeof serverFolderMode === "function" && !serverFolderMode()){
+      showToast("Sunucu modu klasör kaydı için gerekli; kayıt tarayıcıda tutuluyor.", "error");
     }
     const signature = requestSignature();
     const existing = records.find(function(record){
@@ -7049,10 +7178,14 @@ const SEO_TITLE = document.title;
     const target = document.createElement("span");
     target.className = "archive__detail-meta";
     target.textContent = translateString("Dışa aktarım hedefi") + ": " + translateString(project.exportTarget || "Seçilmedi");
+    const folder = document.createElement("span");
+    folder.className = "archive__detail-meta";
+    folder.textContent = translateString("Klasör") + ": " + (project.folder ? "projects/" + project.folder + "/" : "—");
     box.appendChild(head);
     box.appendChild(created);
     box.appendChild(updated);
     box.appendChild(target);
+    box.appendChild(folder);
   }
 
   function renderArchiveProjects(){
@@ -9496,6 +9629,9 @@ const SEO_TITLE = document.title;
     if(!state.ledgerId) state.ledgerId = newLedgerId();
     state.project = project.name;
     state.projectCreated = true;
+    if(serverFolderMode() && !project.folder){
+      serverProjectFolder(project.id, project.name, project.folder).catch(function(){ /* best effort */ });
+    }
     const registry = readRegistry();
     if(registry){
       registry.activeId = project.id;
@@ -9559,6 +9695,9 @@ const SEO_TITLE = document.title;
       localStorage.setItem(projectLedgerKey(project.id), JSON.stringify(payload));
     }catch(err){
       console.warn("Proje defteri yazılamadı", err);
+    }
+    if(serverFolderMode()){
+      serverProjectFolder(project.id, project.name, "").catch(function(){ /* best effort */ });
     }
     activeProjectId = project.id;
     targetFolderHandle = null;
@@ -11582,7 +11721,12 @@ const SEO_TITLE = document.title;
         if(Array.isArray(data.agents)) state.agents = data.agents.map(normalizeAgent);
         if(data.language === "tr" || data.language === "en") state.language = data.language;
         state.exportBehavior = ["last","instant"].indexOf(data.exportBehavior) >= 0 ? data.exportBehavior : "default";
-        if(typeof data.ledgerId === "string" && data.ledgerId) state.ledgerId = data.ledgerId;
+        if(typeof data.ledgerId === "string" && data.ledgerId){
+          state.ledgerId = data.ledgerId;
+          /* Replace means this ledger won: persist the winning id in the
+             registry so a reload cannot fall back to the discarded one. */
+          setProjectLedgerId(activeProjectId, data.ledgerId);
+        }
       }else{
         state.requests = bridgeMergeRequests(incoming, data.deletedIds, stamp);
         const newer = !state.updatedAt || String(stamp) > String(state.updatedAt);
@@ -12683,6 +12827,11 @@ const SEO_TITLE = document.title;
   let onboardingOpen = false;
   let serverStopNotice = false;
   let serverReconnectTimer = null;
+  const serverPageId = "pg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+
+  function serverLifecycleUrl(path){
+    return path + "?page=" + encodeURIComponent(serverPageId);
+  }
   let pendingPortMove = null;
   let movedFromPort = null;
   let onboardingMode = "html";
@@ -13024,12 +13173,12 @@ const SEO_TITLE = document.title;
     if(!onboardingServerDetected()) return;
     try{
       if(navigator.sendBeacon){
-        navigator.sendBeacon("/__rl/pagehide");
+        navigator.sendBeacon(serverLifecycleUrl("/__rl/pagehide"));
         return;
       }
     }catch(err){ /* fall through */ }
     try{
-      fetch("/__rl/pagehide", { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
+      fetch(serverLifecycleUrl("/__rl/pagehide"), { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
     }catch(err){ /* ignore */ }
   }
 
@@ -13038,7 +13187,7 @@ const SEO_TITLE = document.title;
     const beat = function(){
       if(!onboardingServerDetected()) return;
       try{
-        fetch("/__rl/heartbeat", { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
+        fetch(serverLifecycleUrl("/__rl/heartbeat"), { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
       }catch(err){ /* ignore */ }
     };
     beat();

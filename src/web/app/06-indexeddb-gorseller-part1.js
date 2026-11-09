@@ -447,6 +447,18 @@
         if(!silent) showToast("Hedef klasöre kaydedilemedi; dosya indiriliyor.", "error");
       }
     }
+    if(!useTarget && activeProjectId && typeof serverFolderMode === "function"){
+      if(serverFolderMode()){
+        const stored = await serverExportFile(filename, blob, activeProjectId).catch(function(){ return false; });
+        if(stored){
+          if(!silent) showToast("Proje klasörüne kaydedildi: " + filename);
+          return "project";
+        }
+        if(!silent) showToast("Proje klasörüne yazılamadı; dosya indiriliyor.", "error");
+      }else{
+        if(!silent) showToast("Sunucu modu klasör kaydı için gerekli; dosya indiriliyor.", "error");
+      }
+    }
     downloadBlob(blob, filename);
     if(!silent) showToast("İndirildi: " + filename);
     return "download";

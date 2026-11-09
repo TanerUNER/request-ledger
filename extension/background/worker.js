@@ -775,8 +775,11 @@ function handlePanelMessage(message, sendResponse) {
 
     case "RL_APP_PRESENCE": {
       probeAppPresence(message).then(function (result) {
+        var open = !!(result && result.open);
+        writeAppAlive(open, result && result.port ? { "rl-app-port": result.port } : null);
         sendResponse(result || { open: false });
       }, function () {
+        writeAppAlive(false);
         sendResponse({ open: false });
       });
       return true;
@@ -910,8 +913,67 @@ if (chrome.tabs.onUpdated) {
   });
 }
 
+/* ---- app alive poll -------------------------------------------------- */
+var appAliveTimer = null;
+var appAliveInFlight = false;
+
+async function writeAppAlive(alive, extra) {
+  var payload = { "rl-app-alive": alive === true };
+  if (extra) {
+    Object.keys(extra).forEach(function (key) { payload[key] = extra[key]; });
+  }
+  try { await callApi(chrome.storage.local.set, payload); } catch (error) { /* ignore */ }
+}
+
+async function pollAppAlive() {
+  if (appAliveInFlight) return false;
+  appAliveInFlight = true;
+  try {
+    var stored = {};
+    try { stored = await callApi(chrome.storage.local.get, ["rl-app-port", "rl-port", "rl-app-mode", "rl-app-file-at"]); } catch (error) { stored = {}; }
+    var fileRecent = stored["rl-app-mode"] === "file" &&
+      Number(stored["rl-app-file-at"] || 0) > Date.now() - 12000;
+    var ports = [];
+    [stored["rl-app-port"], stored["rl-port"], 8080].forEach(function (value) {
+      var port = Number(value);
+      if (Number.isInteger(port) && port > 0 && ports.indexOf(port) < 0) ports.push(port);
+    });
+    var alive = fileRecent;
+    var livePort = 0;
+    for (var i = 0; i < ports.length && !alive; i += 1) {
+      var status = await probePortStatus(ports[i]);
+      if (status) { alive = true; livePort = Number(status.port) || ports[i]; }
+    }
+    await writeAppAlive(alive, livePort ? { "rl-app-port": livePort, "rl-app-mode": "server" } : null);
+    return alive;
+  } finally {
+    appAliveInFlight = false;
+  }
+}
+
+function startAppAlivePoll() {
+  if (appAliveTimer) return;
+  pollAppAlive();
+  appAliveTimer = setInterval(function () { pollAppAlive(); }, 5000);
+  if (appAliveTimer && typeof appAliveTimer.unref === "function") appAliveTimer.unref();
+}
+
+try {
+  if (chrome.runtime.onStartup) {
+    chrome.runtime.onStartup.addListener(function () {
+      try { if (appAliveTimer) clearInterval(appAliveTimer); } catch (error) { /* ignore */ }
+      appAliveTimer = null;
+      startAppAlivePoll();
+    });
+  }
+  startAppAlivePoll();
+} catch (error) { /* ignore */ }
+
 /* ---- boot ------------------------------------------------------------ */
 chrome.runtime.onInstalled.addListener(function (details) {
   var reason = details && details.reason ? details.reason : "unknown";
   console.log("[Request Ledger] installed (" + reason + ") v" + VERSION);
+  try { if (appAliveTimer) clearInterval(appAliveTimer); } catch (error) { /* ignore */ }
+  appAliveTimer = null;
+  startAppAlivePoll();
 });

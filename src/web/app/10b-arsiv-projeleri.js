@@ -51,10 +51,14 @@
     const target = document.createElement("span");
     target.className = "archive__detail-meta";
     target.textContent = translateString("Dışa aktarım hedefi") + ": " + translateString(project.exportTarget || "Seçilmedi");
+    const folder = document.createElement("span");
+    folder.className = "archive__detail-meta";
+    folder.textContent = translateString("Klasör") + ": " + (project.folder ? "projects/" + project.folder + "/" : "—");
     box.appendChild(head);
     box.appendChild(created);
     box.appendChild(updated);
     box.appendChild(target);
+    box.appendChild(folder);
   }
 
   function renderArchiveProjects(){

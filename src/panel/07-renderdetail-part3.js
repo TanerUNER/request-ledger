@@ -553,10 +553,6 @@
 
     if(exportCleanup) body.appendChild(buildExportCleanup());
 
-    /* Phase 2b: Projects sit above Exported/Records/Drafts. The tree is
-       searchable; a row opens the project settings modal. */
-    body.appendChild(buildArchiveProjectsSection());
-
     body.appendChild(buildArchiveTabs());
 
     var panels = h("div", "archive-panels");

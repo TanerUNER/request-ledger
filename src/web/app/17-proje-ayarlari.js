@@ -168,6 +168,9 @@
     if(!state.ledgerId) state.ledgerId = newLedgerId();
     state.project = project.name;
     state.projectCreated = true;
+    if(serverFolderMode() && !project.folder){
+      serverProjectFolder(project.id, project.name, project.folder).catch(function(){ /* best effort */ });
+    }
     const registry = readRegistry();
     if(registry){
       registry.activeId = project.id;
@@ -231,6 +234,9 @@
       localStorage.setItem(projectLedgerKey(project.id), JSON.stringify(payload));
     }catch(err){
       console.warn("Proje defteri yazılamadı", err);
+    }
+    if(serverFolderMode()){
+      serverProjectFolder(project.id, project.name, "").catch(function(){ /* best effort */ });
     }
     activeProjectId = project.id;
     targetFolderHandle = null;

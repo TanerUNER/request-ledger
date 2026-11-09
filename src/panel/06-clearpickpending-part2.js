@@ -136,7 +136,7 @@
       backupBusy = false;
     }
 
-    els.title.textContent = (section === "project" || section === "projects") ? projectSectionTitle() : sectionText(spec, "title");
+    els.title.textContent = sectionText(spec, "title");
     var req = activeRequest();
     if(req && (section === "detail" || section === "page" || section === "desc" || section === "export")){
       els.chip.hidden = false;
@@ -155,12 +155,10 @@
 
     if(section === "new") renderNew(scroller);
     else if(section === "list") renderList(scroller);
-    else if(section === "project" || section === "projects") renderProject(scroller);
     else if(section === "detail") renderDetail(scroller);
     else if(section === "page") renderPage(scroller);
     else if(section === "desc") renderDesc(scroller);
     else if(section === "export") renderExport(scroller);
-    else if(section === "settings") renderSettings(scroller);
     else if(section === "backup") renderBackup(scroller);
     else if(section === "help") renderHelp(scroller);
     else renderPlaceholder(scroller, section);
@@ -169,13 +167,7 @@
     applyFlyoutMax();
     showDockSaveState();
     syncStorageUI();
-
-    if(section === "settings"){
-      applySettingsTab();
-      els.body.scrollTop = settingsScroll[settingsTab] || 0;
-    }else{
-      els.body.scrollTop = 0;
-    }
+    els.body.scrollTop = 0;
     lastSize = -1;
     requestAnimationFrame(reportSize);
   }

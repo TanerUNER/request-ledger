@@ -94,9 +94,11 @@ bağlıdır; yalnızca sunucu modunu ve Chrome yardımcısı çevresindeki kolay
 - Kayıtlar, Taslaklar ve dışa aktarma geçmişi;
 - arşiv durumu ve proje adı.
 
-Proje değiştirirken kaydedilmemiş değişiklik onayı devreye girer. Proje kimlikleri hiçbir zaman
-birleştirilmez; benzer adlı iki proje ayrı kalır. Port değişikliği yeni bir tarayıcı kaynağı demektir:
-uygulama sizi uyarır, önce ZIP yedeği indirmeyi önerir ve yeni kaynakta geri yükleme istemi gösterir.
+Projeler uygulamaya aittir; Chrome yardımcısı yalnızca etkin projeyi yansıtır ve kendi proje yönetim
+arayüzü yoktur. Proje değiştirirken kaydedilmemiş değişiklik onayı devreye girer. Proje kimlikleri
+hiçbir zaman birleştirilmez; benzer adlı iki proje ayrı kalır. Port değişikliği yeni bir tarayıcı
+kaynağı demektir: uygulama sizi uyarır, önce ZIP yedeği indirmeyi önerir ve yeni kaynakta geri yükleme
+istemi gösterir.
 
 <a id="iki-calistirma-modu"></a>
 ## İki çalıştırma modu
@@ -106,30 +108,48 @@ uygulama sizi uyarır, önce ZIP yedeği indirmeyi önerir ve yeni kaynakta geri
 | **Nasıl başlatılır** | `request-ledger.html` veya `index.html` dosyasını doğrudan açın ya da statik olarak yayınlayın. | Windows’ta `start.cmd`, her yerde `node scripts/serve.cjs 8080`. |
 | **En iyi olduğu yer** | Kopyalanabilen, arşivlenebilen veya çevrimdışı açılan taşınabilir dosya. | Sabit yerel adres, görünür sunucu durumu, durdurma düğmesi ve hatırlanan port. |
 | **Uzantı köprüsü** | Uzantı kuruluysa ve dosya URL’lerine erişim izni varsa çalışır. | Uygulama sekmesi açıkken `localhost` veya `127.0.0.1` üzerinde çalışır. |
-| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; canlı sekme varken açık kalır, açıkça durdurulur veya canlı sayfa kalmadıktan en az 5 dakika sonra kapanır. |
+| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; açıkça durdurulur, son uygulama sekmesi kapandıktan ~5 saniye sonra ya da canlı sayfa olmadan 5 dakika geçince (yedek davranış) kapanır. |
 | **Gereksinim** | Güncel bir tarayıcı. | `PATH` üzerinde Node.js 18 veya daha yenisi. |
 
 `start.cmd` sunucuyu konsol penceresi olmadan başlatır, tarayıcıyı açar ve süreç kimliği ile portu
-`.rl-server.lock` dosyasına yazar. Son portu `.rl-port` içinde hatırlar; port doluysa boş bir portta
-başlar ve bunu size söyler. `stop.cmd` kilidi okur ve sunucuyu kapatır.
+`.rl-server.lock` dosyasına yazar. Son portu `.rl-port` içinde hatırlar (`0` otomatik demektir); port
+doluysa boş bir portta başlar ve bunu size söyler. `stop.cmd` kilidi okur ve sunucuyu kapatır.
+
+### Sunucu yaşam döngüsü ve proje klasörleri
+
+Uygulamayı yenilemek, gezinmek veya sekmeyi arka planda tutmak sunucuyu yaşatır. Son uygulama sekmesi
+kapanınca kapatma sinyali gider ve sunucu **5 saniyelik ek süreden** sonra durur; port serbest kalır ve
+kilit dosyası silinir. Bu pencerede açılan başka bir sekme veya yenileme kapanmayı iptal eder. Kapatma
+sinyali hiç ulaşmazsa (örneğin çökmüş bir sekme), başlatıcının 300 saniyelik boşta durma kuralı yedek
+davranıştır. `stop.cmd` yine hemen kapatır.
+
+Sunucu modunda her proje uygulama dizininde `projects/<proje-adı>/` klasörüne sahiptir. **Kaydet** geçerli
+defter anlık görüntüsünü buraya (`ledger.json`) yazar; **Dışa Aktar** hedef klasör seçiliyse oraya,
+seçili değilse proje klasöründeki `exports/` dizinine yazar. Arşiv proje listesi/kayıtları bu klasör
+bilgisini okur. `file://` modunda sunucu klasörü yazımı yoktur: Kaydet/Dışa Aktar açık bir “klasör
+kaydı için sunucu modu gerekli” mesajı gösterir ve tarayıcı indirmesine düşer.
 
 <a id="chrome-yardimcisi"></a>
 ## Chrome yardımcısı
 
-`extension/` klasörü, Chrome ve Edge 114+ için paketlenmemiş bir **Manifest V3** uzantısıdır. Her
-sayfanın sağ alt köşesine 44 px’lik bir açıcı ve 360 px’lik bir panel ekler; sayfayı yeniden akıtmaz.
+`extension/` klasörü Chrome ve Edge 114+ için paketlenmemiş bir **Manifest V3** uzantısıdır. Bir
+**yardımcıdır**: yalnızca Request Ledger uygulaması açıkken görünür. Sayfaların sağ alt köşesine 44 px
+bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
 
 | Yetenek | Ne yapar? |
 |---|---|
-| **Canlı köprü** | Uygulama `file://`, `http://localhost:<port>` veya `http://127.0.0.1:<port>` üzerinde açıkken istekler ve proje adı iki yönlü eşitlenir. Köprü proje kimliklerini izler; farklı projeleri birleştirmez. |
-| **Öğe seçici** | Geçerli sayfada veya uygulamadan seçilen başka bir sekmede öğe seçin. CSS seçici ve okunabilir konum isteğe dolar. |
-| **Ekran görüntüsü** | Bir sekme seçin, istediğiniz bölgeyi kırpın ve görseli etkin isteğe ekleyin. Sayfa yolu otomatik dolar. |
-| **Öğe + ekran görüntüsü** | Öğeyi seçin ve aynı bölgeyi tek adımda yakalayın. Sayfa, konum ve görsel birlikte gelir. |
-| **Panelde istek masası** | Sayfadan ayrılmadan istek oluşturun, düzenleyin, arayın, sıralayın ve onaylayın. |
+| **Canlı yardımcı** | Uygulama gerekir. Açıkken istekler, medya ve etkin proje iki yönde eşitlenir. Uygulama kapalıyken **hiçbir uzantı arayüzü görünmez** — ray, açıcı, iframe veya kilit kartı yoktur. Uygulama açılınca kendiliğinden geri gelir. |
+| **Uygulama sahipli projeler** | Projeler yalnızca uygulamada oluşturulur, yeniden adlandırılır, değiştirilir ve silinir. Uzantı her zaman uygulamanın etkin projesini izler; proje listesi, seçici veya oluşturma arayüzü yoktur. |
+| **Medya eşitleme** | Yapıştırma, dosya yükleme, ekran görüntüsü ve öğe+ekran görüntüsü görselleri köprüden geçer. Öğe başına sınır 8 MB'tır; daha büyük öğeler yalnızca yedek ZIP ile taşınır. |
+| **Öğe seçici** | Geçerli sayfada veya uygulamadan seçilen başka bir sekmede öğe seçin. Tekrarlanan seçimler iki yüzeyde de `" | "` ile eklenir (yinelenenler ayıklanır, 200 karakter sınırı). |
+| **Ekran görüntüsü** | Bir sekme seçin, bölgeyi kırpın ve görseli etkin isteğe ekleyin. Sayfa yolu otomatik dolar. |
+| **Panelde istek masası** | Sayfadan ayrılmadan istek oluşturun, düzenleyin, arayın, sıralayın ve onaylayın. Hazır/kilitli isteklerde görsel önizleme açılır; düzenleme açılmaz. |
+| **Panel teması** | Kaldırılan Ayarlar bölümünün yerine rayda açık/koyu tema düğmesi vardır; `rl-theme` olarak saklanır ve ana sayfa temasını değiştirmez. |
 | **Yedek ve aktarım** | ZIP veya JSON yedeği indirin, geri yükleyin ya da veriyi uzantı ile web uygulaması arasında taşıyın. |
 
-Köprü **yalnızca metin** taşır. Görseller ve dosya ekleri canlı köprüden değil, yalnızca yedek ZIP’iyle
-taşınır. Uzantı kendi depolamasını kullanır; uzak bir hizmet değildir.
+Uzantı `chrome://extensions` üzerinden kendini etkinleştirip devre dışı bırakamaz. Orada devre dışı
+bırakırsanız kendiliğinden geri gelemez; elle yeniden etkinleştirin. Uygulama kapalıyken uzantı
+devre dışı değil, yalnızca görünmezdir.
 
 Kurulum: `chrome://extensions` → **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension/`
 klasörünü seçin (veya `request-ledger-extension.zip` dosyasını açıp klasörü seçin). Sabit uzantı
@@ -233,9 +253,14 @@ sayfalardaki ekran görüntülerini herkese açık kabul edin.
 
 - **Mobil kapsam dışıdır.** Düzen masaüstü (1440 px), dizüstü (1280 px) ve tablet (1024 px)
   genişliklerini hedefler.
-- Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL’lerine erişim izni varsa köprü yine
-  bağlanabilir.
-- Canlı köprü **yalnızca metin** taşır. Görseller ve dosya ekleri yalnızca yedek ZIP’iyle taşınır.
+- Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL'lerine erişim izni varsa köprü yine
+  bağlanabilir; ancak sunucu proje klasörüne yazım yoktur.
+- Canlı medya eşitleme **öğe başına 8 MB** ile sınırlıdır. Daha büyük görseller/ekler ve taşınabilir
+  arşivdeki tüm medya yedek ZIP ile taşınır.
+- Uzantı bir yardımcıdır: uygulama çalışmıyorken hiçbir sayfada arayüz göstermez. `chrome://extensions`
+  üzerinden devre dışı bırakılırsa kendini yeniden etkinleştiremez.
+- Projeler uygulama tarafından yönetilir; uzantı tek başına proje oluşturamaz, listeleyemez veya
+  değiştiremez.
 - Yedekler düz metindir. Tema ve dışa aktarma geçmişi yedeğe dahil değildir.
 - Geri yükleme uygulamanın sakladığı ZIP girdilerini bekler; yeniden sıkıştırılmış bir arşiv
   reddedilebilir.

@@ -161,6 +161,27 @@ async function main() {
     await waitFor(() => evaluate(cdp, pageSession, "!!document.getElementById('rl-host')"), "dock mount");
     check("dock host mounts on an http page", true);
 
+    /* The app is the project authority. Create its project before using the
+       panel; the extension has no project creation UI. */
+    await evaluate(cdp, pageSession, `(() => {
+      const done = document.getElementById('onboardingDoneBtn');
+      const modal = document.getElementById('onboardingModal');
+      if (modal && modal.classList.contains('is-open') && done) done.click();
+      return true;
+    })()`);
+    await sleep(300);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "!!document.getElementById('projectCreateInput')"), "app project creator", 15000);
+    await evaluate(cdp, pageSession, `(() => {
+      const input = document.getElementById('projectCreateInput');
+      input.value = 'E2E Test';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('projectCreateBtn').click();
+      return true;
+    })()`);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.projectId()"), "app project bridge", 15000);
+
     await evaluate(cdp, pageSession, "document.getElementById('rl-launcher').click()");
     const targets = await waitFor(async () => {
       const current = await cdp.send("Target.getTargets");
@@ -178,16 +199,6 @@ async function main() {
       "(() => { const b = document.getElementById('rl-storage-banner'); return b ? !b.hidden : true; })()"
     );
     check("storage banner is hidden", banner === false, banner);
-
-    await evaluate(cdp, dockSession, `document.querySelector('[data-section="project"]').click()`);
-    await sleep(600);
-    await evaluate(cdp, flyoutSession, `(() => {
-      const input = document.getElementById('rl-project-input');
-      input.value = 'E2E Test';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('[data-act="save-project"]').click();
-    })()`);
-    await sleep(900);
 
     await evaluate(cdp, dockSession, `document.querySelector('[data-section="new"]').click()`);
     await sleep(700);

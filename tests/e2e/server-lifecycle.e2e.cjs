@@ -367,6 +367,10 @@ async function main() {
     check("previous same-app server exits", exited === true);
     serverA = null;
 
+    const plainTarget = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/tests/fixtures/picker-target.html" });
+    const plainSession = await attach(cdp, plainTarget.targetId);
+    await waitFor(() => evaluate(cdp, plainSession, "!!document.getElementById('rl-host')"), "plain page host", 20000);
+
     /* Explicit Stop from the app: the app becomes blocked, the heartbeat and
        bridge stop, and the panel switches to "App server stopped" without
        applying further bridge traffic. */
@@ -391,20 +395,13 @@ async function main() {
     })()`), "app server blocked state", 10000);
     check("Stop: app shows the blocked server state",
       blocked.visible === true && blocked.inert === true && blocked.serverStopped === true, blocked);
-    const panelStopped = await waitFor(() => evaluate(cdp, panel.flyoutSession, `(() => {
-      const state = {
-        stopped: window.__rlBridgePanel.serverStopped(),
-        connected: window.__rlBridgePanel.connected()
-      };
-      return state.stopped && !state.connected ? state : null;
-    })()`), "panel app-server-stopped state", 10000);
-    check("panel reports App server stopped and disconnects",
-      panelStopped.stopped === true && panelStopped.connected === false, panelStopped);
-    await evaluate(cdp, panel.dockSession, "window.RLPanel.open('settings')");
-    await sleep(600);
-    const panelStopText = await evaluate(cdp, panel.flyoutSession,
-      "(document.getElementById('rl-bridge-text') || {}).textContent || ''");
-    check("panel visibly shows App server stopped", /App server stopped/i.test(panelStopText), panelStopText);
+    const hostHidden = await waitFor(() => evaluate(cdp, appSession,
+      "!document.getElementById('rl-host')"), "extension host hides after stop", 9000).catch(() => false);
+    check("stopped server hides the extension host completely", hostHidden === true);
+    const plainHostHidden = await waitFor(() => evaluate(cdp, plainSession,
+      "!document.getElementById('rl-host')"), "plain page host hides after stop", 9000).catch(() => false);
+    check("stopped server hides the extension on other pages too", plainHostHidden === true);
+    try { await cdp.send("Target.closeTarget", { targetId: plainTarget.targetId }); } catch (error) { /* ignore */ }
     await screenshot(cdp, appSession, "05-server-blocked.png");
     const stoppedApp = await evaluate(cdp, appSession, `(() => {
       const raw = localStorage.getItem('oz-istek-defteri-p-${P_LIFE}');
@@ -522,6 +519,20 @@ async function main() {
     } catch (error) { warning = false; }
     check("fallback warning is visible", warning === true);
     await screenshot(cdp, fallbackSession, "02-fallback-warning.png");
+
+    /* Closing one of two app tabs must not stop the server; closing the last
+       live app page starts the 5 s close grace. Reload already survived above. */
+    const secondApp = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html" });
+    const secondSession = await attach(cdp, secondApp.targetId);
+    await sleep(1800);
+    await cdp.send("Target.closeTarget", { targetId: secondApp.targetId });
+    await sleep(6500);
+    const stillAlive = await fetch("http://127.0.0.1:" + portA + "/__rl/status").then((response) => response.ok).catch(() => false);
+    check("closing one app tab keeps the server alive", stillAlive === true);
+    await cdp.send("Target.closeTarget", { targetId: appTarget.targetId });
+    await sleep(6500);
+    const stoppedByClose = await fetch("http://127.0.0.1:" + portA + "/__rl/status").then((response) => response.ok).catch(() => false);
+    check("closing the last app tab stops the server", stoppedByClose === false);
 
     const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in server lifecycle flow", errors.length === 0,

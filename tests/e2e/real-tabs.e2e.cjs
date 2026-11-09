@@ -35,7 +35,7 @@ const CHROME_CANDIDATES = [
 ];
 const PORT = 9342;
 const PROFILE = path.join(os.tmpdir(), "rl-real-tabs-e2e-profile");
-const PROJECT_NAME = "Real Tabs Project";
+const PROJECT_NAME = "Real Tabs Project E2E";
 const TARGET_PATH = "tests/fixtures/picker-target.html";
 
 const checks = [];
@@ -368,31 +368,13 @@ async function main() {
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
-    /* Plain page with the server alive but no app page: the active probe must
-       lock the panel. */
-    const earlyTarget = await cdp.send("Target.createTarget", { url: base + "/" + TARGET_PATH });
-    const earlySession = await attach(cdp, earlyTarget.targetId);
-    await waitFor(() => evaluate(cdp, earlySession, "!!document.getElementById('rl-host')"), "early host", 25000);
-    const earlyPanel = await openPanel(cdp, earlySession);
-    const earlyLocked = await waitFor(async () => {
-      const state = await readPanel(cdp, earlyPanel.flyoutSession);
-      return state.presence && state.presence.checked && state.presence.open === false && state.locked ? state : null;
-    }, "panel locks without an app page", 12000);
-    check("no app page locks the extension", earlyLocked.locked === true, earlyLocked);
-
-    /* Tab A: the real app. The existing panel must unlock without reloading. */
+    /* Tab A: the real app. */
     const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html" });
     let appSession = await attach(cdp, appTarget.targetId);
     await sleep(900);
     await dismissOnboarding(cdp, appSession);
     await waitFor(() => evaluate(cdp, appSession, "!!document.getElementById('projectCreateInput')"), "project creator", 20000);
-    const earlyUnlocked = await waitFor(async () => {
-      const state = await readPanel(cdp, earlyPanel.flyoutSession);
-      return state.presence && state.presence.open && state.locked === false ? state : null;
-    }, "panel unlocks when the app opens", 12000);
-    check("opening the app unlocks the existing panel", earlyUnlocked.presence.open === true, earlyUnlocked);
-    try { await cdp.send("Target.closeTarget", { targetId: earlyTarget.targetId }); } catch (error) { /* ignore */ }
-
+    await waitFor(() => evaluate(cdp, appSession, "!!document.getElementById('rl-host')"), "companion host", 20000);
     /* The panel exists before the project does: it must adopt the app's id
        when the project is created later in the same session. */
     let appPanel = await openPanel(cdp, appSession);
@@ -421,6 +403,34 @@ async function main() {
     const panelAfterCreate = await readPanel(cdp, appPanel.flyoutSession);
     check("panel adopts the app ledger id before the first request",
       panelAfterCreate.ledgerId === afterCreate.bridge.ledgerId, panelAfterCreate);
+
+    const panelSections = await evaluate(cdp, appPanel.dockSession,
+      "Array.from(document.querySelectorAll('.item[data-section]')).map((node) => node.getAttribute('data-section'))");
+    check("extension has no Projects or Settings rail section",
+      !panelSections.includes("project") && !panelSections.includes("projects") && !panelSections.includes("settings"),
+      panelSections);
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await sleep(500);
+    check("Requests no longer contains a Projects block",
+      await evaluate(cdp, appPanel.flyoutSession,
+        "!document.getElementById('rl-project-picker-tree') && !document.querySelector('.archive__projects')") === true);
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
+    await sleep(400);
+
+    /* Panel-only theme toggle, persisted as rl-theme. */
+    const appThemeBefore = await evaluate(cdp, appSession,
+      "document.documentElement.getAttribute('data-theme')");
+    const themeBefore = await evaluate(cdp, appPanel.flyoutSession,
+      "document.documentElement.getAttribute('data-theme')");
+    await evaluate(cdp, appPanel.dockSession, "document.getElementById('rl-theme-toggle').click()");
+    const themeAfter = await evaluate(cdp, appPanel.flyoutSession,
+      "document.documentElement.getAttribute('data-theme')");
+    const storedTheme = await evaluate(cdp, appPanel.dockSession,
+      "new Promise((resolve) => chrome.storage.local.get('rl-theme', (value) => resolve(value['rl-theme'] || ''))) ");
+    check("panel theme toggle flips the panel only",
+      themeAfter !== themeBefore && themeAfter === storedTheme &&
+      await evaluate(cdp, appSession, "document.documentElement.getAttribute('data-theme')") === appThemeBefore,
+      { themeBefore, themeAfter, storedTheme, appThemeBefore });
 
     /* First request through the real app UI. */
     await evaluate(cdp, appSession, "document.getElementById('emptyAddBtn').click()");
@@ -464,6 +474,56 @@ async function main() {
       panelAfterTyping.section === null && afterTyping.flyoutDisplay === "none",
       { section: panelAfterTyping.section, flyoutDisplay: afterTyping.flyoutDisplay });
 
+    /* Server project folder + Save + Export + archive read. */
+    const projectsRoot = path.join(ROOT, "projects");
+    let projectSlug = "";
+    let projectFolder = "";
+    await waitFor(() => {
+      if (!fs.existsSync(projectsRoot)) return false;
+      const found = fs.readdirSync(projectsRoot).find((name) => {
+        try {
+          const meta = JSON.parse(fs.readFileSync(path.join(projectsRoot, name, "project.json"), "utf8"));
+          return meta.projectId === appProjectId;
+        } catch (error) { return false; }
+      });
+      if (!found) return false;
+      projectSlug = found;
+      projectFolder = path.join(projectsRoot, found);
+      return true;
+    }, "server project folder", 12000);
+    check("app project creation creates projects/<slug>/ on the server",
+      fs.existsSync(path.join(projectFolder, "project.json")) === true);
+    await evaluate(cdp, appSession, "document.getElementById('saveRecordBtn').click()");
+    await waitFor(() => fs.existsSync(path.join(projectFolder, "ledger.json")), "server ledger save", 12000);
+    const savedLedger = JSON.parse(fs.readFileSync(path.join(projectFolder, "ledger.json"), "utf8"));
+    check("Save writes the ledger snapshot into the project folder",
+      Array.isArray(savedLedger.requests) && savedLedger.requests.length >= 1, savedLedger.requests && savedLedger.requests.length);
+    const exportResponse = await fetch("http://127.0.0.1:" + port + "/__rl/export", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: appProjectId,
+        name: PROJECT_NAME,
+        slug: projectSlug,
+        files: [{ name: "e2e-export.md", encoding: "base64", content: Buffer.from("# export").toString("base64") }]
+      })
+    }).then((response) => response.json()).catch(() => null);
+    check("Export writes into the project folder when no target is set",
+      exportResponse && exportResponse.ok === true && fs.existsSync(path.join(projectFolder, "exports", "e2e-export.md")), exportResponse);
+    const serverProjects = await fetch("http://127.0.0.1:" + port + "/__rl/projects")
+      .then((response) => response.json()).catch(() => null);
+    check("archive project list can read the server project folders",
+      serverProjects && Array.isArray(serverProjects.projects) &&
+      serverProjects.projects.some((item) => item.projectId === appProjectId && item.slug === projectSlug),
+      serverProjects);
+    const archiveDetail = await evaluate(cdp, appSession, `(() => {
+      const row = document.querySelector('#archiveProjectTree .hitem[data-project-id="' + window.__rlBridge.projectId() + '"]');
+      if (row) row.click();
+      return (document.getElementById('archiveProjectDetail') || {}).innerText || '';
+    })()`);
+    check("archive project detail shows the server folder",
+      archiveDetail.indexOf("projects/" + projectSlug + "/") >= 0, archiveDetail);
+
     /* App -> panel media: a real paste event in the app. */
     await pasteImage(cdp, appSession);
     const appPasted = await waitFor(async () => {
@@ -505,6 +565,33 @@ async function main() {
     check("both surfaces hold both images",
       (panelMedia || []).some((item) => item.images === 2), panelMedia);
     await screenshot(cdp, appSession, "16-media-panel-paste.png");
+
+    /* Ready/locked requests must still allow an image preview, never editing. */
+    await evaluate(cdp, appSession, `(() => {
+      const desc = document.getElementById('desc-IST-001');
+      if (desc) {
+        desc.value = 'Ready preview check.';
+        desc.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const tick = document.querySelector('.req[data-id="IST-001"] [data-action="tick"]');
+      if (tick) tick.click();
+      return !!tick;
+    })()`);
+    await waitFor(() => evaluate(cdp, appSession,
+      "!!document.querySelector('.req[data-id=\"IST-001\"].req--ready')"), "request ready", 8000);
+    const previewOpened = await evaluate(cdp, appSession, `(() => {
+      const open = document.querySelector('.req[data-id="IST-001"] [data-action="view-image"]');
+      if (open) open.click();
+      return !!open;
+    })()`);
+    await waitFor(() => evaluate(cdp, appSession,
+      "document.getElementById('lightboxModal').classList.contains('is-open')"), "ready image preview", 8000);
+    check("Ready/locked request still opens image preview",
+      previewOpened === true &&
+      await evaluate(cdp, appSession,
+        "/^blob:/.test(document.getElementById('lightboxImg').src)") === true);
+    await evaluate(cdp, appSession, "document.querySelector('#lightboxModal [data-close-modal]').click()");
+    await sleep(300);
 
     /* App -> panel attachment upload (the design type exposes attachments). */
     await evaluate(cdp, appSession, "document.getElementById('addBtn').click()");
@@ -626,60 +713,6 @@ async function main() {
       appPanelAfterB.section === null && appPanelAfterB.connected === true, appPanelAfterB);
     await screenshot(cdp, appSession, "12-real-tabs-panel-closed.png");
 
-    /* Dedicated Projects section: list, create through the extension, switch. */
-    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
-    await sleep(400);
-    await evaluate(cdp, appPanel.dockSession, "document.querySelector('.item[data-section=\"projects\"]').click()");
-    await sleep(800);
-    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
-      "!!document.getElementById('rl-project-picker-tree')"), "projects list", 10000);
-    check("Projects section lists the app project",
-      await evaluate(cdp, appPanel.flyoutSession,
-        "Array.from(document.querySelectorAll('#rl-project-picker-tree [data-project-id]')).some((node) => node.innerText.indexOf('Real Tabs Project') >= 0)") === true);
-    await evaluate(cdp, appPanel.flyoutSession, "document.getElementById('rl-project-new').click()");
-    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
-      "!!document.getElementById('rl-project-input')"), "new project form", 5000);
-    await evaluate(cdp, appPanel.flyoutSession, `(() => {
-      const input = document.getElementById('rl-project-input');
-      input.value = 'Panel Created Project';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', bubbles:true, cancelable:true }));
-      return true;
-    })()`);
-    const createdByPanel = await waitFor(async () => {
-      const app = await readApp(cdp, appSession, appProjectId);
-      const project = app.registry && app.registry.projects.find((item) => item.name === 'Panel Created Project');
-      return project && app.activeId === project.id ? app : null;
-    }, "extension-created project reaches the app", 15000);
-    check("extension project creation reaches the app",
-      createdByPanel.registry.projects.length === 2 &&
-      createdByPanel.registry.projects.some((item) => item.name === "Panel Created Project"), createdByPanel.registry);
-    await screenshot(cdp, appSession, "20-projects-panel-created.png");
-    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('projects')");
-    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
-      "!!document.getElementById('rl-project-picker-tree')"), "projects list again", 8000);
-    const switchClicked = await evaluate(cdp, appPanel.flyoutSession, `(() => {
-      const row = document.querySelector('#rl-project-picker-tree [data-project-id="${appProjectId}"]');
-      if (row) row.click();
-      return !!row;
-    })()`);
-    check("Projects section row is clickable", switchClicked === true);
-    const panelSwitched = await waitFor(async () => {
-      const panel = await readPanel(cdp, appPanel.flyoutSession);
-      return panel.projectId === appProjectId ? panel : null;
-    }, "extension panel switches project", 12000);
-    check("extension project switch changes the panel project",
-      panelSwitched.projectId === appProjectId, panelSwitched);
-    check("a different panel project is shown as a mismatch, not a conflict",
-      panelSwitched.conflict === false, panelSwitched);
-    await screenshot(cdp, appSession, "21-projects-panel-switched.png");
-    /* The app remains the hub; return it to the data project through its UI. */
-    await openAppProject(cdp, appSession, appProjectId);
-    await waitFor(() => evaluate(cdp, appSession,
-      "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(appProjectId)), "app back on data project", 15000);
-    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
-      "window.__rlBridgePanel && window.__rlBridgePanel.projectId() === " + JSON.stringify(appProjectId)), "panel back on data project", 15000);
-
     /* Reload Tab A: identity and data must survive. */
     await cdp.send("Page.reload", {}, appSession);
     await sleep(2600);
@@ -726,9 +759,9 @@ async function main() {
       sleep(8000).then(() => false),
     ]);
     check("Stop blocks the app and stops the server", stoppedProcess === true);
-    const lockedPanel = await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
-      "window.__rlBridgePanel && window.__rlBridgePanel.locked()"), "panel locks after stop", 10000);
-    check("Stop locks the extension panel immediately", lockedPanel === true);
+    const stopHidHost = await waitFor(() => evaluate(cdp, appSession,
+      "!document.getElementById('rl-host')"), "extension host hides after stop", 10000).catch(() => false);
+    check("Stop removes the extension UI completely", stopHidHost === true);
     stopChild(server);
     server = null;
     await sleep(500);

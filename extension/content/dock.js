@@ -3110,6 +3110,12 @@
 
   function onPageHide(event) {
     if (event && event.persisted) { return; }
+    try {
+      if (document.documentElement.getAttribute("data-request-ledger-app") === "1" &&
+          window.location.protocol === "file:" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ "rl-app-alive": false, "rl-app-mode": "", "rl-app-file-at": 0 });
+      }
+    } catch (error) { /* ignore */ }
     teardownHost();
   }
 
@@ -3377,6 +3383,93 @@
     addStorageListener();
   }
 
+  var appAliveNow = false;
+  var appAliveListenerOn = false;
+  var appPresenceTimer = null;
+
+  function applyAppAlive(alive) {
+    appAliveNow = alive === true;
+    if (teardown || hostSuspended) return;
+    if (appAliveNow) {
+      if (!hostEl) mount();
+      readStoredSide(function (nextSide) {
+        if (teardown || !hostEl) return;
+        sideReady = true;
+        commitSide(nextSide, { persist: false, notify: false });
+      });
+    } else if (hostEl) {
+      unmountHost();
+    }
+  }
+
+  function onAppAliveChanged(changes, area) {
+    if (area !== "local" || !changes["rl-app-alive"]) return;
+    applyAppAlive(changes["rl-app-alive"].newValue === true);
+  }
+
+  function watchAppAlive() {
+    try {
+      if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+      chrome.storage.local.get(["rl-app-alive"], function (values) {
+        applyAppAlive(values && values["rl-app-alive"] === true);
+      });
+      if (!appAliveListenerOn && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener(onAppAliveChanged);
+        appAliveListenerOn = true;
+      }
+      if (!appPresenceTimer && chrome.runtime && chrome.runtime.sendMessage) {
+        var ping = function () {
+          try {
+            chrome.runtime.sendMessage({ type:"RL_APP_PRESENCE", port:Number(window.location.port) || 0 }, function (response) {
+              var error = chrome.runtime && chrome.runtime.lastError;
+              if (error || !response) return;
+              applyAppAlive(response.open === true);
+            });
+          } catch (error) { /* ignore */ }
+        };
+        ping();
+        appPresenceTimer = setInterval(ping, 5000);
+      }
+    } catch (error) { /* ignore */ }
+  }
+
+  function markAppPageAlive() {
+    try {
+      if (document.documentElement.getAttribute("data-request-ledger-app") !== "1") return;
+      if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+      var fileMode = window.location.protocol === "file:";
+      chrome.storage.local.set({
+        "rl-app-alive": true,
+        "rl-app-mode": fileMode ? "file" : "server",
+        "rl-app-file-at": fileMode ? Date.now() : 0,
+        "rl-app-port": fileMode ? 0 : (Number(window.location.port) || 0)
+      });
+    } catch (error) { /* ignore */ }
+  }
+
+  function watchAppStopMarker() {
+    try {
+      if (document.documentElement.getAttribute("data-request-ledger-app") !== "1") return;
+      if (typeof MutationObserver !== "function") return;
+      var observer = new MutationObserver(function () {
+        var stopped = document.documentElement.getAttribute("data-rl-server-stopped") === "1";
+        try {
+          if (stopped) chrome.storage.local.set({ "rl-app-alive": false });
+          else {
+            var fileMode = window.location.protocol === "file:";
+            chrome.storage.local.set({
+              "rl-app-alive": true,
+              "rl-app-mode": fileMode ? "file" : "server",
+              "rl-app-file-at": fileMode ? Date.now() : 0,
+              "rl-app-port": fileMode ? 0 : (Number(window.location.port) || 0)
+            });
+          }
+        } catch (error) { /* ignore */ }
+      });
+      observer.observe(document.documentElement, { attributes:true, attributeFilter:["data-rl-server-stopped"] });
+    } catch (error) { /* ignore */ }
+  }
+
   function boot() {
     if (teardown || hostSuspended) { return; }
     if (!isPageAllowed()) { return; }
@@ -3385,14 +3478,9 @@
       document.addEventListener("DOMContentLoaded", boot, { once: true });
       return;
     }
-    mount();
-    /* v9 §19: the persisted placement is applied before the first paint;
-       the panel repeats it through RL_PANEL_SIDE once its dock is ready. */
-    readStoredSide(function (nextSide) {
-      if (teardown) { return; }
-      sideReady = true;
-      commitSide(nextSide, { persist: false, notify: false });
-    });
+    markAppPageAlive();
+    watchAppStopMarker();
+    watchAppAlive();
   }
 
   /* ---- runtime control (picker-only flow) ---------------------------- */

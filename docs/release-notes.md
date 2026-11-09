@@ -16,12 +16,12 @@ New capabilities and fixes:
   so the item-level merge can no longer drop the confirmation.
 - **No auto-opened panel section.** Bridge project adoption preserves a closed panel or the user's
   last explicit section; it never opens a section on its own.
-- **Projects / Requests layout.** One tab strip now sits between the Projects block and the active
-  pane. The tab-like New project action and the stray list divider were removed; the active tab,
-  search focus and scroll position survive bridge updates.
-- **Server lifecycle.** A backgrounded live tab cannot idle-stop the server. The grace period is
-  five minutes and starts only after a pagehide marker (or when no page ever heartbeated). F5 keeps
-  the same port.
+- **Projects / Requests layout.** One tab strip now sits below the Requests header and above the
+  active pane. The panel has no Projects block, tab-like New project action or stray list divider;
+  the active tab, search focus and scroll position survive bridge updates.
+- **Server lifecycle.** A backgrounded live tab cannot idle-stop the server. Closing the last app tab
+  stops it after a 5-second grace; 300 s without a live page is only the fallback when no pagehide
+  marker arrives. F5 keeps the same port and cancels a pending shutdown.
 - **Same-app port reuse.** If the requested port belongs to the same app, that instance is stopped
   and the same port is reused instead of silently changing the origin.
 - **Fallback warning.** An unrelated busy port still falls back; the page is served with
@@ -30,6 +30,26 @@ New capabilities and fixes:
   projects never trigger a global “Two ledgers found” dialog. Reload reopens the last active
   project and its own ledger. The old “Ortak Zemin” record is renamed to the neutral translated
   “Imported project” and remains a normal, deletable project.
+
+### Companion simplification
+
+- The extension is now a true companion: no app running means **no extension UI at all** (no rail,
+  launcher, iframe or lock card). It returns automatically when the app starts. It cannot re-enable
+  itself after being disabled in `chrome://extensions`.
+- Projects are app-owned. The extension has no project list, creation, switching or project modal; it
+  follows the app’s active project automatically.
+- Media syncs both ways through the bridge (paste, upload, screenshot, element+screenshot), with an
+  **8 MB per-item cap**; larger items travel only with a backup ZIP.
+- Repeated element selections append with `" | "` on both surfaces, deduped and capped at 200 chars.
+- The extension Settings section and folder pickers are removed. A panel-only light/dark toggle is
+  stored as `rl-theme`.
+- Ready/locked requests still open the image preview; editing remains blocked.
+- Server mode creates `projects/<project-slug>/`; Save writes the ledger snapshot, Export writes to
+  the chosen target or the project folder’s `exports/`, and archive project metadata reads the folder
+  list. `file://` mode has no folder writes and shows a server-mode-required message with download
+  fallback.
+- The local server stops **~5 s after the last app tab closes**, survives reload, releases the port,
+  removes the lock file, and restarts/reconnects with `start.cmd`. `stop.cmd` still works.
 
 ## Previous release — 1.9.1 / 1.9.4 — workspace, capture tools and a calmer setup
 
@@ -73,8 +93,8 @@ Updates and fixes:
 Executed on 2026-11-09:
 
 ```
-node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 19 files, zip 961 KB
-                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1664 KB)
+node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 19 files, zip 963 KB
+                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1685 KB)
 node scripts/check-inline.cjs                  -> Inline scripts OK: 2 block(s) in index.html
 node scripts/build.cjs --check                 -> Release check OK: web 1.9.2, extension 1.9.5, 19 files
 node tests/e2e/extension.e2e.cjs               -> 28/28 checks passed
@@ -83,9 +103,11 @@ node tests/e2e/picker.e2e.cjs                  -> 29/29 checks passed
 node tests/e2e/capture-tools.e2e.cjs           -> 20/20 checks passed
 node tests/e2e/file-bridge.e2e.cjs             -> 32/32 checks passed
 node tests/e2e/project-consistency.e2e.cjs     -> 39/39 checks passed
-node tests/e2e/real-tabs.e2e.cjs               -> 35/35 checks passed
+node tests/e2e/real-tabs.e2e.cjs               -> 37/37 checks passed
 node tests/e2e/real-tabs-conflict.e2e.cjs      -> 6/6 checks passed
-node tests/e2e/server-lifecycle.e2e.cjs        -> 23/23 checks passed
+node tests/e2e/server-lifecycle.e2e.cjs        -> 25/25 checks passed
+README image verification                      -> 12 images, 9 local links per README resolved
+test bundle                                    -> README.md and README.tr.md included
 ```
 
 ## Previous release verification — 1.9.1 / 1.9.4
@@ -123,15 +145,20 @@ node .opencode/workspace/tmp/release-readme/verify-readme-images.cjs
 
 ## Limitations
 
-- The bridge is **text only**. Images and attachments are not synced live; they travel only with a
-  backup ZIP.
+- Live media sync is capped at **8 MB per item**. Larger images/attachments travel only with a backup
+  ZIP.
+- The extension is a companion: with no app running it shows no UI at all, and it cannot re-enable
+  itself after being disabled in `chrome://extensions`.
+- Projects are app-owned; the extension cannot create, list or switch projects on its own.
 - The single HTML file cannot start a local server. The bridge and picker need the extension and, on
-  `file://`, Chrome's permission to run the extension on file URLs.
+  `file://`, Chrome's permission to run the extension on file URLs; `file://` has no server
+  project-folder writes.
 - Server mode requires Node.js 18 or newer on `PATH`.
 - `start.cmd` / `stop.cmd` are Windows launchers. `scripts/serve.cjs` itself also runs on macOS and
   Linux.
-- The lazy auto-stop applies when the port is `0` (launcher mode) or `--auto-stop` is passed. A
-  manual `node scripts/serve.cjs 8080` stays up for development and e2e suites.
+- The launcher's server stops ~5 s after the last app tab closes; 300 s without a live page is the
+  fallback when no close signal arrives. A manual `node scripts/serve.cjs 8080` stays up for
+  development and e2e suites.
 - `file://` was verified in Chrome 157 only; other browsers may isolate or restrict storage.
 - Mobile is out of scope for the 1.9.x layout work.
 
@@ -146,7 +173,8 @@ visual polish.
 
 1. **The web app still contains its own implementation of the domain.** The extension consumes the
    generated `extension/src/core.js`; the web app does not.
-2. **The live bridge is text-only.** Media moves only with a backup ZIP.
+2. **Live media sync is capped at 8 MB per item.** Larger images/attachments move only with a backup
+   ZIP. Projects are managed only in the app; the extension cannot create, list or switch them.
 3. **Design tokens are shared from one file but the panel stylesheet is still large.**
 4. **`file://`** is verified in Chrome 157 only; Firefox and Safari remain unmeasured.
 5. **Screenshot preview still passes through the host page** while open; documented in the extension

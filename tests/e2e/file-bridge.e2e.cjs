@@ -297,8 +297,8 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
       body:box('#rl-sec-body')
     };
   })()`);
-  check(mode + " list layout has one tab strip below Projects",
-    layout.tabStrips === 1 && layout.projects && layout.tabs && layout.projects.bottom <= layout.tabs.top + 1,
+  check(mode + " list layout has no Projects block above the tab strip",
+    layout.tabStrips === 1 && layout.projects === null && layout.tabs,
     layout);
   check(mode + " list pane is below the tab strip and shows a row",
     layout.pane && layout.pane.top >= layout.tabs.bottom - 1 && layout.row && layout.row.top >= layout.progress.bottom - 1,

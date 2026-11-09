@@ -1345,6 +1345,10 @@ html.is-image-preview .flyout-card{visibility:hidden}
   width:100%;align-items:stretch;text-align:left;
   font:inherit;color:inherit;cursor:pointer;
 }
+.project-row:hover,.project-row:focus,.project-row:focus-visible,.project-row:active{
+  border-color:var(--line);background:var(--surface-2);color:var(--ink);
+  outline:none;
+}
 .project-row[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .project-current{
   align-self:flex-start;margin-left:13px;padding:1px 6px;border-radius:99px;
@@ -2161,21 +2165,7 @@ html[data-theme="dark"] .toast{
 .sel-opt:focus-visible,
 .exp-warn-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
 
-/* Companion lock: active presence probe failed. Covers the panel content and
-   blocks all create/edit/ready/export/backup actions. */
-.companion-lock{
-  position:fixed;inset:0;z-index:2147483004;display:grid;place-items:center;
-  padding:14px;background:var(--paper);color:var(--ink);
-}
-.companion-lock[hidden]{display:none}
-.companion-lock__card{
-  width:100%;max-width:310px;padding:18px 16px;border:1px solid var(--line);
-  border-radius:14px;background:var(--card);box-shadow:0 18px 46px rgba(32,28,20,.18);
-}
-.companion-lock__card .eyebrow{color:var(--accent-dark)}
-.companion-lock__card b{display:block;margin:5px 0 7px;font-size:14px;line-height:1.25}
-.companion-lock__card p{margin:0 0 9px;font-size:10.5px;line-height:1.5;color:var(--muted)}
-.companion-lock__steps{margin:0 0 12px;padding-left:16px;font-size:9.5px;line-height:1.55;color:var(--muted)}
-.companion-lock__steps li{margin-bottom:3px}
-html[data-theme="dark"] .companion-lock{background:#171614;color:#ede8df}
-html[data-theme="dark"] .companion-lock__card{background:#24211d;border-color:#3a352e}
+
+.rail-empty{padding:8px 6px;font-size:9px;line-height:1.45;color:var(--muted-2);text-align:center}
+.rail-theme{font-size:17px;line-height:1}
+

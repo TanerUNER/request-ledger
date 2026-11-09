@@ -179,6 +179,7 @@
     saveThemePref(pref);
     channelPost({ type:"theme", theme:pref });
     updateThemeSelect();
+    if(typeof syncThemeToggle === "function") syncThemeToggle();
   }
 
   function applyThemeFromPeer(pref){
@@ -186,6 +187,7 @@
     if(state.themePref === pref) return;
     applyTheme(pref);
     updateThemeSelect();
+    if(typeof syncThemeToggle === "function") syncThemeToggle();
   }
 
   /* ---------- shell v9: left / right panel placement ---------- */

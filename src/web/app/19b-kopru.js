@@ -660,7 +660,12 @@
         if(Array.isArray(data.agents)) state.agents = data.agents.map(normalizeAgent);
         if(data.language === "tr" || data.language === "en") state.language = data.language;
         state.exportBehavior = ["last","instant"].indexOf(data.exportBehavior) >= 0 ? data.exportBehavior : "default";
-        if(typeof data.ledgerId === "string" && data.ledgerId) state.ledgerId = data.ledgerId;
+        if(typeof data.ledgerId === "string" && data.ledgerId){
+          state.ledgerId = data.ledgerId;
+          /* Replace means this ledger won: persist the winning id in the
+             registry so a reload cannot fall back to the discarded one. */
+          setProjectLedgerId(activeProjectId, data.ledgerId);
+        }
       }else{
         state.requests = bridgeMergeRequests(incoming, data.deletedIds, stamp);
         const newer = !state.updatedAt || String(stamp) > String(state.updatedAt);

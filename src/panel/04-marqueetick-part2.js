@@ -133,19 +133,26 @@
     return btn;
   }
 
+  function syncThemeToggle(){
+    var button = document.getElementById("rl-theme-toggle");
+    if(!button) return;
+    var dark = state.theme === "dark";
+    button.textContent = dark ? "☀" : "☾";
+    button.title = lx(dark ? "themeLight" : "themeDark");
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-pressed", dark ? "true" : "false");
+  }
+
   function renderTopGroup(){
     if(!els.topGroup) return;
     els.topGroup.textContent = "";
     topItems = [];
 
-    /* shell v11 §9: without a project name only the project gate is offered */
+    /* The app owns projects. Without an active project there is nothing to
+       create or switch here; the host is still visible because the app is on. */
     if(!hasProjectName()){
-      topItems.push(buildItem(SECTION_SPECS.project));
-      els.topGroup.appendChild(topItems[0]);
-      if(state.active){
-        var gateBtn = els.topGroup.querySelector('[data-section="' + state.active + '"]');
-        if(gateBtn) markActive(gateBtn);
-      }
+      var empty = h("div", "rail-empty", lx("openProjectInApp"));
+      els.topGroup.appendChild(empty);
       updateDockBadges();
       syncTabStops();
       return;
@@ -163,8 +170,6 @@
     }else{
       topItems.push(buildItem(SECTION_SPECS.new));
       topItems.push(buildItem(SECTION_SPECS.list));
-      /* Dedicated Projects workspace: list/search/create/switch/settings. */
-      topItems.push(buildItem(SECTION_SPECS.projects));
       for(var i = 0; i < topItems.length; i++) els.topGroup.appendChild(topItems[i]);
     }
 
@@ -297,12 +302,6 @@
 
     if(els.collapse){
       els.collapse.setAttribute("aria-label", lx("closePanel"));
-    }
-    if(els.rootFolder){
-      els.rootFolder.setAttribute("aria-label", lx("folderRootOpen"));
-    }
-    if(els.exportFolder){
-      els.exportFolder.setAttribute("aria-label", lx("folderExportOpen"));
     }
     if(els.utilToggle){
       els.utilToggle.setAttribute("aria-label", lx("utilToggle"));
@@ -596,7 +595,7 @@
     util.className = "g g--util";
     util.id = "rl-util-group";
 
-    ["settings", "backup", "help"].forEach(function(id){
+    ["backup", "help"].forEach(function(id){
       util.appendChild(buildItem(SECTION_SPECS[id]));
     });
 
@@ -622,20 +621,20 @@
     utilToggle.setAttribute("aria-expanded", "false");
     utilToggle.addEventListener("click", function(){ toggleUtilities(); });
 
-    /* shell v9: bottom card — folders on top, pin | collapse below, each row
-       separated by a 1px line and the action pair by a centred vertical one. */
-    var rootBtn = buildFolderButton("rl-root-folder", "folderRoot", lx("folderRootOpen"), "rl-set-root");
-    var exportBtn = buildFolderButton("rl-export-folder", "folderExport", lx("folderExportOpen"), "rl-set-export-dir");
+    /* shell v9: bottom card — theme toggle on top, pin | collapse below. */
+    var themeBtn = h("button", "rail-btn rail-theme");
+    themeBtn.type = "button";
+    themeBtn.id = "rl-theme-toggle";
+    themeBtn.addEventListener("click", function(){
+      setTheme(state.theme === "dark" ? "light" : "dark");
+      syncThemeToggle();
+    });
 
     var dockbar = h("div", "rail-dockbar");
     dockbar.id = "rl-dockbar";
 
     var folderRow = h("div", "rail-dockbar-row rail-dockbar-row--folders");
-    folderRow.appendChild(rootBtn);
-    var folderSep = h("div", "rail-dockbar-vsep");
-    folderSep.setAttribute("aria-hidden", "true");
-    folderRow.appendChild(folderSep);
-    folderRow.appendChild(exportBtn);
+    folderRow.appendChild(themeBtn);
 
     var dockSep = h("div", "rail-dockbar-sep");
     dockSep.setAttribute("aria-hidden", "true");
@@ -694,12 +693,11 @@
     els.utilGroup = util;
     els.utilToggle = utilToggle;
     els.marquee = marqueeEl;
-    els.rootFolder = rootBtn;
-    els.exportFolder = exportBtn;
     els.railPair = actionRow;
 
     projectGateOn = hasProjectName();
     renderTopGroup();
+    syncThemeToggle();
     syncDockSave();
     syncPinUI();
     syncUtilUI();

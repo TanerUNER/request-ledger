@@ -91,9 +91,10 @@ The workspace is a registry of projects. Every project keeps its own:
 - Records, Drafts and export history;
 - archive state and project name.
 
-Switching projects is guarded by the unsaved-changes confirmation. Project ids are never merged, so
-two projects with similar names stay separate. A port change is a new browser origin: the app warns
-you, offers a ZIP backup first, and prompts for a restore on the new origin.
+Projects are owned by the app; the Chrome companion mirrors the active project and has no project
+management UI of its own. Switching projects is guarded by the unsaved-changes confirmation. Project
+ids are never merged, so two projects with similar names stay separate. A port change is a new browser
+origin: the app warns you, offers a ZIP backup first, and prompts for a restore on the new origin.
 
 ## Two run modes
 
@@ -102,30 +103,49 @@ you, offers a ZIP backup first, and prompts for a restore on the new origin.
 | **How to start** | Open `request-ledger.html` or `index.html` directly, or host it statically. | Run `start.cmd` on Windows, or `node scripts/serve.cjs 8080` anywhere. |
 | **Best at** | A portable file you can copy, archive or open offline. | A stable local URL, the visible server status, a stop button and a remembered port. |
 | **Extension bridge** | Works when the extension is installed and allowed to access file URLs. | Works on `localhost` or `127.0.0.1` while the app tab is open. |
-| **Local server** | Not available; the file cannot start one. | Started by the launcher; it stays up while a tab is live and is stopped explicitly or after at least 5 minutes without a live page. |
+| **Local server** | Not available; the file cannot start one. | Started by the launcher; it stops explicitly, about 5 s after the last app tab closes, or after 5 minutes without a live page as a fallback. |
 | **Requires** | A modern browser. | Node.js 18 or newer on `PATH`. |
 
 `start.cmd` starts the server without a console window, opens the browser and writes
-`.rl-server.lock` with the process id and port. It remembers the last port in `.rl-port`; if that
-port is busy it starts on a free port and tells you. `stop.cmd` reads the lock and shuts the server
-down.
+`.rl-server.lock` with the process id and port. It remembers the last port in `.rl-port` (`0` means
+automatic); if that port is busy it starts on a free port and tells you. `stop.cmd` reads the lock and
+shuts the server down.
+
+### Server lifecycle and project folders
+
+Reloading, navigating or a hidden app tab keeps the server alive. Closing the last app tab sends a
+close signal and the server stops after a **5-second grace**, releasing the port and removing the lock
+file; another open tab or a reload in that window cancels the shutdown. If no close signal arrives (for
+example a crashed tab), the launcher’s 300-second idle stop is the fallback. `stop.cmd` still shuts it
+down immediately.
+
+In server mode, each app project owns a folder under `projects/<project-slug>/` in the app directory.
+**Save** writes the current ledger snapshot there (`ledger.json`); **Export** writes to the chosen
+target folder when one is set, otherwise to the project folder’s `exports/` directory. The archive
+project list/records read this folder metadata. In `file://` mode there is no server folder write:
+Save/Export show a clear “server mode required for folder saves” message and fall back to browser
+downloads.
 
 ## Chrome companion
 
-The `extension/` folder is an unpacked **Manifest V3** extension for Chrome and Edge 114+. It adds a
-44 px opener at the bottom-right of any page and a 360 px flyout; it does not reflow the page.
+The `extension/` folder is an unpacked **Manifest V3** extension for Chrome and Edge 114+. It is a
+**companion**: it appears only while the Request Ledger app is open. It adds a 44 px opener at the
+bottom-right of pages and a 360 px flyout; it does not reflow the page.
 
 | Capability | What it does |
 |---|---|
-| **Live bridge** | While the app is open on `file://`, `http://localhost:<port>` or `http://127.0.0.1:<port>`, requests and the project name sync both ways. The bridge follows project ids and never merges different projects. |
-| **Element picker** | Pick an element on the current page or on a tab chosen from the app. The CSS selector and a readable location fill the request. |
+| **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** — no rail, launcher, iframe or lock card. It returns automatically when the app starts. |
+| **App-owned projects** | Projects are created, renamed, switched and deleted only in the app. The extension always follows the app’s active project; it has no project list, picker or creation UI. |
+| **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. |
+| **Element picker** | Pick an element on the current page or on a tab chosen from the app. Repeated picks append selectors with `" | "` on both surfaces (deduped, 200-character cap). |
 | **Screenshot** | Choose a tab, crop the region you need, and attach the image to the active request. The page path fills automatically. |
-| **Element + screenshot** | Pick an element and capture the same region in one step. Page, location and image arrive together. |
-| **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. |
+| **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. Ready/locked requests still allow image preview, never editing. |
+| **Panel theme** | A light/dark toggle in the rail replaces the removed Settings section and is stored as `rl-theme`; it never changes the host page theme. |
 | **Backup and transfer** | Download a ZIP or JSON backup, restore one, or move data between the extension and the web app. |
 
-The bridge is **text only**. Images and attachments move with a backup ZIP, never through the live
-bridge. The extension keeps its own storage; it is not a remote service.
+The extension cannot enable or disable itself from `chrome://extensions`. If you disable it there, it
+cannot come back by itself; re-enable it manually. When the app is closed, the extension is simply
+invisible, not disabled.
 
 Install it from `chrome://extensions` → **Developer mode** → **Load unpacked** → select `extension/`
 (or the unzipped `request-ledger-extension.zip`). The pinned extension id is
@@ -227,8 +247,12 @@ extension page is an iframe on an untrusted page; treat screenshots on untrusted
 - **Mobile is out of scope.** The layout targets desktop (1440 px), laptop (1280 px) and tablet
   (1024 px).
 - The single HTML file cannot start the local server. The extension bridge can still connect when the
-  extension is allowed to access file URLs.
-- The live bridge is **text only**. Images and attachments travel only with a backup ZIP.
+  extension is allowed to access file URLs, but there are no server project-folder writes.
+- Live media sync is capped at **8 MB per item**. Larger images/attachments and all media in a
+  portable archive still travel with a backup ZIP.
+- The extension is a companion: with no app running, it shows no UI on any page. It cannot re-enable
+  itself after being disabled in `chrome://extensions`.
+- Projects are app-owned; the extension cannot create, list or switch projects on its own.
 - Backups are plaintext. Theme and export history are not part of backups.
 - Restore expects the app's stored ZIP entries; a re-zipped archive may be rejected.
 - Very large images or files consume browser storage. Take backups and clean up old media.

@@ -375,10 +375,9 @@ async function main() {
     check("panel reports the app connected", await evaluate(cdp, flyoutSession,
       "window.__rlBridgePanel && window.__rlBridgePanel.connected()") === true);
 
-    await evaluate(cdp, dockSession, `document.querySelector('[data-section="settings"]').click()`);
-    await sleep(700);
-    const connectedStatus = await evaluate(cdp, flyoutSession, "(document.getElementById('rl-bridge-text') || {}).textContent || ''");
-    check("panel settings shows the connected status", /Connected to app|Uygulamaya bağlı/.test(connectedStatus), connectedStatus);
+    check("panel bridge reports connected without a Settings section",
+      await evaluate(cdp, flyoutSession,
+        "window.__rlBridgePanel && window.__rlBridgePanel.connected() === true") === true);
 
     /* ---------- same-project sync: app -> extension ---------- */
 
@@ -519,25 +518,15 @@ async function main() {
     }, "app project B receives the extension edit", 15000);
     check("extension request creates B data only in project B", appB.requests.some((req) => req.title === "Bridge request B"));
 
-    /* ---------- different-project isolation ---------- */
+    /* ---------- app-owned project switching and isolation ---------- */
 
     await sleep(1200); /* let the last panel save settle */
-    await switchPanelProject(cdp, flyoutSession, appProjectId);
+    await openAppProject(cdp, pageSession, appProjectId);
     const panelOnA = await waitFor(async () => {
       const id = await evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.projectId()");
       return id === appProjectId ? id : null;
-    }, "panel switches to project A", 12000);
-    const mismatch = await waitFor(async () => {
-      const pageSide = await evaluate(cdp, pageSession, "window.__rlBridge && window.__rlBridge.mismatch()");
-      const panelSide = await evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.mismatch()");
-      return pageSide === true && panelSide === true ? { pageSide, panelSide } : null;
-    }, "both sides report the project mismatch", 12000);
-    const appChip = await evaluate(cdp, pageSession, `(() => {
-      const chip = document.getElementById('bridgeChip');
-      const text = document.getElementById('bridgeChipText');
-      return { hidden: chip ? chip.hidden : null, off: chip ? chip.classList.contains('is-off') : false, text: text ? text.textContent : '' };
-    })()`);
-    check("a different active project shows a clear status", mismatch && appChip.hidden === false && appChip.off === true && /another project|farklı projede/i.test(appChip.text), { mismatch, appChip });
+    }, "panel follows app back to project A", 15000);
+    check("app project switch drives the panel", panelOnA === appProjectId);
 
     const isolatedAppB = await readProject(cdp, pageSession, appProjectB);
     const isolatedPanelA = await readProject(cdp, flyoutSession, appProjectId);
@@ -548,17 +537,16 @@ async function main() {
       !isolatedPanelA.requests.some((req) => req.title === "Bridge request B"),
       { appB: isolatedAppB.requests.map((req) => req.title), panelA: isolatedPanelA.requests.map((req) => req.title) });
 
-    /* ---------- switching back re-aligns and re-syncs ---------- */
-
+    /* The panel has no project UI; switching is always driven by the app. */
+    await openAppProject(cdp, pageSession, appProjectB);
+    const panelBackOnB = await waitFor(async () => {
+      const id = await evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.projectId()");
+      return id === appProjectB ? id : null;
+    }, "panel follows app to project B", 15000);
+    check("panel follows a second app project switch", panelBackOnB === appProjectB);
     await openAppProject(cdp, pageSession, appProjectId);
     await waitFor(() => evaluate(cdp, pageSession, "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(appProjectId)), "app back on project A", 12000);
-    const realigned = await waitFor(async () => {
-      const pageMismatch = await evaluate(cdp, pageSession, "window.__rlBridge && window.__rlBridge.mismatch()");
-      const panelId = await evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.projectId()");
-      const panelMismatch = await evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.mismatch()");
-      return panelId === appProjectId && pageMismatch === false && panelMismatch === false ? true : null;
-    }, "bridge re-aligns on project A", 15000);
-    check("switching back re-aligns and re-syncs", realigned === true);
+    await waitFor(() => evaluate(cdp, flyoutSession, "window.__rlBridgePanel && window.__rlBridgePanel.projectId() === " + JSON.stringify(appProjectId)), "panel back on project A", 15000);
 
     /* ---------- non-allowlisted origin ---------- */
 

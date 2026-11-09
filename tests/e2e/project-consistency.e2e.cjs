@@ -188,6 +188,19 @@ async function seedExtension(cdp, activeId, testRequests, legacyRequests, testLe
   return extensionStorage(cdp, seedExpression(activeId, testRequests, legacyRequests, testLedgerId));
 }
 
+/* A running app rewrites its ledger on bridge traffic and on pagehide, so a
+   direct localStorage seed would be overwritten before the reload. Write the
+   seed from a same-origin fixture page with the app tab closed instead. */
+async function seedAppStorage(cdp, expression) {
+  const target = await cdp.send("Target.createTarget", { url: TARGET_URL });
+  const session = await attach(cdp, target.targetId);
+  await sleep(500);
+  const value = await evaluate(cdp, session, expression);
+  await cdp.send("Target.closeTarget", { targetId: target.targetId });
+  await sleep(200);
+  return value;
+}
+
 function readExtension(cdp) {
   return extensionStorage(cdp, `(() => {
     const reg = JSON.parse(localStorage.getItem('oz-projeler-v1') || 'null');
@@ -312,17 +325,21 @@ async function createRequestInOtherPanel(cdp, targetUrl, title, description) {
 }
 
 function panelState(cdp, flyoutSession) {
-  return evaluate(cdp, flyoutSession, `(() => ({
-    project: window.__rlBridgePanel && window.__rlBridgePanel.projectName(),
-    projectId: window.__rlBridgePanel && window.__rlBridgePanel.projectId(),
-    connected: window.__rlBridgePanel && window.__rlBridgePanel.connected(),
-    rows: Array.from(document.querySelectorAll('.rrow')).map((row) => row.innerText.replace(/\\s+/g, ' ').trim()),
-    projectCount: (document.getElementById('rl-project-count') || {}).textContent || '',
-    listCount: (document.querySelector('[data-archive-count="list"]') || {}).textContent || '',
-    progress: (document.querySelector('#rl-list-progress .lp-text') || {}).textContent || '',
-    importedCard: Array.from(document.querySelectorAll('.project-row')).some((row) => /Imported project/.test(row.innerText)),
-    oldCard: Array.from(document.querySelectorAll('.project-row')).some((row) => /Ortak Zemin|Common Ground/.test(row.innerText))
-  }))()`);
+  return evaluate(cdp, flyoutSession, `(() => {
+    const reg = JSON.parse(localStorage.getItem('oz-projeler-v1') || 'null');
+    const names = reg && Array.isArray(reg.projects) ? reg.projects.map((project) => project.name) : [];
+    return {
+      project: window.__rlBridgePanel && window.__rlBridgePanel.projectName(),
+      projectId: window.__rlBridgePanel && window.__rlBridgePanel.projectId(),
+      connected: window.__rlBridgePanel && window.__rlBridgePanel.connected(),
+      rows: Array.from(document.querySelectorAll('.rrow')).map((row) => row.innerText.replace(/\\s+/g, ' ').trim()),
+      projectNames: names,
+      listCount: (document.querySelector('[data-archive-count="list"]') || {}).textContent || '',
+      progress: (document.querySelector('#rl-list-progress .lp-text') || {}).textContent || '',
+      importedCard: names.indexOf('Imported project') >= 0,
+      oldCard: names.some((name) => /Ortak Zemin|Common Ground/.test(name))
+    };
+  })()`);
 }
 
 async function main() {
@@ -352,7 +369,7 @@ async function main() {
     const legacyRequests = [request("IST-002", "Legacy request")];
     await seedExtension(cdp, P_TEST, testRequests, legacyRequests, L_TEST);
 
-    const pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
+    let pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
     let pageSession = await attach(cdp, pageTarget.targetId);
     await sleep(700);
     await evaluate(cdp, pageSession, seedExpression(P_TEST, testRequests, legacyRequests, L_TEST) + "; location.reload();");
@@ -389,7 +406,7 @@ async function main() {
       panelOne.rows.some((row) => /Project One request/.test(row)) &&
       !panelOne.rows.some((row) => /Legacy request/.test(row)), panelOne.rows);
     check("panel project/tab/progress counts agree",
-      panelOne.projectCount === "2" && panelOne.listCount === "1" && /0 \/ 1 ready|0 \/ 1 hazır/.test(panelOne.progress), panelOne);
+      panelOne.projectNames.length === 2 && panelOne.listCount === "1" && /0 \/ 1 ready|0 \/ 1 hazır/.test(panelOne.progress), panelOne);
     check("legacy default name was renamed in the panel",
       panelOne.importedCard === true && panelOne.oldCard === false, panelOne);
     check("different projects never show the global conflict dialog",
@@ -433,7 +450,7 @@ async function main() {
     }, "panel list after background edit", 15000);
     check("panel list and counts include the background request",
       panelBackground.rows.some((row) => /Background request/.test(row)) &&
-      panelBackground.listCount === "2" && panelBackground.projectCount === "2", panelBackground);
+      panelBackground.listCount === "2" && panelBackground.projectNames.length === 2, panelBackground);
 
     /* Exact owner sequence: reload the app while Test Project has the panel-
        created request. No conflict, same project ledger id, rows intact. */
@@ -479,8 +496,8 @@ async function main() {
     check("panel list replaces rows when switching projects",
       panelLegacy.rows.some((row) => /Legacy request/.test(row)) &&
       !panelLegacy.rows.some((row) => /Project One request/.test(row)), panelLegacy.rows);
-    check("legacy project remains a normal project card",
-      panelLegacy.projectCount === "2" && panelLegacy.importedCard === true, panelLegacy);
+    check("legacy project remains a normal registry project",
+      panelLegacy.projectNames.length === 2 && panelLegacy.importedCard === true, panelLegacy);
     await screenshot(cdp, pageSession, "04-two-projects-imported-project.png");
 
     /* Reload while the legacy project is active. */
@@ -595,12 +612,15 @@ async function main() {
       typedReload.test.ledgerId === (await readExtension(cdp)).test.ledgerId, typedReload);
 
     /* Empty side adopts the non-empty side. App empty, extension has data:
-       no conflict; app takes the extension ledger id and request. */
-    await evaluate(cdp, pageSession, `localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", "ledger_app_empty", [])))}); true`);
+       no conflict; app takes the extension ledger id and request. The app tab
+       is closed while both sides are seeded so no live write can race it. */
+    await cdp.send("Target.closeTarget", { targetId: pageTarget.targetId }).catch(() => {});
+    await sleep(500);
+    await seedAppStorage(cdp, `localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", "ledger_app_empty", [])))}); true`);
     await seedExtension(cdp, P_TEST, [request("IST-005", "Adopted extension request")], legacyRequests, "ledger_ext_data");
-    await cdp.send("Page.reload", {}, pageSession);
-    await sleep(2400);
+    pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
     pageSession = await attach(cdp, pageTarget.targetId);
+    await sleep(2400);
     await dismissOnboarding(cdp, pageSession);
     await waitFor(() => evaluate(cdp, pageSession,
       "window.__rlBridge && window.__rlBridge.connected()"), "bridge after empty-app reload", 15000);
@@ -619,11 +639,13 @@ async function main() {
       });
 
     /* Extension empty, app has data: no conflict; extension adopts the app
-       ledger id and request. */
+       ledger id and request. Seed with the app tab closed for determinism. */
+    await cdp.send("Target.closeTarget", { targetId: pageTarget.targetId }).catch(() => {});
+    await sleep(500);
     await seedExtension(cdp, P_TEST, [], legacyRequests, "ledger_ext_empty");
-    await cdp.send("Page.reload", {}, pageSession);
-    await sleep(2400);
+    pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
     pageSession = await attach(cdp, pageTarget.targetId);
+    await sleep(2400);
     await dismissOnboarding(cdp, pageSession);
     await waitFor(() => evaluate(cdp, pageSession,
       "window.__rlBridge && window.__rlBridge.connected()"), "bridge after empty-extension reload", 15000);

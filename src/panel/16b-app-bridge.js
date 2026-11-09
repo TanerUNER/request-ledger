@@ -458,51 +458,6 @@
     return !bridgeConnected && !companionPresence.open;
   }
 
-  function ensureCompanionLock(){
-    if(!document.body) return null;
-    var existing = document.getElementById("rl-companion-lock");
-    if(existing) return existing;
-    var wrap = document.createElement("div");
-    wrap.id = "rl-companion-lock";
-    wrap.className = "companion-lock";
-    wrap.hidden = true;
-    wrap.setAttribute("role", "alertdialog");
-    wrap.setAttribute("aria-modal", "true");
-    wrap.setAttribute("aria-labelledby", "rl-companion-lock-title");
-    var card = document.createElement("div");
-    card.className = "companion-lock__card";
-    var eyebrow = document.createElement("div");
-    eyebrow.className = "eyebrow";
-    eyebrow.textContent = "Companion";
-    var title = document.createElement("b");
-    title.id = "rl-companion-lock-title";
-    title.textContent = lx("companionLockTitle");
-    var body = document.createElement("p");
-    body.id = "rl-companion-lock-body";
-    body.textContent = lx("companionLockBody");
-    var steps = document.createElement("ol");
-    steps.className = "companion-lock__steps";
-    ["Start with start.cmd or open index.html.", "Keep the app tab open while using the extension.", "The extension unlocks automatically when the app answers."].forEach(function(text){
-      var item = document.createElement("li");
-      item.textContent = text;
-      steps.appendChild(item);
-    });
-    var retry = document.createElement("button");
-    retry.type = "button";
-    retry.className = "btn btn--small btn--primary";
-    retry.id = "rl-companion-retry";
-    retry.textContent = lx("companionRetry");
-    retry.addEventListener("click", function(){ companionProbeNow(true); });
-    card.appendChild(eyebrow);
-    card.appendChild(title);
-    card.appendChild(body);
-    card.appendChild(steps);
-    card.appendChild(retry);
-    wrap.appendChild(card);
-    document.body.appendChild(wrap);
-    return wrap;
-  }
-
   function discardCompanionDraft(){
     var discarded = false;
     if(typeof pendingRequest !== "undefined" && pendingRequest){
@@ -520,16 +475,9 @@
 
   function updateCompanionLock(){
     var overlayLocked = companionOverlayLocked();
-    var lock = ensureCompanionLock();
-    if(lock){
-      lock.hidden = !overlayLocked;
-      var body = document.getElementById("rl-companion-lock-body");
-      if(body){
-        body.textContent = !companionPresence.checked
-          ? lx("companionChecking")
-          : lx("companionLockBody");
-      }
-    }
+    /* No in-page lock card: the content script removes the whole host when
+       the app is not alive. This flag only keeps writes and drafts safe for
+       the short interval before the host is torn down. */
     try{ document.body.setAttribute("data-companion-locked", overlayLocked ? "1" : "0"); }catch(err){ /* ignore */ }
     if(overlayLocked && !companionWasLocked) discardCompanionDraft();
     if(!overlayLocked && companionWasLocked && typeof bridgeRefreshFromStorage === "function"){
@@ -1553,7 +1501,7 @@
        refresh from the source ledger would silently overwrite the app. */
     if(bridgeConflict || (bridgePeerLedgerId && app.ledgerId &&
        String(bridgePeerLedgerId) !== String(app.ledgerId) &&
-       (bridgePeerRequestCount > 0 || app.requests.length === 0))){
+       bridgePeerRequestCount > 0 && app.requests.length === 0)){
       return;
     }
     bridgeNotifyChange();

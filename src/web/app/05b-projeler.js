@@ -25,6 +25,101 @@
     const value = normalizeProjectName(name);
     return value === "Ortak Zemin" || value === "Common Ground";
   }
+  function serverFolderMode(){
+    return window.location.protocol === "http:" && Number(window.location.port) > 0;
+  }
+
+  async function serverProjectFolder(projectId, name, currentFolder){
+    if(!serverFolderMode()) return "";
+    const project = projectId ? findProjectRecord(projectId) : null;
+    const body = {
+      projectId: projectId || "",
+      name: name || (project ? project.name : ""),
+      slug: currentFolder || (project && project.folder) || ""
+    };
+    try{
+      const response = await fetch("/__rl/projects", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify(body)
+      });
+      const data = await response.json();
+      if(!response.ok || !data || data.ok !== true || !data.slug) return "";
+      if(projectId) updateProjectRecord(projectId, { folder:data.slug });
+      return data.slug;
+    }catch(err){
+      return "";
+    }
+  }
+
+  async function serverSaveProject(projectId){
+    if(!serverFolderMode()) return false;
+    const id = projectId || activeProjectId;
+    if(!id) return false;
+    const project = findProjectRecord(id);
+    if(!project) return false;
+    const slug = project.folder || await serverProjectFolder(id, project.name, project.folder);
+    if(!slug) return false;
+    try{
+      const response = await fetch("/__rl/save", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify({
+          projectId:id,
+          name:project.name,
+          slug:slug,
+          snapshot:ledgerPayload(),
+          records: (typeof records !== "undefined" && Array.isArray(records)) ? records : []
+        })
+      });
+      const data = await response.json();
+      return response.ok && data && data.ok === true;
+    }catch(err){
+      return false;
+    }
+  }
+
+  async function serverExportFile(filename, blob, projectId){
+    if(!serverFolderMode()) return false;
+    const id = projectId || activeProjectId;
+    const project = id ? findProjectRecord(id) : null;
+    if(!project) return false;
+    const slug = project.folder || await serverProjectFolder(id, project.name, project.folder);
+    if(!slug) return false;
+    try{
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      for(let i = 0; i < bytes.length; i += 0x8000){
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      const response = await fetch("/__rl/export", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body:JSON.stringify({
+          projectId:id,
+          name:project.name,
+          slug:slug,
+          files:[{ name:filename, encoding:"base64", content:btoa(binary) }]
+        })
+      });
+      const data = await response.json();
+      return response.ok && data && data.ok === true;
+    }catch(err){
+      return false;
+    }
+  }
+
+  async function serverProjectList(){
+    if(!serverFolderMode()) return [];
+    try{
+      const response = await fetch("/__rl/projects", { cache:"no-store" });
+      const data = await response.json();
+      return data && data.ok && Array.isArray(data.projects) ? data.projects : [];
+    }catch(err){
+      return [];
+    }
+  }
+
   function normalizeLedgerId(value){
     return typeof value === "string" && value.trim() && value.trim().length <= 120 ? value.trim() : "";
   }
@@ -44,6 +139,7 @@
          It is written at creation and whenever a bridge choice/adoption
          changes the ledger. */
       ledgerId: normalizeLedgerId(record.ledgerId),
+      folder: typeof record.folder === "string" ? record.folder.slice(0, 120) : "",
       exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
       archiveCollapsed: record.archiveCollapsed === true
     };
@@ -172,6 +268,7 @@
         if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
         if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
         if(normalizeLedgerId(patch.ledgerId)) project.ledgerId = normalizeLedgerId(patch.ledgerId);
+        if(typeof patch.folder === "string") project.folder = patch.folder.slice(0, 120);
         if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
         if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
       }

@@ -18,6 +18,11 @@
   let onboardingOpen = false;
   let serverStopNotice = false;
   let serverReconnectTimer = null;
+  const serverPageId = "pg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+
+  function serverLifecycleUrl(path){
+    return path + "?page=" + encodeURIComponent(serverPageId);
+  }
   let pendingPortMove = null;
   let movedFromPort = null;
   let onboardingMode = "html";
@@ -359,12 +364,12 @@
     if(!onboardingServerDetected()) return;
     try{
       if(navigator.sendBeacon){
-        navigator.sendBeacon("/__rl/pagehide");
+        navigator.sendBeacon(serverLifecycleUrl("/__rl/pagehide"));
         return;
       }
     }catch(err){ /* fall through */ }
     try{
-      fetch("/__rl/pagehide", { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
+      fetch(serverLifecycleUrl("/__rl/pagehide"), { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
     }catch(err){ /* ignore */ }
   }
 
@@ -373,7 +378,7 @@
     const beat = function(){
       if(!onboardingServerDetected()) return;
       try{
-        fetch("/__rl/heartbeat", { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
+        fetch(serverLifecycleUrl("/__rl/heartbeat"), { method:"POST", cache:"no-store", keepalive:true }).catch(function(){ /* ignore */ });
       }catch(err){ /* ignore */ }
     };
     beat();

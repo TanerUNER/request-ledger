@@ -216,13 +216,10 @@
   var SECTION_SPECS = {
     new:      { id:"new",      label:"Yeni istek", title:"Yeni istek",   iconKey:"plus",     primary:true },
     list:     { id:"list",     label:"İstekler",   title:"İstekler",     iconKey:"list",     badge:true },
-    project:  { id:"project",  labelKey:"newProject", titleKey:"newProjectTitle", primary:true },
-    projects: { id:"projects", labelKey:"projects", titleKey:"projects", iconKey:"folder" },
     detail:   { id:"detail",   label:"İstek",      title:"İstek",        iconKey:"doc",      badge:true },
     page:     { id:"page",     label:"Sayfa",      title:"Sayfa",        iconKey:"folder",   badge:true },
     desc:     { id:"desc",     label:"Açıklama",   title:"Açıklama",     iconKey:"doc",      badge:true },
     export:   { id:"export",   label:"Hazır",      title:"Hazır",        iconKey:"check",    ready:true, hook:"ready" },
-    settings: { id:"settings", label:"Ayarlar",    title:"Ayarlar",      iconKey:"settings" },
     backup:   { id:"backup",   label:"Yedek",      title:"Yedek",        iconKey:"backup" },
     help:     { id:"help",     label:"Yardım",     title:"Yardım",       iconKey:"help" }
   };
@@ -364,6 +361,7 @@
     companionChecking:{ tr:"Uygulama aranıyor…", en:"Looking for the Request Ledger app…" },
     companionRetry:{ tr:"Yeniden kontrol et", en:"Check again" },
     companionDraftDiscarded:{ tr:"Uygulama kapandı; gönderilmemiş taslak atıldı.", en:"The app closed; the unsent draft was discarded." },
+    openProjectInApp:{ tr:"Projeyi uygulamada aç.", en:"Open a project in the app." },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
     bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },
@@ -1650,6 +1648,7 @@
     saveThemePref(pref);
     channelPost({ type:"theme", theme:pref });
     updateThemeSelect();
+    if(typeof syncThemeToggle === "function") syncThemeToggle();
   }
 
   function applyThemeFromPeer(pref){
@@ -1657,6 +1656,7 @@
     if(state.themePref === pref) return;
     applyTheme(pref);
     updateThemeSelect();
+    if(typeof syncThemeToggle === "function") syncThemeToggle();
   }
 
   /* ---------- shell v9: left / right panel placement ---------- */
@@ -2795,7 +2795,7 @@
   /* ---------- shell v3: section groups / pin / callout ---------- */
 
   function isUtilitySection(section){
-    return section === "settings" || section === "backup" || section === "help";
+    return section === "backup" || section === "help";
   }
 
   /* shell v9: utility group is collapsed by default and the chevron above the
@@ -3080,9 +3080,7 @@
   }
 
   function sectionAllowed(section, mode){
-    if(section === "settings" || section === "backup" || section === "help") return true;
-    if(section === "project") return !hasProjectName();
-    if(section === "projects") return mode !== "compose";
+    if(section === "backup" || section === "help") return true;
     if(mode === "compose") return section === "detail" || section === "page" || section === "desc" || section === "export";
     return section === "new" || section === "list";
   }
@@ -3496,19 +3494,26 @@
     return btn;
   }
 
+  function syncThemeToggle(){
+    var button = document.getElementById("rl-theme-toggle");
+    if(!button) return;
+    var dark = state.theme === "dark";
+    button.textContent = dark ? "☀" : "☾";
+    button.title = lx(dark ? "themeLight" : "themeDark");
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-pressed", dark ? "true" : "false");
+  }
+
   function renderTopGroup(){
     if(!els.topGroup) return;
     els.topGroup.textContent = "";
     topItems = [];
 
-    /* shell v11 §9: without a project name only the project gate is offered */
+    /* The app owns projects. Without an active project there is nothing to
+       create or switch here; the host is still visible because the app is on. */
     if(!hasProjectName()){
-      topItems.push(buildItem(SECTION_SPECS.project));
-      els.topGroup.appendChild(topItems[0]);
-      if(state.active){
-        var gateBtn = els.topGroup.querySelector('[data-section="' + state.active + '"]');
-        if(gateBtn) markActive(gateBtn);
-      }
+      var empty = h("div", "rail-empty", lx("openProjectInApp"));
+      els.topGroup.appendChild(empty);
       updateDockBadges();
       syncTabStops();
       return;
@@ -3526,8 +3531,6 @@
     }else{
       topItems.push(buildItem(SECTION_SPECS.new));
       topItems.push(buildItem(SECTION_SPECS.list));
-      /* Dedicated Projects workspace: list/search/create/switch/settings. */
-      topItems.push(buildItem(SECTION_SPECS.projects));
       for(var i = 0; i < topItems.length; i++) els.topGroup.appendChild(topItems[i]);
     }
 
@@ -3660,12 +3663,6 @@
 
     if(els.collapse){
       els.collapse.setAttribute("aria-label", lx("closePanel"));
-    }
-    if(els.rootFolder){
-      els.rootFolder.setAttribute("aria-label", lx("folderRootOpen"));
-    }
-    if(els.exportFolder){
-      els.exportFolder.setAttribute("aria-label", lx("folderExportOpen"));
     }
     if(els.utilToggle){
       els.utilToggle.setAttribute("aria-label", lx("utilToggle"));
@@ -3959,7 +3956,7 @@
     util.className = "g g--util";
     util.id = "rl-util-group";
 
-    ["settings", "backup", "help"].forEach(function(id){
+    ["backup", "help"].forEach(function(id){
       util.appendChild(buildItem(SECTION_SPECS[id]));
     });
 
@@ -3985,20 +3982,20 @@
     utilToggle.setAttribute("aria-expanded", "false");
     utilToggle.addEventListener("click", function(){ toggleUtilities(); });
 
-    /* shell v9: bottom card — folders on top, pin | collapse below, each row
-       separated by a 1px line and the action pair by a centred vertical one. */
-    var rootBtn = buildFolderButton("rl-root-folder", "folderRoot", lx("folderRootOpen"), "rl-set-root");
-    var exportBtn = buildFolderButton("rl-export-folder", "folderExport", lx("folderExportOpen"), "rl-set-export-dir");
+    /* shell v9: bottom card — theme toggle on top, pin | collapse below. */
+    var themeBtn = h("button", "rail-btn rail-theme");
+    themeBtn.type = "button";
+    themeBtn.id = "rl-theme-toggle";
+    themeBtn.addEventListener("click", function(){
+      setTheme(state.theme === "dark" ? "light" : "dark");
+      syncThemeToggle();
+    });
 
     var dockbar = h("div", "rail-dockbar");
     dockbar.id = "rl-dockbar";
 
     var folderRow = h("div", "rail-dockbar-row rail-dockbar-row--folders");
-    folderRow.appendChild(rootBtn);
-    var folderSep = h("div", "rail-dockbar-vsep");
-    folderSep.setAttribute("aria-hidden", "true");
-    folderRow.appendChild(folderSep);
-    folderRow.appendChild(exportBtn);
+    folderRow.appendChild(themeBtn);
 
     var dockSep = h("div", "rail-dockbar-sep");
     dockSep.setAttribute("aria-hidden", "true");
@@ -4057,12 +4054,11 @@
     els.utilGroup = util;
     els.utilToggle = utilToggle;
     els.marquee = marqueeEl;
-    els.rootFolder = rootBtn;
-    els.exportFolder = exportBtn;
     els.railPair = actionRow;
 
     projectGateOn = hasProjectName();
     renderTopGroup();
+    syncThemeToggle();
     syncDockSave();
     syncPinUI();
     syncUtilUI();
@@ -4885,7 +4881,7 @@
       backupBusy = false;
     }
 
-    els.title.textContent = (section === "project" || section === "projects") ? projectSectionTitle() : sectionText(spec, "title");
+    els.title.textContent = sectionText(spec, "title");
     var req = activeRequest();
     if(req && (section === "detail" || section === "page" || section === "desc" || section === "export")){
       els.chip.hidden = false;
@@ -4904,12 +4900,10 @@
 
     if(section === "new") renderNew(scroller);
     else if(section === "list") renderList(scroller);
-    else if(section === "project" || section === "projects") renderProject(scroller);
     else if(section === "detail") renderDetail(scroller);
     else if(section === "page") renderPage(scroller);
     else if(section === "desc") renderDesc(scroller);
     else if(section === "export") renderExport(scroller);
-    else if(section === "settings") renderSettings(scroller);
     else if(section === "backup") renderBackup(scroller);
     else if(section === "help") renderHelp(scroller);
     else renderPlaceholder(scroller, section);
@@ -4918,13 +4912,7 @@
     applyFlyoutMax();
     showDockSaveState();
     syncStorageUI();
-
-    if(section === "settings"){
-      applySettingsTab();
-      els.body.scrollTop = settingsScroll[settingsTab] || 0;
-    }else{
-      els.body.scrollTop = 0;
-    }
+    els.body.scrollTop = 0;
     lastSize = -1;
     requestAnimationFrame(reportSize);
   }
@@ -5904,10 +5892,6 @@
     }
 
     if(exportCleanup) body.appendChild(buildExportCleanup());
-
-    /* Phase 2b: Projects sit above Exported/Records/Drafts. The tree is
-       searchable; a row opens the project settings modal. */
-    body.appendChild(buildArchiveProjectsSection());
 
     body.appendChild(buildArchiveTabs());
 
@@ -12024,51 +12008,6 @@
     return !bridgeConnected && !companionPresence.open;
   }
 
-  function ensureCompanionLock(){
-    if(!document.body) return null;
-    var existing = document.getElementById("rl-companion-lock");
-    if(existing) return existing;
-    var wrap = document.createElement("div");
-    wrap.id = "rl-companion-lock";
-    wrap.className = "companion-lock";
-    wrap.hidden = true;
-    wrap.setAttribute("role", "alertdialog");
-    wrap.setAttribute("aria-modal", "true");
-    wrap.setAttribute("aria-labelledby", "rl-companion-lock-title");
-    var card = document.createElement("div");
-    card.className = "companion-lock__card";
-    var eyebrow = document.createElement("div");
-    eyebrow.className = "eyebrow";
-    eyebrow.textContent = "Companion";
-    var title = document.createElement("b");
-    title.id = "rl-companion-lock-title";
-    title.textContent = lx("companionLockTitle");
-    var body = document.createElement("p");
-    body.id = "rl-companion-lock-body";
-    body.textContent = lx("companionLockBody");
-    var steps = document.createElement("ol");
-    steps.className = "companion-lock__steps";
-    ["Start with start.cmd or open index.html.", "Keep the app tab open while using the extension.", "The extension unlocks automatically when the app answers."].forEach(function(text){
-      var item = document.createElement("li");
-      item.textContent = text;
-      steps.appendChild(item);
-    });
-    var retry = document.createElement("button");
-    retry.type = "button";
-    retry.className = "btn btn--small btn--primary";
-    retry.id = "rl-companion-retry";
-    retry.textContent = lx("companionRetry");
-    retry.addEventListener("click", function(){ companionProbeNow(true); });
-    card.appendChild(eyebrow);
-    card.appendChild(title);
-    card.appendChild(body);
-    card.appendChild(steps);
-    card.appendChild(retry);
-    wrap.appendChild(card);
-    document.body.appendChild(wrap);
-    return wrap;
-  }
-
   function discardCompanionDraft(){
     var discarded = false;
     if(typeof pendingRequest !== "undefined" && pendingRequest){
@@ -12086,16 +12025,9 @@
 
   function updateCompanionLock(){
     var overlayLocked = companionOverlayLocked();
-    var lock = ensureCompanionLock();
-    if(lock){
-      lock.hidden = !overlayLocked;
-      var body = document.getElementById("rl-companion-lock-body");
-      if(body){
-        body.textContent = !companionPresence.checked
-          ? lx("companionChecking")
-          : lx("companionLockBody");
-      }
-    }
+    /* No in-page lock card: the content script removes the whole host when
+       the app is not alive. This flag only keeps writes and drafts safe for
+       the short interval before the host is torn down. */
     try{ document.body.setAttribute("data-companion-locked", overlayLocked ? "1" : "0"); }catch(err){ /* ignore */ }
     if(overlayLocked && !companionWasLocked) discardCompanionDraft();
     if(!overlayLocked && companionWasLocked && typeof bridgeRefreshFromStorage === "function"){
@@ -13119,7 +13051,7 @@
        refresh from the source ledger would silently overwrite the app. */
     if(bridgeConflict || (bridgePeerLedgerId && app.ledgerId &&
        String(bridgePeerLedgerId) !== String(app.ledgerId) &&
-       (bridgePeerRequestCount > 0 || app.requests.length === 0))){
+       bridgePeerRequestCount > 0 && app.requests.length === 0)){
       return;
     }
     bridgeNotifyChange();

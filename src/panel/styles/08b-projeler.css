@@ -24,6 +24,10 @@
   width:100%;align-items:stretch;text-align:left;
   font:inherit;color:inherit;cursor:pointer;
 }
+.project-row:hover,.project-row:focus,.project-row:focus-visible,.project-row:active{
+  border-color:var(--line);background:var(--surface-2);color:var(--ink);
+  outline:none;
+}
 .project-row[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .project-current{
   align-self:flex-start;margin-left:13px;padding:1px 6px;border-radius:99px;

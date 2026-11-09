@@ -216,13 +216,10 @@
   var SECTION_SPECS = {
     new:      { id:"new",      label:"Yeni istek", title:"Yeni istek",   iconKey:"plus",     primary:true },
     list:     { id:"list",     label:"İstekler",   title:"İstekler",     iconKey:"list",     badge:true },
-    project:  { id:"project",  labelKey:"newProject", titleKey:"newProjectTitle", primary:true },
-    projects: { id:"projects", labelKey:"projects", titleKey:"projects", iconKey:"folder" },
     detail:   { id:"detail",   label:"İstek",      title:"İstek",        iconKey:"doc",      badge:true },
     page:     { id:"page",     label:"Sayfa",      title:"Sayfa",        iconKey:"folder",   badge:true },
     desc:     { id:"desc",     label:"Açıklama",   title:"Açıklama",     iconKey:"doc",      badge:true },
     export:   { id:"export",   label:"Hazır",      title:"Hazır",        iconKey:"check",    ready:true, hook:"ready" },
-    settings: { id:"settings", label:"Ayarlar",    title:"Ayarlar",      iconKey:"settings" },
     backup:   { id:"backup",   label:"Yedek",      title:"Yedek",        iconKey:"backup" },
     help:     { id:"help",     label:"Yardım",     title:"Yardım",       iconKey:"help" }
   };
@@ -364,6 +361,7 @@
     companionChecking:{ tr:"Uygulama aranıyor…", en:"Looking for the Request Ledger app…" },
     companionRetry:{ tr:"Yeniden kontrol et", en:"Check again" },
     companionDraftDiscarded:{ tr:"Uygulama kapandı; gönderilmemiş taslak atıldı.", en:"The app closed; the unsent draft was discarded." },
+    openProjectInApp:{ tr:"Projeyi uygulamada aç.", en:"Open a project in the app." },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
     bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },

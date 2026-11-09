@@ -14,7 +14,7 @@
   /* ---------- shell v3: section groups / pin / callout ---------- */
 
   function isUtilitySection(section){
-    return section === "settings" || section === "backup" || section === "help";
+    return section === "backup" || section === "help";
   }
 
   /* shell v9: utility group is collapsed by default and the chevron above the
@@ -299,9 +299,7 @@
   }
 
   function sectionAllowed(section, mode){
-    if(section === "settings" || section === "backup" || section === "help") return true;
-    if(section === "project") return !hasProjectName();
-    if(section === "projects") return mode !== "compose";
+    if(section === "backup" || section === "help") return true;
     if(mode === "compose") return section === "detail" || section === "page" || section === "desc" || section === "export";
     return section === "new" || section === "list";
   }

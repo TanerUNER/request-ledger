@@ -192,6 +192,20 @@
     drafts = [];
     historyItems = [];
     renderHistoryTree();
+    if(typeof serverProjectList === "function" && serverFolderMode()){
+      serverProjectList().then(function(list){
+        let changed = false;
+        (list || []).forEach(function(item){
+          if(!item || !item.projectId) return;
+          const project = findProjectRecord(item.projectId);
+          if(project && item.slug && project.folder !== item.slug){
+            updateProjectRecord(item.projectId, { folder:item.slug });
+            changed = true;
+          }
+        });
+        if(changed) renderArchiveProjects();
+      }).catch(function(){ /* folder list is best effort */ });
+    }
     Promise.all([loadHistory(), loadSnapshots()]).catch(function(err){
       console.warn("Proje arşivi yüklenemedi", err);
     });
@@ -251,6 +265,7 @@
     const snapshot = await createSnapshot("record");
     await saveSnapshot("record", snapshot, rootReady);
     saveNow();
+    if(typeof serverSaveProject === "function") await serverSaveProject(activeProjectId);
     historyTab = "records";
     renderHistoryTree();
     if(snapshot.fileName) showToast("Kayıt oluşturuldu: " + snapshot.fileName);
@@ -269,6 +284,7 @@
     if(index >= 0) records[index] = fresh;
     else records.unshift(fresh);
     try{ await idbCollectionPut(RECORDS_STORE, fresh); }catch(err){}
+    if(typeof serverSaveProject === "function") await serverSaveProject(activeProjectId);
     sortSnapshots();
     historyTab = "records";
     renderHistoryTree();
@@ -284,6 +300,9 @@
     if(!state.requests.length){
       showToast("Kaydedilecek istek yok.", "error");
       return;
+    }
+    if(typeof serverFolderMode === "function" && !serverFolderMode()){
+      showToast("Sunucu modu klasör kaydı için gerekli; kayıt tarayıcıda tutuluyor.", "error");
     }
     const signature = requestSignature();
     const existing = records.find(function(record){

@@ -744,6 +744,7 @@ const SEO_TITLE = document.title;
     "Oluşturma": "Created",
     "Güncelleme": "Updated",
     "Dışa aktarım hedefi": "Export target",
+    "Klasör": "Folder",
     "Dışa aktarım hedefini seç": "Select export target",
     "Dışa aktarım hedefini kaldır": "Remove export target",
     "Projeyi aç": "Open project",
