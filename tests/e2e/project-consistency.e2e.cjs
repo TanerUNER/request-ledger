@@ -512,6 +512,20 @@ async function main() {
     await waitFor(() => evaluate(cdp, pageSession,
       "document.getElementById('confirmModal').classList.contains('is-open')"), "same-project conflict dialog", 15000);
     check("same-project ledger difference asks for a choice", true);
+    const conflictDiagnostics = await evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.conflictInfo()");
+    console.log("CONFLICT DIAGNOSTICS", JSON.stringify(conflictDiagnostics));
+    check("conflict diagnostics capture both ledger ids, project ids and the registry",
+      conflictDiagnostics &&
+      conflictDiagnostics.app.ledgerId !== conflictDiagnostics.panel.ledgerId &&
+      conflictDiagnostics.app.projectId === P_TEST &&
+      conflictDiagnostics.panel.projectId === P_TEST &&
+      conflictDiagnostics.registry.activeId === P_TEST &&
+      conflictDiagnostics.app.requestCount > 0 &&
+      conflictDiagnostics.panel.requestCount > 0 &&
+      typeof conflictDiagnostics.stack === "string" && conflictDiagnostics.stack.length > 0,
+      conflictDiagnostics);
+    await screenshot(cdp, pageSession, "11c-conflict-modal-diagnostics.png");
     await evaluate(cdp, pageSession, "document.getElementById('confirmOkBtn').click()");
     await sleep(1600);
     const afterAppChoice = await readExtension(cdp);

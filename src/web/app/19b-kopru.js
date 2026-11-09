@@ -47,6 +47,61 @@
      re-announce itself once per empty-panel state and once per conflict. */
   let bridgePeerEmptyAsked = false;
   const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0 };
+  /* Rejected envelopes and the exact conflict evidence are kept in memory so
+     the UI/E2E can explain a prompt instead of silently diverging. */
+  const BRIDGE_DIAGNOSTIC_MAX = 50;
+  const bridgeRejects = [];
+  let bridgeConflictInfo = null;
+
+  function bridgeEnvelopeRequestCount(data){
+    if(!data) return 0;
+    if(Array.isArray(data.requests)) return data.requests.length;
+    if(Array.isArray(data.upserts)) return data.upserts.length;
+    return 0;
+  }
+
+  function bridgeRecordReject(reason, data, extra){
+    const record = {
+      at: nowISO(),
+      reason: reason,
+      type: data && typeof data.type === "string" ? data.type : "",
+      projectId: bridgeEnvelopeProjectId(data),
+      ledgerId: data && typeof data.ledgerId === "string" ? data.ledgerId : "",
+      requestCount: bridgeEnvelopeRequestCount(data),
+      appProjectId: activeProjectId || "",
+      appLedgerId: state.ledgerId || "",
+      detail: extra || null
+    };
+    bridgeRejects.push(record);
+    if(bridgeRejects.length > BRIDGE_DIAGNOSTIC_MAX) bridgeRejects.shift();
+    try{ console.warn("[rl-bridge] rejected envelope", record); }catch(err){ /* ignore */ }
+    return record;
+  }
+
+  function bridgeCaptureConflict(source, data){
+    const appProject = activeProjectId ? findProjectRecord(activeProjectId) : null;
+    const registry = readRegistry();
+    bridgeConflictInfo = {
+      at: nowISO(),
+      source: source || "RL_APP_SNAPSHOT",
+      app: {
+        projectId: activeProjectId || "",
+        ledgerId: state.ledgerId || "",
+        requestCount: state.requests.length
+      },
+      panel: {
+        projectId: bridgeEnvelopeProjectId(data),
+        ledgerId: data && typeof data.ledgerId === "string" ? data.ledgerId : "",
+        requestCount: bridgeEnvelopeRequestCount(data)
+      },
+      registry: {
+        activeId: registry ? registry.activeId : null,
+        recordLedgerId: appProject ? appProject.ledgerId : ""
+      },
+      stack: (new Error().stack || "").split("\n").slice(1, 7).join(" | ")
+    };
+    try{ console.warn("[rl-bridge] conflict evidence", bridgeConflictInfo); }catch(err){ /* ignore */ }
+  }
 
   function bridgeTombstoneKey(){
     return BRIDGE_TOMBSTONE_KEY + ":" + (activeProjectId || "default");
@@ -381,7 +436,10 @@
     /* Never apply another project's ledger to the open project. An empty id is
        also refused while a project is open; the panel re-announces its identity
        on the next HELLO. */
-    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
+    if(activeProjectId && incomingProjectId !== activeProjectId){
+      bridgeRecordReject("project-mismatch", data, { incomingProjectId: incomingProjectId });
+      return false;
+    }
     const incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     const stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     const signature = bridgeSignatureFromData(data);
@@ -453,6 +511,7 @@
 
   function bridgeOpenConflict(){
     if(bridgeConflictOpen || bridgeResolved) return;
+    bridgeCaptureConflict(bridgePeerSnapshot && bridgePeerSnapshot.type, bridgePeerSnapshot);
     bridgeStateSent = false;
     bridgeConflictOpen = true;
     /* The panel learns about a difference from RL_APP_HELLO. If this page
@@ -508,6 +567,7 @@
        conflict. An empty identity with data is treated as foreign too. */
     if(activeProjectId && peerProjectId !== activeProjectId){
       if(peerProjectId || incomingHas){
+        bridgeRecordReject("project-mismatch", data, { reason: "snapshot project does not match the open project" });
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         bridgePeerSnapshot = null;
@@ -553,6 +613,7 @@
     const peerProjectId = bridgeEnvelopeProjectId(data);
     if(activeProjectId && peerProjectId !== activeProjectId){
       if(peerProjectId || data.conflict === true){
+        bridgeRecordReject("project-mismatch", data, { reason: "ack project does not match the open project" });
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeIndicator();
@@ -757,6 +818,8 @@
         ledgerId:function(){ return state.ledgerId; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
         conflict:function(){ return bridgeConflictOpen; },
+        conflictInfo:function(){ return bridgeConflictInfo; },
+        rejects:function(){ return bridgeRejects.slice(); },
         serverStopped:function(){ return bridgeServerStoppedState(); }
       });
     }catch(err){ /* ignore */ }

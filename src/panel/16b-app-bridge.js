@@ -275,6 +275,58 @@
   var bridgePeerLedgerId = "";
   var bridgePeerRequestCount = 0;
   var bridgeServerStopped = false;
+  var bridgeRejects = [];
+  var bridgeConflictInfo = null;
+  var BRIDGE_DIAGNOSTIC_MAX = 50;
+
+  function bridgeEnvelopeRequestCount(data){
+    if(!data) return 0;
+    if(Array.isArray(data.requests)) return data.requests.length;
+    if(Array.isArray(data.upserts)) return data.upserts.length;
+    return 0;
+  }
+
+  function bridgeRecordReject(reason, data, extra){
+    var record = {
+      at: bridgeNow(),
+      reason: reason,
+      type: data && typeof data.type === "string" ? data.type : "",
+      projectId: bridgeEnvelopeProjectId(data),
+      ledgerId: data && typeof data.ledgerId === "string" ? data.ledgerId : "",
+      requestCount: bridgeEnvelopeRequestCount(data),
+      panelProjectId: activeProjectId || "",
+      panelLedgerId: app && app.ledgerId ? String(app.ledgerId) : "",
+      detail: extra || null
+    };
+    bridgeRejects.push(record);
+    if(bridgeRejects.length > BRIDGE_DIAGNOSTIC_MAX) bridgeRejects.shift();
+    try{ console.warn("[rl-bridge-panel] rejected envelope", record); }catch(err){ /* ignore */ }
+    return record;
+  }
+
+  function bridgeCaptureConflict(source, data){
+    var record = activeProjectId ? activeProjectRecord() : null;
+    bridgeConflictInfo = {
+      at: bridgeNow(),
+      source: source || "RL_APP_HELLO",
+      panel: {
+        projectId: activeProjectId || "",
+        ledgerId: app && app.ledgerId ? String(app.ledgerId) : "",
+        requestCount: app && Array.isArray(app.requests) ? app.requests.length : 0
+      },
+      app: {
+        projectId: bridgeEnvelopeProjectId(data),
+        ledgerId: data && typeof data.ledgerId === "string" ? data.ledgerId : "",
+        requestCount: bridgeEnvelopeRequestCount(data)
+      },
+      registry: {
+        activeId: (readRegistry() || {}).activeId || null,
+        recordLedgerId: record ? record.ledgerId : ""
+      },
+      stack: (new Error().stack || "").split("\n").slice(1, 7).join(" | ")
+    };
+    try{ console.warn("[rl-panel-bridge] conflict evidence", bridgeConflictInfo); }catch(err){ /* ignore */ }
+  }
 
   /* The app sends its interface language with every pick/capture control
      request so the injected overlay can never fall back to a stale panel
@@ -630,7 +682,10 @@
   function bridgeApply(data, mode){
     if(!app) return false;
     var incomingProjectId = bridgeEnvelopeProjectId(data);
-    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
+    if(activeProjectId && incomingProjectId !== activeProjectId){
+      bridgeRecordReject("project-mismatch", data, { incomingProjectId: incomingProjectId });
+      return false;
+    }
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
@@ -778,6 +833,7 @@
     if(activeProjectId && !peerProjectId) return;
     if(peerProjectId && peerProjectId !== activeProjectId){
       if(!bridgeAdoptProject(peerProjectId, bridgeEnvelopeProjectName(data), data)){
+        bridgeRecordReject("project-adopt-failed", data, { reason: "HELLO project could not be adopted" });
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeUI();
@@ -833,6 +889,7 @@
     var sameProject = Boolean(peerProjectId && activeProjectId && peerProjectId === activeProjectId);
     if(sameProject && !adoptedNewProject && data.ledgerId && app.ledgerId &&
        String(data.ledgerId) !== String(app.ledgerId) && pageRequestCount > 0 && panelHas){
+      bridgeCaptureConflict(data.type, data);
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -885,6 +942,7 @@
     if(peerProjectId === activeProjectId && data.ledgerId && app.ledgerId &&
        String(data.ledgerId) !== String(app.ledgerId) &&
        incomingRequestCount > 0 && app.requests.length > 0){
+      bridgeCaptureConflict(data.type, data);
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -1148,7 +1206,19 @@
      active project's ledger and push it through the bridge. No section is
      opened or re-rendered while closed. */
   function bridgeRefreshFromStorage(){
-    if(!hasHost || !activeProjectId || bridgeSuppress || bridgeAdoptingProject) return;
+    if(!hasHost || bridgeSuppress || bridgeAdoptingProject) return;
+    /* A panel that mounted before the app created or selected a project still
+       needs to adopt it. Project-registry storage events are the only signal a
+       plain page gets (there is no bridge HELLO on that tab). Adoption is data
+       only and never opens a section. */
+    if(!activeProjectId){
+      var registry = readRegistry();
+      var nextId = registry && registry.activeId;
+      if(nextId && findProjectRecordIn(registry, nextId)){
+        openProjectById(nextId, { preserveSection:true });
+      }
+      return;
+    }
     /* A pick/capture result is being written; do not reload the old ledger
        over it while the panel returns from the overlay. */
     if(typeof pickPending !== "undefined" && pickPending) return;
@@ -1196,11 +1266,14 @@
         connected:function(){ return bridgeConnected; },
         serverStopped:function(){ return bridgeServerStopped; },
         conflict:function(){ return bridgeConflict; },
+        conflictInfo:function(){ return bridgeConflictInfo; },
+        rejects:function(){ return bridgeRejects.slice(); },
         projectId:function(){ return activeProjectId || ""; },
         projectName:function(){ return app && typeof app.project === "string" ? app.project : ""; },
         mismatch:function(){ return bridgeProjectMismatch || (!!bridgePeerProjectId && !!activeProjectId && bridgePeerProjectId !== activeProjectId); },
         ledgerId:function(){ return app && app.ledgerId ? app.ledgerId : ""; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
+        pageToken:function(){ return panelPageToken; },
         pageOrigin:function(){ return bridgePageOrigin; }
       });
     }catch(err){ /* ignore */ }

@@ -169,7 +169,9 @@
       return;
     }
     resetFilters(false);
-    if(!state.requests.length) state.ledgerId = newLedgerId();
+    /* The project ledger id is minted at project creation and persisted in the
+       registry. Adding the first request must never rotate it: that produced a
+       second ledger for the same project and opened "Two ledgers found". */
     const req = makeNewRequest(typeId);
     state.requests.forEach(function(item){ item.collapsed = true; });
     req.collapsed = false;

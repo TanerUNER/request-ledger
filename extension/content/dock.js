@@ -110,6 +110,7 @@
   /* Panel channel messages are page-local. Scoping them with this per-page
      token prevents another tab's panel from opening this page's flyout. */
   var hostPageToken = "rlpage_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
+  try { document.documentElement.setAttribute("data-rl-page-token", hostPageToken); } catch (error) { /* ignore */ }
   var BRIDGE_IN_TYPES = {
     RL_APP_HELLO: 1,
     RL_APP_PATCH: 1,
