@@ -16,13 +16,11 @@
 <meta name="author" content="Taner ÜNER">
 <meta name="application-name" content="Request Ledger">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-<link rel="canonical" href="https://taneruner.github.io/request-ledger/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Request Ledger">
-<meta property="og:url" content="https://taneruner.github.io/request-ledger/">
 <meta property="og:title" content="Request Ledger — Local-First Request &amp; Feedback Tracker">
 <meta property="og:description" content="Single-file, local-first request ledger for product teams. Collect feedback and bugs, plan with AI agents and export clean, AI-ready Markdown.">
-<meta property="og:image" content="https://taneruner.github.io/request-ledger/og-image.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/TanerUNER/request-ledger/main/og-image.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -32,7 +30,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Request Ledger — Local-First Request &amp; Feedback Tracker">
 <meta name="twitter:description" content="Single-file, local-first request ledger for product teams. Collect feedback and bugs, plan with AI agents and export clean, AI-ready Markdown.">
-<meta name="twitter:image" content="https://taneruner.github.io/request-ledger/og-image.png">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/TanerUNER/request-ledger/main/og-image.png">
 <meta name="twitter:image:alt" content="Request Ledger dashboard with a request list, progress summary and export planning panel">
 <script type="application/ld+json">
 {
@@ -40,7 +38,7 @@
   "@type": "SoftwareApplication",
   "name": "Request Ledger",
   "alternateName": "İstek Defteri",
-  "url": "https://taneruner.github.io/request-ledger/",
+  "url": "https://github.com/TanerUNER/request-ledger",
   "description": "Single-file, local-first request ledger for product teams. Collect feedback and bugs, plan with AI agents and export clean, AI-ready Markdown.",
   "applicationCategory": "BusinessApplication",
   "applicationSubCategory": "Request Management",
@@ -51,9 +49,9 @@
   "isAccessibleForFree": true,
   "license": "https://opensource.org/licenses/MIT",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "image": "https://taneruner.github.io/request-ledger/og-image.png",
+  "image": "https://raw.githubusercontent.com/TanerUNER/request-ledger/main/og-image.png",
   "author": { "@type": "Person", "name": "Taner ÜNER", "url": "https://github.com/TanerUNER", "email": "mail.taneruner@gmail.com" },
-  "publisher": { "@type": "Organization", "name": "Request Ledger", "url": "https://taneruner.github.io/request-ledger/", "logo": { "@type": "ImageObject", "url": "https://taneruner.github.io/request-ledger/og-image.png" } },
+  "publisher": { "@type": "Organization", "name": "Request Ledger", "url": "https://github.com/TanerUNER/request-ledger", "logo": { "@type": "ImageObject", "url": "https://raw.githubusercontent.com/TanerUNER/request-ledger/main/og-image.png" } },
   "sameAs": ["https://github.com/TanerUNER/request-ledger"],
   "featureList": [
     "Six request types with dedicated fields",
@@ -2243,7 +2241,7 @@ const SEO_TITLE = document.title;
           "Öğe seçici artık uygulamadan da çalışıyor: hangi sekmeden seçileceğini sorar, sayfa ve konumu doldurur."
         ],
         updates: [
-          "Bağlantı yalnızca http://localhost:8080 ve https://taneruner.github.io adreslerinde kurulur ve uygulama sekmesi açıkken sürer; görseller ve dosyalar canlı eşitlenmez."
+          "Bağlantı yalnızca yerel dosya veya localhost üzerinde kurulur ve uygulama sekmesi açıkken sürer; görseller ve dosyalar canlı eşitlenmez."
         ],
         fixes: [
           "Flyout'un işaretçi oku artık panelin kenarıyla hizalı.",
@@ -2258,7 +2256,7 @@ const SEO_TITLE = document.title;
           "The element picker now runs from the app too: it asks which tab to use and fills the page and location."
         ],
         updates: [
-          "The bridge works only on http://localhost:8080 and https://taneruner.github.io, and only while the app tab is open; images and files do not sync live."
+          "The bridge works only when the app runs from a local file or localhost, and only while the app tab is open; images and files do not sync live."
         ],
         fixes: [
           "The flyout's pointer arrow now lines up with the panel edge.",
@@ -10790,7 +10788,7 @@ const SEO_TITLE = document.title;
      backup. See extension/docs/panel-protocol.md.
      ============================================================ */
 
-  const BRIDGE_ORIGINS = ["http://localhost:8080", "https://taneruner.github.io"];
+  const BRIDGE_ORIGINS = ["http://localhost:8080"];
   /* The launcher can serve on a free port, so every localhost and loopback
      port is a valid companion origin. A file: page has the opaque origin
      "null"; it is trusted only because the user opened the local HTML file

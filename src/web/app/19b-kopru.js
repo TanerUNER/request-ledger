@@ -11,7 +11,7 @@
      backup. See extension/docs/panel-protocol.md.
      ============================================================ */
 
-  const BRIDGE_ORIGINS = ["http://localhost:8080", "https://taneruner.github.io"];
+  const BRIDGE_ORIGINS = ["http://localhost:8080"];
   /* The launcher can serve on a free port, so every localhost and loopback
      port is a valid companion origin. A file: page has the opaque origin
      "null"; it is trusted only because the user opened the local HTML file

@@ -138,7 +138,7 @@ const SEO_TITLE = document.title;
           "Öğe seçici artık uygulamadan da çalışıyor: hangi sekmeden seçileceğini sorar, sayfa ve konumu doldurur."
         ],
         updates: [
-          "Bağlantı yalnızca http://localhost:8080 ve https://taneruner.github.io adreslerinde kurulur ve uygulama sekmesi açıkken sürer; görseller ve dosyalar canlı eşitlenmez."
+          "Bağlantı yalnızca yerel dosya veya localhost üzerinde kurulur ve uygulama sekmesi açıkken sürer; görseller ve dosyalar canlı eşitlenmez."
         ],
         fixes: [
           "Flyout'un işaretçi oku artık panelin kenarıyla hizalı.",
@@ -153,7 +153,7 @@ const SEO_TITLE = document.title;
           "The element picker now runs from the app too: it asks which tab to use and fills the page and location."
         ],
         updates: [
-          "The bridge works only on http://localhost:8080 and https://taneruner.github.io, and only while the app tab is open; images and files do not sync live."
+          "The bridge works only when the app runs from a local file or localhost, and only while the app tab is open; images and files do not sync live."
         ],
         fixes: [
           "The flyout's pointer arrow now lines up with the panel edge.",
