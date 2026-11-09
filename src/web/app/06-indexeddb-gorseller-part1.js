@@ -40,7 +40,7 @@
     return copy;
   }
   function idbPut(record){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ reject(new Error("IndexedDB kapalı")); return; }
       const tx = idb.transaction(IMG_STORE, "readwrite");
       tx.objectStore(IMG_STORE).put(withProjectScope(record));
@@ -48,23 +48,36 @@
       tx.onerror = function(){ reject(tx.error || new Error("Görsel kaydedilemedi")); };
       tx.onabort = function(){ reject(tx.error || new Error("Görsel kaydedilemedi")); };
     });
+    const usingServer = typeof serverDiskMode !== "undefined" && serverDiskMode;
+    return usingServer
+      ? promise.then(function(){ return serverUploadMedia("image", record); })
+      : promise;
   }
   function idbGet(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(null); return; }
       const tx = idb.transaction(IMG_STORE, "readonly");
       const request = tx.objectStore(IMG_STORE).get(id);
       request.onsuccess = function(){ resolve(request.result || null); };
       request.onerror = function(){ reject(request.error || new Error("Görsel okunamadı")); };
     });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(record){
+      if(record) return record;
+      return serverFetchMedia(activeProjectId, id);
+    });
   }
   function idbDelete(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(); return; }
       const tx = idb.transaction(IMG_STORE, "readwrite");
       tx.objectStore(IMG_STORE).delete(id);
       tx.oncomplete = function(){ resolve(); };
       tx.onerror = function(){ reject(tx.error || new Error("Görsel silinemedi")); };
+    });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(){
+      serverDeleteMedia("image", id);
     });
   }
   function idbClear(){
@@ -77,7 +90,7 @@
     });
   }
   function idbFilePut(record){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ reject(new Error("IndexedDB kapalı")); return; }
       const tx = idb.transaction(FILE_STORE, "readwrite");
       tx.objectStore(FILE_STORE).put(withProjectScope(record));
@@ -85,23 +98,36 @@
       tx.onerror = function(){ reject(tx.error || new Error("Dosya kaydedilemedi")); };
       tx.onabort = function(){ reject(tx.error || new Error("Dosya kaydedilemedi")); };
     });
+    const usingServer = typeof serverDiskMode !== "undefined" && serverDiskMode;
+    return usingServer
+      ? promise.then(function(){ return serverUploadMedia("file", record); })
+      : promise;
   }
   function idbFileGet(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(null); return; }
       const tx = idb.transaction(FILE_STORE, "readonly");
       const request = tx.objectStore(FILE_STORE).get(id);
       request.onsuccess = function(){ resolve(request.result || null); };
       request.onerror = function(){ reject(request.error || new Error("Dosya okunamadı")); };
     });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(record){
+      if(record) return record;
+      return serverFetchMedia(activeProjectId, id);
+    });
   }
   function idbFileDelete(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(); return; }
       const tx = idb.transaction(FILE_STORE, "readwrite");
       tx.objectStore(FILE_STORE).delete(id);
       tx.oncomplete = function(){ resolve(); };
       tx.onerror = function(){ reject(tx.error || new Error("Dosya silinemedi")); };
+    });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(){
+      serverDeleteMedia("file", id);
     });
   }
   function idbFilesClear(){
@@ -575,6 +601,15 @@
   }
   async function loadImageURL(id){
     if(imageUrlCache.has(id)) return imageUrlCache.get(id);
+    /* Server mode: media lives on disk and the URL survives port changes. */
+    if(typeof serverDiskMode !== "undefined" && serverDiskMode && activeProjectId &&
+       typeof serverMediaMeta === "function" && serverMediaMeta(activeProjectId, id)){
+      const serverUrl = serverMediaUrl(activeProjectId, id);
+      if(serverUrl){
+        imageUrlCache.set(id, serverUrl);
+        return serverUrl;
+      }
+    }
     if(!idb) return null;
     try{
       const rec = await idbGet(id);

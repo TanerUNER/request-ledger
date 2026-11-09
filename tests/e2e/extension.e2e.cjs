@@ -22,7 +22,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html";
+const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
 const CHROME_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -119,6 +119,8 @@ async function waitFor(fn, label, timeoutMs) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
@@ -135,6 +137,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -216,6 +221,10 @@ async function main() {
 
     const dockSession = await attach(cdp, targets.dock.targetId);
     const flyoutSession = await attach(cdp, targets.flyout.targetId);
+    /* Pin the rail so the 5 s idle auto-hide cannot close the section while
+       the test drives programmatic clicks. */
+    await evaluate(cdp, dockSession,
+      "(() => { if (!window.RLPanel.pinned()) window.RLPanel.togglePin(); return window.RLPanel.pinned(); })()");
 
     const banner = await evaluate(
       cdp,
@@ -260,6 +269,114 @@ async function main() {
     })()`);
     check("request is saved to the extension ledger", state && state.count === 1 && state.req.title === "E2E: header menu overflow", state && state.count);
     check("project name is stored", state && state.project === "E2E Test", state && state.project);
+
+    /* ---------- storage recovery and quota reporting ---------- */
+    if (!(await evaluate(cdp, flyoutSession, "!!document.getElementById('rl-title-input')"))) {
+      await evaluate(cdp, dockSession, "window.RLPanel.open('list')");
+      await sleep(500);
+      await evaluate(cdp, flyoutSession, `(() => {
+        const row = document.querySelector('[data-request-id]');
+        if (row) row.click();
+        return !!row;
+      })()`);
+      await sleep(500);
+    }
+
+    /* saveState must not let duplicate request ids inflate the payload. */
+    const dedupe = await evaluate(cdp, flyoutSession, `(() => {
+      const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
+      const key = 'oz-istek-defteri-p-' + reg.activeId;
+      const raw = localStorage.getItem(key);
+      const st = JSON.parse(raw);
+      const duplicate = JSON.parse(JSON.stringify(st.requests[0]));
+      const ok = window.IstekCore.storage.saveState({
+        project: st.project, ledgerId: st.ledgerId,
+        requests: [st.requests[0], duplicate], agents: [],
+        language: 'en', exportBehavior: 'default', lastExport: null
+      });
+      const written = JSON.parse(localStorage.getItem(key));
+      localStorage.setItem(key, raw);
+      return { ok: ok, count: written.requests.length };
+    })()`);
+    check("saveState de-duplicates repeated request ids",
+      dedupe.ok === true && dedupe.count === 1, dedupe);
+
+    /* One transient failure is retried: no sticky banner, data saved. */
+    await evaluate(cdp, flyoutSession, `(() => {
+      window.__rlOriginalSetItem = localStorage.setItem.bind(localStorage);
+      window.__rlThrowOnce = true;
+      localStorage.setItem = function(key, value){
+        if(window.__rlThrowOnce && String(key).indexOf('oz-istek-defteri-p-') === 0){
+          window.__rlThrowOnce = false;
+          throw new DOMException('transient write failure', 'UnknownError');
+        }
+        return window.__rlOriginalSetItem(key, value);
+      };
+      return true;
+    })()`);
+    await evaluate(cdp, flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      input.value = input.value + ' x';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(1400);
+    const transient = await evaluate(cdp, flyoutSession, `(() => {
+      const banner = document.getElementById('rl-storage-banner');
+      const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
+      const st = JSON.parse(localStorage.getItem('oz-istek-defteri-p-' + reg.activeId));
+      return { bannerHidden: !banner || banner.hidden, title: st.requests[0].title };
+    })()`);
+    check("a transient write failure retries without sticking the storage banner",
+      transient.bannerHidden === true && / x$/.test(transient.title), transient);
+
+    /* Persistent quota failure must name the cleanup path. */
+    await evaluate(cdp, flyoutSession, `(() => {
+      window.__rlThrowQuota = true;
+      localStorage.setItem = function(key, value){
+        if(window.__rlThrowQuota && String(key).indexOf('oz-istek-defteri-p-') === 0){
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        return window.__rlOriginalSetItem(key, value);
+      };
+      return true;
+    })()`);
+    await evaluate(cdp, flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      input.value = input.value + ' q';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(1400);
+    const quotaState = await evaluate(cdp, flyoutSession, `(() => {
+      const banner = document.getElementById('rl-storage-banner');
+      return { bannerHidden: banner ? banner.hidden : true, bannerText: banner ? banner.textContent : '' };
+    })()`);
+    const quotaToast = await evaluate(cdp, pageSession,
+      "(document.getElementById('rl-toast-layer') || {}).innerText || ''");
+    check("a full storage shows the quota message, banner and cleanup path",
+      quotaState.bannerHidden === false && /Storage is full|Depolama dolu/.test(quotaToast),
+      { quotaState, quotaToast });
+
+    /* Restore native storage, save once, and clear the failure banner. */
+    await evaluate(cdp, flyoutSession, `(() => {
+      window.__rlThrowQuota = false;
+      localStorage.setItem = window.__rlOriginalSetItem;
+      const input = document.getElementById('rl-title-input');
+      input.value = 'E2E: header menu overflow';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(1400);
+    const recovered = await evaluate(cdp, flyoutSession, `(() => {
+      const banner = document.getElementById('rl-storage-banner');
+      const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
+      const st = JSON.parse(localStorage.getItem('oz-istek-defteri-p-' + reg.activeId));
+      return { bannerHidden: !banner || banner.hidden, title: st.requests[0].title };
+    })()`);
+    check("storage recovers and clears the banner after a successful save",
+      recovered.bannerHidden === true && recovered.title === "E2E: header menu overflow", recovered);
+
 
     /* ---------- element picker ---------- */
 
@@ -360,6 +477,9 @@ async function main() {
         try {
           window.__e2ePreviewMessages.push({ type: (data && data.type) || '', origin: event.origin });
         } catch (error) { /* ignore */ }
+        /* Live media sync sends RL_APP_MEDIA to the app by design; this test
+           only guards the in-panel preview channel. */
+        if (data && data.type === 'RL_APP_MEDIA') return;
         if (hasImage(data, 0)) window.__e2eImageLeak = true;
       }, true);
       return true;
@@ -373,6 +493,17 @@ async function main() {
     })()`);
     await waitFor(() => evaluate(cdp, flyoutSession, "!!document.getElementById('rl-image-preview')"), "image preview opens");
     await sleep(400);
+    console.log("PREVIEW DEBUG", JSON.stringify({
+      frame: await evaluate(cdp, pageSession, `(() => {
+        const f = document.querySelector('iframe[src*="role=flyout"]');
+        return f ? { display:getComputedStyle(f).display, visibility:getComputedStyle(f).visibility, width:Math.round(f.getBoundingClientRect().width) } : null;
+      })()`),
+      panel: await evaluate(cdp, flyoutSession, `({
+        section: document.body.dataset.section || '',
+        preview: !!document.getElementById('rl-image-preview'),
+        active: document.activeElement ? (document.activeElement.id || document.activeElement.className) : ''
+      })`)
+    }));
 
     const previewRect = await evaluate(cdp, pageSession, `(() => {
       const frame = document.querySelector('iframe[src*="role=flyout"]');
@@ -403,7 +534,10 @@ async function main() {
     await sleep(400);
 
     const previewState = await evaluate(cdp, flyoutSession, `(() => ({
-      focusOnThumb: !!(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('thumb'))
+      focusOnThumb: !!(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('thumb')),
+      activeId: document.activeElement ? (document.activeElement.id || '') : '',
+      activeClass: document.activeElement ? (document.activeElement.className || '') : '',
+      thumbs: document.querySelectorAll('#rl-img-grid .thumb').length
     }))()`);
     const previewFrame = await evaluate(cdp, pageSession, `(() => {
       const frame = document.querySelector('iframe[src*="role=flyout"]');
@@ -431,6 +565,20 @@ async function main() {
       return value.confirmed === true && value.status === "ready" ? value : null;
     })()`), "ready confirmation state", 6000);
     check("ready confirmation locks the request in state", confirmed.confirmed === true && confirmed.status === "ready", confirmed);
+
+    const postReadyDebug = {
+      dock: await evaluate(cdp, dockSession, `(() => ({
+        hasList: !!document.querySelector('[data-section="list"]'),
+        hasCard: !!document.getElementById('rl-dock-card'),
+        dockState: window.RLPanel ? window.RLPanel.dockState() : null
+      }))()`),
+      flyout: await evaluate(cdp, flyoutSession, `(() => ({
+        section: document.body.dataset.section || '',
+        hasExp: !!document.querySelector('[data-act="exp-open"]'),
+        hasSave: !!document.getElementById('rl-save-record')
+      }))()`)
+    };
+    console.log("POST READY DEBUG", JSON.stringify(postReadyDebug));
 
     await evaluate(cdp, dockSession, `document.querySelector('[data-section="list"]').click()`);
     await sleep(900);

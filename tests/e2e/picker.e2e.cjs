@@ -27,7 +27,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html";
+const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
 const TARGET_URL = "http://127.0.0.1:8080/tests/fixtures/picker-target.html";
 /* 127.0.0.1 is a companion origin now; the negative probe uses a different
    loopback host served by a test-only HTTP server. */
@@ -219,6 +219,8 @@ async function openPanel(cdp, pageSession) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
@@ -234,6 +236,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -264,7 +269,7 @@ async function main() {
         collapsed: false, createdAt: "2026-11-08T12:00:00.000Z", updatedAt: "2026-11-08T12:00:00.000Z"
       }]
     };
-    await evaluate(cdp, pageSession, `localStorage.setItem('oz-istek-defteri-v1', ${JSON.stringify(JSON.stringify(seed))}); location.reload();`);
+    await evaluate(cdp, pageSession, `localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-v1', ${JSON.stringify(JSON.stringify(seed))}); location.reload();`);
     await sleep(2200);
     pageSession = await attach(cdp, pageTarget.targetId);
     await openActiveProject(cdp, pageSession);

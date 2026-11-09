@@ -111,10 +111,15 @@
 }
 .dock-card{transition:none !important}
 
-/* a11y: restore visible keyboard focus on form controls */
+/* a11y: form controls have ONE focus style — the accent border. The outer
+   outline here duplicated the component border and looked like a second,
+   tab-like frame. Rows/options keep their own focus treatment.
+   `:focus` is included for the custom select trigger so a programmatic or
+   mouse focus still paints the same single accent ring as the text fields. */
 .fld:focus-visible,
 .textarea:focus-visible,
-.sel-btn:focus-visible,
+.sel-btn:focus,
+.sel-btn:focus-visible{outline:none;outline-offset:0;border-color:var(--accent)}
 .sel-opt:focus-visible,
 .exp-warn-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
 

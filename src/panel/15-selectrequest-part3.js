@@ -59,9 +59,9 @@
     activeRequestId = null;
     saveActivePointer(null);
     composeDirty = false;
-    flushSave();
+    var saved = flushSave();
     broadcastState();
-    toast(t("Kaydedildi"));
+    if(saved) toast(t("Kaydedildi"));
     /* v12: after ready, show every request again (filters/archive tab may
        have been left on an empty view). */
     listFilter = { q:"", type:"all", status:"all" };

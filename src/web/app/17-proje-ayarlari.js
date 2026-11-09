@@ -162,6 +162,7 @@
     }
     cancelScheduledSave();
     activeProjectId = project.id;
+    if(typeof serverMarkActive === "function") serverMarkActive(project.id);
     targetFolderHandle = null;
     targetFolderNeedsPermission = false;
     loadStateForProject(project.id, project.name);

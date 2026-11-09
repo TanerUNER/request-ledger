@@ -1935,6 +1935,7 @@ let settings = {
   projectId: null
 };
 let idb = null;
+let lastSaveError = null;
 
 function getLocalStorage(){
   try{
@@ -2117,15 +2118,24 @@ function loadState(){
   }
 }
 function saveState(state){
+  lastSaveError = null;
   try{
     const ls = getLocalStorage();
     if(!ls || !state) return false;
+    /* Defensive de-duplication: a merge bug or an old profile must never make
+       one request id inflate the payload twice. */
+    const seen = {};
+    const requests = (Array.isArray(state.requests) ? state.requests : []).filter(function(req){
+      if(!req || typeof req.id !== "string" || !req.id || seen[req.id]) return false;
+      seen[req.id] = true;
+      return true;
+    });
     const payload = {
       version: 2,
       project: state.project,
       ledgerId: state.ledgerId,
       updatedAt: nowISO(),
-      requests: (state.requests || []).map(function(req){ return serializeRequest(req); }),
+      requests: requests.map(function(req){ return serializeRequest(req); }),
       agents: (state.agents || []).map(function(agent){ return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath }; }),
       language: state.language,
       exportBehavior: state.exportBehavior,
@@ -2135,8 +2145,12 @@ function saveState(state){
     state.updatedAt = payload.updatedAt;
     return true;
   }catch(err){
+    lastSaveError = err || new Error("save failed");
     return false;
   }
+}
+function getLastSaveError(){
+  return lastSaveError;
 }
 function loadTheme(){
   try{
@@ -3075,6 +3089,7 @@ const api = {
     close: close,
     loadState: loadState,
     saveState: saveState,
+    getLastSaveError: getLastSaveError,
     loadTheme: loadTheme,
     saveTheme: saveTheme,
     getSetting: getSetting,

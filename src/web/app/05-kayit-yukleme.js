@@ -99,6 +99,7 @@
       syncActiveProjectRecord(payload.updatedAt);
       setSaveStatus("saved");
       bridgeNotifyChange();
+      if(typeof scheduleServerDiskSave === "function") scheduleServerDiskSave();
     }catch(err){
       console.error("Kayıt yapılamadı", err);
       setSaveStatus("error");
@@ -117,8 +118,10 @@
     stateDirtySinceExport = true;
     setSaveStatus("saving");
     clearTimeout(saveTimer);
+
     saveTimer = setTimeout(function(){
       saveTimer = null;
+
       saveNow();
     }, 380);
   }

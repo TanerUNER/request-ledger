@@ -110,13 +110,83 @@
     toast(lx("pickCancelled"));
   }
 
+  /* A bridge/probe refresh may rebuild the flyout while the user is typing.
+     Capture the focused field (request id + field key + caret) and restore it
+     only when this is still the same section/request and the panel has focus.
+     Without the focus check a background tab would steal focus on every
+     remote patch. */
+  function captureFlyoutFocus(){
+    var el = document.activeElement;
+    if(!el || el === document.body || !els.body || !els.body.contains(el)) return null;
+    var tag = el.tagName;
+    var focusable = /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(tag) || el.isContentEditable || el.tabIndex >= 0;
+    if(!focusable) return null;
+    if(!document.hasFocus()) return null;
+    var req = typeof activeRequest === "function" ? activeRequest() : null;
+    var selector = "";
+    if(el.id) selector = "#" + el.id;
+    else if(el.getAttribute("data-field")) selector = '[data-field="' + el.getAttribute("data-field").replace(/"/g, '\\"') + '"]';
+    else if(el.getAttribute("data-image-id")) selector = '[data-image-id="' + el.getAttribute("data-image-id").replace(/"/g, '\\"') + '"]';
+    if(!selector) return null;
+    var snapshot = {
+      section: document.body.dataset.section || "",
+      requestId: req && req.id ? req.id : "",
+      selector: selector,
+      start: null,
+      end: null,
+      direction: null
+    };
+    try{
+      if(typeof el.selectionStart === "number"){
+        snapshot.start = el.selectionStart;
+        snapshot.end = el.selectionEnd;
+        snapshot.direction = el.selectionDirection || "none";
+      }
+    }catch(err){ /* range/unsupported controls */ }
+    return snapshot;
+  }
+
+  function restoreFlyoutFocus(snapshot, section){
+    if(!snapshot || !els.body) return;
+    if(!document.hasFocus()){
+      pendingFlyoutFocus = { snapshot:snapshot, section:section };
+      return;
+    }
+    if(snapshot.section && snapshot.section !== section) return;
+    if(snapshot.requestId){
+      var req = typeof activeRequest === "function" ? activeRequest() : null;
+      if(!req || req.id !== snapshot.requestId) return;
+    }
+    var target = null;
+    try{ target = els.body.querySelector(snapshot.selector); }catch(err){ target = null; }
+    if(!target || target.disabled || !els.body.contains(target)) return;
+    try{ target.focus({ preventScroll:true }); }
+    catch(err){ try{ target.focus(); }catch(e){ /* ignore */ } }
+    if(snapshot.start != null){
+      try{ target.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction || "none"); }
+      catch(err){ /* unsupported control */ }
+    }
+  }
+
+  function flushPendingFlyoutFocus(){
+    if(!pendingFlyoutFocus) return;
+    var pending = pendingFlyoutFocus;
+    pendingFlyoutFocus = null;
+    if(document.activeElement && document.activeElement !== document.body) return;
+    restoreFlyoutFocus(pending.snapshot, pending.section);
+  }
+
   function renderFlyout(section){
     var spec = SECTION_SPECS[section];
     if(!spec) return;
+    var focusSnapshot = captureFlyoutFocus();
 
-    closeImagePreview(false);
     closeTabPicker(false);
     closeOpenSelect();
+    /* A data refresh in the same section must not close an open image
+       preview: the overlay lives on document.body and its blob URL is still
+       valid after the grid is rebuilt. */
+    if(!imagePreview || imagePreview.section !== section) closeImagePreview(false);
     revokeThumbs();
     tpOpen = false;
     openRowMenuId = null;
@@ -170,6 +240,7 @@
     els.body.scrollTop = 0;
     lastSize = -1;
     requestAnimationFrame(reportSize);
+    restoreFlyoutFocus(focusSnapshot, section);
   }
 
   /* ---------- shared form pieces ---------- */

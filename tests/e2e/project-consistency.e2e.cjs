@@ -27,7 +27,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html";
+const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
 const TARGET_URL = "http://localhost:8080/tests/fixtures/picker-target.html";
 const SHOT_DIR = path.resolve(ROOT, "..", ".opencode", "workspace", "reports", "bridge-fixes");
 const EXT_ID = "hapajcbgcfllhkiohhkechekajencdod";
@@ -167,9 +167,9 @@ function registry(activeId) {
 
 function seedExpression(activeId, testRequests, legacyRequests, testLedgerId) {
   return `(() => {
-    localStorage.setItem('oz-projeler-v1', ${JSON.stringify(JSON.stringify(registry(activeId)))});
-    localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", testLedgerId || L_TEST, testRequests)))});
-    localStorage.setItem('oz-istek-defteri-p-${P_LEGACY}', ${JSON.stringify(JSON.stringify(ledger("Ortak Zemin", L_LEGACY, legacyRequests)))});
+    localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-projeler-v1', ${JSON.stringify(JSON.stringify(registry(activeId)))});
+    localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", testLedgerId || L_TEST, testRequests)))});
+    localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${P_LEGACY}', ${JSON.stringify(JSON.stringify(ledger("Ortak Zemin", L_LEGACY, legacyRequests)))});
     return true;
   })()`;
 }
@@ -343,6 +343,8 @@ function panelState(cdp, flyoutSession) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
   const ping = await fetch(WEB_URL).catch(() => null);
   if (!ping || !ping.ok) throw new Error("local server not running on :8080");
@@ -352,6 +354,9 @@ async function main() {
     "--user-data-dir=" + PROFILE,
     "--enable-unsafe-extension-debugging",
     "--remote-debugging-port=" + PORT,
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-search-engine-choice-screen",
@@ -616,7 +621,7 @@ async function main() {
        is closed while both sides are seeded so no live write can race it. */
     await cdp.send("Target.closeTarget", { targetId: pageTarget.targetId }).catch(() => {});
     await sleep(500);
-    await seedAppStorage(cdp, `localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", "ledger_app_empty", [])))}); true`);
+    await seedAppStorage(cdp, `localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", "ledger_app_empty", [])))}); true`);
     await seedExtension(cdp, P_TEST, [request("IST-005", "Adopted extension request")], legacyRequests, "ledger_ext_data");
     pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
     pageSession = await attach(cdp, pageTarget.targetId);

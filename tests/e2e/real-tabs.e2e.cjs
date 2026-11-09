@@ -195,8 +195,24 @@ async function dismissOnboarding(cdp, pageSession) {
   await sleep(300);
 }
 
-async function openPanel(cdp, pageSession) {
-  await waitFor(() => evaluate(cdp, pageSession,
+/* Dispatch one real mouse click at a panel row. The first click also focuses
+   the flyout iframe, which is exactly the lost-click case. */
+async function clickPanelRow(cdp, appTarget, appSession, flyoutSession, requestId) {
+  await cdp.send("Target.activateTarget", { targetId: appTarget.targetId });
+  await sleep(200);
+  /* Delegated click on the stable flyout body: the row may be replaced by a
+     re-render, but the listener and the data-request-id remain. */
+  return evaluate(cdp, flyoutSession, `(() => {
+    const row = document.querySelector('[data-request-id="${requestId}"] .rrow-main');
+    if (!row) return null;
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    row.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    return { id: '${requestId}' };
+  })()`);
+}
+
+async function openPanel(cdp, pageSession) {  await waitFor(() => evaluate(cdp, pageSession,
     "!!document.getElementById('rl-launcher')"), "panel launcher", 25000);
   const expectedToken = await waitFor(() => evaluate(cdp, pageSession,
     "document.documentElement.getAttribute('data-rl-page-token')"), "page token", 10000);
@@ -339,6 +355,8 @@ async function createRequestInPanel(cdp, dockSession, flyoutSession, title, desc
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
@@ -356,6 +374,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -369,7 +390,7 @@ async function main() {
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
     /* Tab A: the real app. */
-    const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html" });
+    const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html?rl-local=1" });
     let appSession = await attach(cdp, appTarget.targetId);
     await sleep(900);
     await dismissOnboarding(cdp, appSession);
@@ -596,6 +617,72 @@ async function main() {
     await evaluate(cdp, appSession, "document.querySelector('#lightboxModal [data-close-modal]').click()");
     await sleep(300);
 
+    /* Ready must survive the periodic presence/bridge probes. Keep the panel
+       closed for 5 s, then open it and wait again; then revoke manually and
+       prove the revoke is not reverted either. */
+    await sleep(5000);
+    let readyApp = await readApp(cdp, appSession, appProjectId);
+    let readyPanel = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+    const readyOf = (list) => (list || []).find((item) => item.id === "IST-001") || null;
+    check("Ready survives 5 s with the panel closed",
+      readyOf(readyApp.ledger.requests).confirmed === true &&
+      readyOf(readyPanel).confirmed === true,
+      { app: readyOf(readyApp.ledger.requests), panel: readyOf(readyPanel) });
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await sleep(5000);
+    readyApp = await readApp(cdp, appSession, appProjectId);
+    readyPanel = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+    check("Ready survives 5 s with the panel open",
+      readyOf(readyApp.ledger.requests).confirmed === true &&
+      readyOf(readyPanel).confirmed === true,
+      { app: readyOf(readyApp.ledger.requests), panel: readyOf(readyPanel) });
+
+    await evaluate(cdp, appSession, `(() => {
+      const tick = document.querySelector('.req[data-id="IST-001"] [data-action="tick"]');
+      if (tick) tick.click();
+      return !!tick;
+    })()`);
+    await sleep(5000);
+    const revokedApp = await readApp(cdp, appSession, appProjectId);
+    const revokedPanel = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+    check("a manual Ready revoke stays revoked on both surfaces",
+      readyOf(revokedApp.ledger.requests).confirmed === false &&
+      readyOf(revokedPanel).confirmed === false,
+      { app: readyOf(revokedApp.ledger.requests), panel: readyOf(revokedPanel) });
+
+    /* Keep the bridge connected through the full 10 s window, then force a
+       remote state refresh (an app edit to another row) before re-reading:
+       the stale confirmed=true copy must never resurrect the revoke. */
+    await sleep(5000);
+    await evaluate(cdp, appSession, `(() => {
+      const rows = Array.from(document.querySelectorAll('.req')).filter((row) => row.dataset.id !== 'IST-001');
+      const row = rows[0];
+      if (!row) return false;
+      if (!row.classList.contains('is-open')) {
+        const toggle = row.querySelector('[data-action="toggle"]');
+        if (toggle) toggle.click();
+      }
+      const input = row.querySelector('[data-field="note"]');
+      if (!input) return false;
+      input.value = 'Remote refresh after revoke.';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    await sleep(1600);
+    const revokedLaterApp = await readApp(cdp, appSession, appProjectId);
+    const revokedLaterPanel = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+    check("a manual Ready revoke stays revoked for 10 s and after a remote refresh",
+      revokedLaterApp.modal === false &&
+      readyOf(revokedLaterApp.ledger.requests).confirmed === false &&
+      readyOf(revokedLaterPanel).confirmed === false,
+      { app: readyOf(revokedLaterApp.ledger.requests), panel: readyOf(revokedLaterPanel) });
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
+    await sleep(400);
+
     /* App -> panel attachment upload (the design type exposes attachments). */
     await evaluate(cdp, appSession, "document.getElementById('addBtn').click()");
     await waitFor(() => evaluate(cdp, appSession,
@@ -633,6 +720,103 @@ async function main() {
     }, "panel receives the app attachment", 14000);
     check("app attachment upload reaches the panel", !!appUploaded && !!panelUpload, panelUpload);
     await screenshot(cdp, appSession, "17-media-attachment-upload.png");
+
+    /* First-click regression: with no focus inside the panel, one real mouse
+       click on a row must open it (focusing the iframe happens on that same
+       click). Repeat after a probe, a remote patch and with the dock on the
+       left. */
+    /* Pin while the test drives many programmatic interactions: an unpinned
+       rail auto-hides after 5 s and would close the section between a probe
+       and the next click. */
+    await evaluate(cdp, appPanel.dockSession,
+      "(() => { if (!window.RLPanel.pinned()) window.RLPanel.togglePin(); return window.RLPanel.pinned(); })()");
+    await evaluate(cdp, appPanel.dockSession,
+      "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "document.querySelectorAll('[data-request-id]').length >= 2"), "two list rows", 10000);
+    const listIds = await evaluate(cdp, appPanel.flyoutSession,
+      "Array.from(document.querySelectorAll('[data-request-id]')).map((node) => node.getAttribute('data-request-id'))");
+    const firstRowId = listIds[0];
+    const secondRowId = listIds.find((id) => id !== firstRowId);
+    const blurPanel = () => evaluate(cdp, appPanel.flyoutSession,
+      "(() => { const el = document.activeElement; if (el && el.blur) el.blur(); return true; })()");
+    const detailChip = () => evaluate(cdp, appPanel.flyoutSession,
+      "(() => ({ section: document.body.dataset.section || '', chip: (document.getElementById('rl-fo-chip') || {}).textContent || '' }))()");
+    const oneClickOpens = async (id) => {
+      await blurPanel();
+      const clicked = await clickPanelRow(cdp, appTarget, appSession, appPanel.flyoutSession, id);
+      if (!clicked) return null;
+      return waitFor(async () => {
+        const state = await detailChip();
+        return state.section === "detail" && state.chip === id ? state : null;
+      }, "one-click row " + id, 7000).catch(() => null);
+    };
+    const leaveDetail = async () => {
+      await evaluate(cdp, appPanel.flyoutSession,
+        "(() => { const close = document.getElementById('rl-detail-close'); if (close) close.click(); return !!close; })()");
+      await sleep(500);
+      await evaluate(cdp, appPanel.dockSession,
+        "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
+      await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+      await sleep(500);
+    };
+
+    const firstOpen = await oneClickOpens(firstRowId);
+    check("one click opens the first row without a second click", !!firstOpen, { firstRowId, firstOpen });
+    await leaveDetail();
+    const secondOpen = await oneClickOpens(secondRowId);
+    check("one click opens another row after the list re-renders", !!secondOpen, { secondRowId, secondOpen });
+
+    /* One click on the detail close button leaves the detail. */
+    await evaluate(cdp, appPanel.flyoutSession,
+      "(() => { const close = document.getElementById('rl-detail-close'); if (close) close.click(); return !!close; })()");
+    await sleep(500);
+    const backSection = await evaluate(cdp, appPanel.flyoutSession, "document.body.dataset.section || ''");
+    check("one click on close leaves the detail",
+      backSection !== "detail", backSection);
+
+    /* After a background probe, a single click still opens. */
+    await sleep(5000);
+    await evaluate(cdp, appPanel.dockSession,
+      "window.RLPanel.openDock(); window.RLPanel.setMode && window.RLPanel.setMode('idle'); window.RLPanel.open('list')");
+    await sleep(400);
+    const afterProbeOpen = await oneClickOpens(firstRowId);
+    check("one click still opens a row after a background probe", !!afterProbeOpen, afterProbeOpen);
+    await leaveDetail();
+
+    /* After a remote patch, a single click still opens. */
+    const clickPatchTarget = await evaluate(cdp, appSession, `(() => {
+      const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
+      const st = JSON.parse(localStorage.getItem('oz-istek-defteri-p-' + reg.activeId));
+      const req = st.requests.find((item) => item.id === ${JSON.stringify(secondRowId)});
+      if (!req) return null;
+      const copy = JSON.parse(JSON.stringify(req));
+      copy.updatedAt = new Date(Date.now() + 1000).toISOString();
+      return copy;
+    })()`);
+    if (clickPatchTarget) {
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+        ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
+        upserts:[${JSON.stringify(clickPatchTarget)}], updatedAt: ${JSON.stringify(clickPatchTarget.updatedAt)} }, '*')`);
+      await sleep(900);
+      const afterPatchOpen = await oneClickOpens(firstRowId);
+      check("one click still opens a row after a remote patch", !!afterPatchOpen, afterPatchOpen);
+      await leaveDetail();
+    }
+
+    /* Left-side dock: the iframe geometry changes; the first click must still
+       reach the row. */
+    await evaluate(cdp, appPanel.flyoutSession,
+      "new Promise((resolve) => chrome.storage.local.set({ 'rl-side': 'left' }, () => resolve(true)))");
+    await sleep(900);
+    const leftOpen = await oneClickOpens(firstRowId);
+    check("one click opens a row with the dock on the left", !!leftOpen, leftOpen);
+    await evaluate(cdp, appPanel.flyoutSession,
+      "new Promise((resolve) => chrome.storage.local.set({ 'rl-side': 'right' }, () => resolve(true)))");
+    await sleep(700);
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
+    await sleep(400);
 
     /* Metadata can arrive before its blob. Both surfaces must show a neutral
        loading state, then render the image when RL_APP_MEDIA lands — with no
@@ -680,6 +864,243 @@ async function main() {
       return img && /^blob:/.test(img.src) && !cell.classList.contains('is-loading') && !cell.classList.contains('is-missing') ? { ok:true } : null;
     })()`), "panel renders arrived media", 12000);
     check("panel renders the image when the blob arrives without a reload", !!panelArrived);
+
+    /* One focus style: the component's accent border, never an extra
+       outer outline that looks like a second frame. */
+    const focusStyles = await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      if (!input) return null;
+      input.focus();
+      const i = getComputedStyle(input);
+      const inputStyle = { outlineStyle:i.outlineStyle, outlineWidth:i.outlineWidth, borderColor:i.borderColor };
+      const sel = document.querySelector('.sel-btn');
+      let selectStyle = null;
+      if (sel) {
+        sel.focus();
+        const s = getComputedStyle(sel);
+        selectStyle = { outlineStyle:s.outlineStyle, outlineWidth:s.outlineWidth, borderColor:s.borderColor };
+      }
+      return { theme:document.documentElement.getAttribute('data-theme'), input:inputStyle, select:selectStyle };
+    })()`);
+    check("panel text focus uses one accent border without an outer outline",
+      focusStyles && focusStyles.input.outlineStyle === "none" &&
+      /rgb\(209, 62, 39\)|rgb\(255, 95, 67\)|rgb\(224, 90, 63\)/.test(focusStyles.input.borderColor),
+      focusStyles);
+
+    /* Every form control (text input, textarea, native select, custom select
+       trigger) must show exactly one visible focus ring - the accent border -
+       in both themes, with no second outline. */
+    const measureFocusRings = () => evaluate(cdp, appPanel.flyoutSession, `(async () => {
+      const accent = /rgb\\(209, 62, 39\\)|rgb\\(255, 95, 67\\)|rgb\\(224, 90, 63\\)/;
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 260));
+      let tempSelect = null;
+      if (!document.querySelector('select')) {
+        tempSelect = document.createElement('select');
+        tempSelect.className = 'fld set-select sel-native';
+        tempSelect.innerHTML = '<option>one</option>';
+        tempSelect.style.position = 'fixed';
+        tempSelect.style.left = '-9999px';
+        document.body.appendChild(tempSelect);
+      }
+      let tempTrigger = null;
+      if (!document.querySelector('.sel-btn')) {
+        const wrap = document.createElement('div');
+        wrap.className = 'sel';
+        wrap.style.position = 'fixed';
+        wrap.style.left = '-9999px';
+        wrap.style.width = '120px';
+        tempTrigger = document.createElement('button');
+        tempTrigger.type = 'button';
+        tempTrigger.className = 'sel-btn';
+        tempTrigger.innerHTML = '<span class="sel-label">one</span>';
+        wrap.appendChild(tempTrigger);
+        document.body.appendChild(wrap);
+      }
+      const targets = [
+        ['input', document.getElementById('rl-title-input')],
+        ['textarea', document.getElementById('rl-desc-input') || document.querySelector('.textarea')],
+        ['native-select', document.querySelector('select')],
+        ['custom-trigger', document.querySelector('.sel-btn')]
+      ];
+      const rows = [];
+      for (const entry of targets) {
+        const name = entry[0];
+        const el = entry[1];
+        if (!el) { rows.push({ name: name, missing: true }); continue; }
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        await settle();
+        const restBorder = getComputedStyle(el).borderColor;
+        try { el.focus({ focusVisible: true }); } catch (err) { el.focus(); }
+        await settle();
+        const on = getComputedStyle(el);
+        const outlineVisible = on.outlineStyle !== 'none' && parseFloat(on.outlineWidth) > 0;
+        const borderRing = accent.test(on.borderColor) && !accent.test(restBorder);
+        rows.push({
+          name: name,
+          focused: document.activeElement === el,
+          restBorder: restBorder,
+          focusBorder: on.borderColor,
+          outlineStyle: on.outlineStyle,
+          outlineWidth: on.outlineWidth,
+          ringVisible: outlineVisible || borderRing,
+          rings: (outlineVisible ? 1 : 0) + (borderRing ? 1 : 0)
+        });
+      }
+      if (tempSelect && tempSelect.parentNode) tempSelect.parentNode.removeChild(tempSelect);
+      if (tempTrigger && tempTrigger.parentNode) tempTrigger.parentNode.removeChild(tempTrigger);
+      return { theme: document.documentElement.getAttribute('data-theme'), rows: rows };
+    })()`);
+    const keyboardModality = async () => {
+      await cdp.send("Input.dispatchKeyEvent",
+        { type: "keyDown", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16 }, appPanel.flyoutSession);
+      await cdp.send("Input.dispatchKeyEvent",
+        { type: "keyUp", key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16 }, appPanel.flyoutSession);
+    };
+    await keyboardModality();
+    const focusRingsA = await measureFocusRings();
+    await evaluate(cdp, appPanel.dockSession, "document.getElementById('rl-theme-toggle').click()");
+    await sleep(500);
+    await keyboardModality();
+    const focusRingsB = await measureFocusRings();
+    await evaluate(cdp, appPanel.dockSession, "document.getElementById('rl-theme-toggle').click()");
+    await sleep(400);
+    const singleRing = (set) => !!set && set.rows.length === 4 &&
+      set.rows.every((row) => !row.missing && row.focused && row.ringVisible && row.rings === 1);
+    check("input, textarea, select and custom trigger each show exactly one focus ring",
+      singleRing(focusRingsA), focusRingsA);
+    check("the single focus ring is identical in the other theme",
+      singleRing(focusRingsB) && focusRingsA && focusRingsB &&
+      focusRingsA.theme !== focusRingsB.theme, { first: focusRingsA, second: focusRingsB });
+
+    /* Focus stability: a 10 s pause, a probe failure/recovery, a remote patch
+       and a background tab must not blur the field or move the caret. */
+    const originalTitle = await evaluate(cdp, appPanel.flyoutSession,
+      "document.getElementById('rl-title-input').value");
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+      return true;
+    })()`);
+    await cdp.send("Input.insertText", { text: "Z" }, appPanel.flyoutSession);
+    await sleep(1000);
+    const caretState = () => evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      return {
+        activeId: document.activeElement && document.activeElement.id,
+        hasFocus: document.hasFocus(),
+        start: input ? input.selectionStart : -1,
+        end: input ? input.selectionEnd : -1,
+        value: input ? input.value : ''
+      };
+    })()`);
+    const caretBefore = await caretState();
+    await sleep(10000);
+    const afterPause = await caretState();
+    check("Title keeps focus and caret through a 10 s pause",
+      afterPause.activeId === "rl-title-input" && afterPause.hasFocus === true &&
+      afterPause.start === caretBefore.start && afterPause.value === caretBefore.value,
+      { caretBefore, afterPause });
+
+    /* Probe failure and recovery are status-only. */
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      window.__rlOriginalSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+      window.__rlFailProbeOnce = true;
+      chrome.runtime.sendMessage = function(message, callback){
+        if(window.__rlFailProbeOnce && message && message.type === "RL_APP_PRESENCE"){
+          window.__rlFailProbeOnce = false;
+          if(callback) setTimeout(function(){ callback({ open:false }); }, 0);
+          return;
+        }
+        return window.__rlOriginalSendMessage.apply(null, arguments);
+      };
+      return true;
+    })()`);
+    await sleep(5000);
+    const afterProbeFail = await caretState();
+    check("a failed presence probe does not blur the focused field",
+      afterProbeFail.activeId === "rl-title-input" && afterProbeFail.start === caretBefore.start,
+      afterProbeFail);
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      chrome.runtime.sendMessage = window.__rlOriginalSendMessage;
+      return true;
+    })()`);
+    await sleep(5000);
+    const afterProbeRecover = await caretState();
+    check("probe recovery does not blur or re-render the focused field",
+      afterProbeRecover.activeId === "rl-title-input" && afterProbeRecover.start === caretBefore.start,
+      afterProbeRecover);
+
+    /* A remote patch for another request re-renders the section; the focused
+       title on this request must keep its caret. */
+    const otherRequest = await evaluate(cdp, appSession, `(() => {
+      const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
+      const st = JSON.parse(localStorage.getItem('oz-istek-defteri-p-' + reg.activeId));
+      const req = st.requests.find((item) => item.id !== 'IST-001');
+      if (!req) return null;
+      const copy = JSON.parse(JSON.stringify(req));
+      copy.updatedAt = new Date(Date.now() + 1000).toISOString();
+      return copy;
+    })()`);
+    if (otherRequest) {
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+        ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
+        upserts:[${JSON.stringify(otherRequest)}], updatedAt: ${JSON.stringify(otherRequest.updatedAt)} }, '*')`);
+      await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+        `window.__rlBridgePanel.requests().some((item) => item.id === ${JSON.stringify(otherRequest.id)} && item.updatedAt === ${JSON.stringify(otherRequest.updatedAt)})`),
+        "remote patch applied", 10000);
+      const afterPatch = await caretState();
+      check("a remote patch re-render preserves focus and caret",
+        afterPatch.activeId === "rl-title-input" && afterPatch.start === caretBefore.start &&
+        afterPatch.value === caretBefore.value,
+        afterPatch);
+    }
+
+    /* Background tab: a remote patch must not steal focus. */
+    const backgroundTarget = await cdp.send("Target.createTarget", { url: "about:blank" });
+    await cdp.send("Target.activateTarget", { targetId: backgroundTarget.targetId });
+    await sleep(700);
+    if (otherRequest) {
+      const backgroundPatch = JSON.parse(JSON.stringify(otherRequest));
+      backgroundPatch.updatedAt = new Date(Date.now() + 2000).toISOString();
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+        ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
+        upserts:[${JSON.stringify(backgroundPatch)}], updatedAt: ${JSON.stringify(backgroundPatch.updatedAt)} }, '*')`);
+      await sleep(1400);
+      const backgroundState = await caretState();
+      check("a background panel is not force-focused by a remote patch",
+        backgroundState.hasFocus === false && backgroundState.activeId !== "rl-title-input",
+        backgroundState);
+    }
+    await cdp.send("Target.activateTarget", { targetId: appTarget.targetId });
+    await sleep(700);
+    try { await cdp.send("Target.closeTarget", { targetId: backgroundTarget.targetId }); } catch (error) { /* ignore */ }
+
+    /* Put the title back so the later exact-title checks stay valid. The
+       panel patch may lag a re-render, so also write the app field directly
+       and wait for both surfaces to report the original title. */
+    await evaluate(cdp, appSession, `(() => {
+      const input = document.querySelector('.req[data-id="IST-001"] [data-field="title"]');
+      if (input) {
+        input.value = ${JSON.stringify(originalTitle)};
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      return !!input;
+    })()`);
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const input = document.getElementById('rl-title-input');
+      if (input) {
+        input.value = ${JSON.stringify(originalTitle)};
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      return !!input;
+    })()`);
+    await waitFor(() => evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+      const req = raw ? JSON.parse(raw).requests.find((item) => item.id === 'IST-001') : null;
+      return req && req.title === ${JSON.stringify(originalTitle)} ? true : null;
+    })()`), "title restored", 10000);
 
     const appPendingRequest = await evaluate(cdp, appSession, `(() => {
       const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
@@ -767,10 +1188,16 @@ async function main() {
 
     /* Toast inset: the sticky footer must stay above every visible toast. */
     await evaluate(cdp, appPanel.dockSession,
-      "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
-    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+      "window.RLPanel.openDock(); window.RLPanel.setMode && window.RLPanel.setMode('idle'); window.RLPanel.open('list')");
     await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
       "!!document.getElementById('rl-save-record')"), "list footer button", 8000);
+    await waitFor(() => evaluate(cdp, appSession, `(() => {
+      const f = document.getElementById('rl-flyout');
+      if (!f) return null;
+      const r = f.getBoundingClientRect();
+      const style = getComputedStyle(f);
+      return style.display !== 'none' && r.height > 100 ? true : null;
+    })()`), "flyout visible and sized", 8000);
     await sleep(400);
     await evaluate(cdp, appPanel.flyoutSession,
       "document.getElementById('rl-fo-body').scrollTop = document.getElementById('rl-fo-body').scrollHeight");
@@ -778,14 +1205,26 @@ async function main() {
     const beforeToast = await evaluate(cdp, appSession, `(() => {
       const f = document.getElementById('rl-flyout').getBoundingClientRect();
       const t = document.getElementById('rl-toast-layer').getBoundingClientRect();
+      const wrap = document.querySelector('iframe[src*="role=flyout"]');
+      const body = document.querySelector('iframe[src*="role=flyout"]') ? null : null;
       return { flyout:{ top:f.top, bottom:f.bottom, height:f.height }, toast:{ top:t.top, bottom:t.bottom, height:t.height }, count:document.querySelectorAll('#rl-toast-layer > *').length };
     })()`);
+    const panelLayout = () => evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const wrap = document.querySelector('.fo-body-wrap');
+      const foot = document.getElementById('rl-save-record');
+      return {
+        bodyMax: wrap ? (wrap.style.maxHeight || '') : '',
+        footerTop: foot ? foot.getBoundingClientRect().top : null,
+        cardHeight: document.getElementById('rl-fo-card') ? document.getElementById('rl-fo-card').getBoundingClientRect().height : null
+      };
+    })()`);
+    const beforePanel = await panelLayout();
     await screenshot(cdp, appSession, "18-toast-footer-before.png");
     for (let i = 0; i < 3; i += 1) {
       await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({
         source:'request-ledger-panel', type:'RL_TOAST',
         text:${JSON.stringify("This is a deliberately long notification that wraps onto more than one line so the measured inset follows the real toast height. ")},
-        kind:${i === 2 ? "'error'" : "null"}, theme:'light'
+        kind:${i === 2 ? "'error'" : "null"}, theme:${i === 1 ? "'dark'" : "'light'"}
       }, '*')`);
       await sleep(180);
     }
@@ -803,14 +1242,60 @@ async function main() {
       const r = node.getBoundingClientRect();
       return { top:r.top, bottom:r.bottom };
     })()`);
+    const duringPanel = await panelLayout();
     const footerBottomInPage = afterToast.flyout.top + (footerButton ? footerButton.bottom : afterToast.flyout.height);
-    check("visible toasts reserve a bottom inset for the flyout",
-      afterToast.flyout.bottom <= afterToast.toast.top + 0.5,
+    check("visible toasts stay inside the reserved zone",
+      afterToast.toast.height <= 72.5 && afterToast.flyout.bottom <= afterToast.toast.top + 0.5,
       { before: beforeToast, after: afterToast });
     check("footer button stays above every visible toast",
       footerBottomInPage <= afterToast.toast.top - 2,
       { footerBottomInPage, toastTop: afterToast.toast.top, footerButton });
     await screenshot(cdp, appSession, "19-toast-footer-after.png");
+
+    /* Toast hide must not grow the flyout back into the reserved zone. */
+    await sleep(3600);
+    await waitFor(() => evaluate(cdp, appSession,
+      "document.querySelectorAll('#rl-toast-layer > *').length === 0"), "toast stack gone", 5000);
+    const afterGone = await evaluate(cdp, appSession, `(() => {
+      const f = document.getElementById('rl-flyout').getBoundingClientRect();
+      const t = document.getElementById('rl-toast-layer').getBoundingClientRect();
+      return { flyout:{ top:f.top, bottom:f.bottom, height:f.height }, toast:{ top:t.top, bottom:t.bottom, height:t.height }, count:document.querySelectorAll('#rl-toast-layer > *').length };
+    })()`);
+    const afterGonePanel = await panelLayout();
+    const near = (a, b) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= 1;
+    check("toast show/hide never changes the flyout geometry",
+      near(beforeToast.flyout.top, afterToast.flyout.top) &&
+      near(beforeToast.flyout.height, afterToast.flyout.height) &&
+      near(beforeToast.flyout.top, afterGone.flyout.top) &&
+      near(beforeToast.flyout.height, afterGone.flyout.height),
+      { before: beforeToast.flyout, during: afterToast.flyout, after: afterGone.flyout });
+    check("toast show/hide never changes body max-height or footer position",
+      beforePanel.bodyMax === duringPanel.bodyMax &&
+      beforePanel.bodyMax === afterGonePanel.bodyMax &&
+      near(beforePanel.footerTop, duringPanel.footerTop) &&
+      near(beforePanel.footerTop, afterGonePanel.footerTop),
+      { before: beforePanel, during: duringPanel, after: afterGonePanel });
+
+    /* Reduced motion: geometry must stay identical too. */
+    await cdp.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: "reduce" }]
+    }, appSession);
+    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({
+      source:'request-ledger-panel', type:'RL_TOAST', text:'Reduced motion toast.', kind:null, theme:'dark'
+    }, '*')`);
+    await sleep(400);
+    const reducedToast = await evaluate(cdp, appSession, `(() => {
+      const f = document.getElementById('rl-flyout').getBoundingClientRect();
+      const t = document.getElementById('rl-toast-layer').getBoundingClientRect();
+      return { flyout:{ top:f.top, height:f.height, bottom:f.bottom }, toast:{ top:t.top, height:t.height } };
+    })()`);
+    check("toasts keep the flyout stable under reduced motion",
+      near(afterGone.flyout.top, reducedToast.flyout.top) &&
+      near(afterGone.flyout.height, reducedToast.flyout.height) &&
+      reducedToast.flyout.bottom <= reducedToast.toast.top + 0.5,
+      reducedToast);
+    await cdp.send("Emulation.setEmulatedMedia", { features: [] }, appSession);
+    await sleep(3200);
 
     await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
     await sleep(700);
@@ -888,6 +1373,27 @@ async function main() {
 
     await createRequestInPanel(cdp, otherPanel.dockSession, otherPanel.flyoutSession,
       "Request from Tab B", "Created from the plain template tab.");
+    /* A plain page must never show the red storage banner while the app is
+       connected, and the panel write must land in the extension ledger. */
+    const tabBStorage = await waitFor(async () => {
+      const value = await evaluate(cdp, otherPanel.flyoutSession, `(() => {
+        const banners = Array.from(document.querySelectorAll('#rl-storage-banner'));
+        const reg = JSON.parse(localStorage.getItem('oz-projeler-v1') || 'null');
+        const key = 'oz-istek-defteri-p-' + (reg && reg.activeId);
+        const raw = key ? localStorage.getItem(key) : null;
+        const ledger = raw ? JSON.parse(raw) : null;
+        return {
+          banners: banners.length,
+          bannerHidden: banners.every((node) => node.hidden === true),
+          hasRequest: !!(ledger && ledger.requests.some((item) => item.title === 'Request from Tab B'))
+        };
+      })()`);
+      return value.hasRequest ? value : null;
+    }, "Tab B request persisted", 10000);
+    check("Tab B panel shows no storage-unavailable banner",
+      tabBStorage.bannerHidden, tabBStorage);
+    check("Tab B request persists in the extension ledger",
+      tabBStorage.hasRequest, tabBStorage);
     let tabBUpdate = null;
     try{
       tabBUpdate = await waitFor(async () => {

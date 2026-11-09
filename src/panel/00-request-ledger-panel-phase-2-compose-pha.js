@@ -80,6 +80,9 @@
   var searchTimer = null;
   var storageOk = true;
   var storageNotified = false;
+  var storageBlockedNodes = [];
+  var storageFailureReason = "";
+  var mediaStorageOk = true;
 
   var listFilter = { q:"", type:"all", status:"all" };
   var openRowMenuId = null;
@@ -355,6 +358,7 @@
     imageFallback:{ tr:"görsel", en:"image" },
     storageUnavailable:{ tr:"Depolama kullanılamıyor — veriler kaydedilemez", en:"Storage unavailable — changes cannot be saved" },
     storageWriteFailed:{ tr:"Kayıt yazılamadı. Tarayıcı depolaması dolu veya kapalı.", en:"Could not save. Browser storage is full or unavailable." },
+    storageFull:{ tr:"Depolama dolu. Yedek alıp Yedekleme → Temizle ile eski verileri kaldır.", en:"Storage is full. Export a backup, then use Backup → Clear to remove old data." },
     quotaExceeded:{ tr:"Depolama alanı doldu. Görsel eklenemedi.", en:"Storage is full. The image could not be added." },
 
     /* live bridge (web app <-> extension) */

@@ -69,7 +69,12 @@
           name:project.name,
           slug:slug,
           snapshot:ledgerPayload(),
-          records: (typeof records !== "undefined" && Array.isArray(records)) ? records : []
+          archive:{
+            records: (typeof records !== "undefined" && Array.isArray(records)) ? records : [],
+            drafts: (typeof drafts !== "undefined" && Array.isArray(drafts)) ? drafts : [],
+            history: (typeof historyItems !== "undefined" && Array.isArray(historyItems)) ? historyItems : []
+          },
+          archiveCollapsed: project.archiveCollapsed === true
         })
       });
       const data = await response.json();

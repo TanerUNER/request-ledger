@@ -1,5 +1,6 @@
-  function reloadSharedState(projectId){
+  function reloadSharedState(projectId, skipSectionRender){
     if(!core || !core.storage || typeof core.storage.loadState !== "function") return;
+    var previousApp = app;
     /* Keep the project that owns the incoming bridge data; another frame may
        have written a different registry.activeId in the meantime. */
     syncStorageScope(projectId);
@@ -9,6 +10,27 @@
     }
     app = loaded || defaultApp();
     if(!Array.isArray(app.requests)) app.requests = [];
+    /* A stale disk copy must never revoke a confirmation this frame already
+       applied and saved (or is about to save). Confirmation changes always
+       carry a fresh request updatedAt, so the newer revision wins. */
+    if(loaded && previousApp && Array.isArray(previousApp.requests) && previousApp !== app){
+      var diskById = {};
+      for(var di = 0; di < app.requests.length; di++){
+        if(app.requests[di] && app.requests[di].id) diskById[app.requests[di].id] = app.requests[di];
+      }
+      for(var li = 0; li < previousApp.requests.length; li++){
+        var local = previousApp.requests[li];
+        if(!local || !local.id || local.confirmed !== true) continue;
+        var disk = diskById[local.id];
+        /* A request deleted by another frame stays deleted; only revive the
+           confirmation bit when the disk copy is the older revision. */
+        if(!disk) continue;
+        if(String(disk.updatedAt || "") <= String(local.updatedAt || "")){
+          disk.confirmed = true;
+          disk.updatedAt = local.updatedAt;
+        }
+      }
+    }
     if(!Array.isArray(app.agents)) app.agents = [];
     /* The registry owns the one ledger id. A storage refresh can run before
        core.storage has switched scopes (or can find no payload); defaultApp()
@@ -57,13 +79,15 @@
 
     /* Bridge traffic updates data only. It must never call refreshSection(),
        which broadcasts RL_OPEN_SECTION and can reveal the flyout. */
-    if(role === "flyout" && state.section === "list"){
-      /* A bridge patch refreshes rows/counts in place: a full render would
-         reset the selected archive tab, search focus and scroll position. */
-      updateList();
-      renderArchiveProjectTree();
-    }else if(role === "flyout" && state.section){
-      renderFlyout(state.section);
+    if(!skipSectionRender){
+      if(role === "flyout" && state.section === "list"){
+        /* A bridge patch refreshes rows/counts in place: a full render would
+           reset the selected archive tab, search focus and scroll position. */
+        updateList();
+        renderArchiveProjectTree();
+      }else if(role === "flyout" && state.section){
+        renderFlyout(state.section);
+      }
     }
     broadcastState();
   }

@@ -51,6 +51,9 @@
   var bridgeSuppress = 0;
   var bridgeSendTimer = null;
   var bridgeWatchTimer = null;
+  var bridgeRefreshHoldUntil = 0;
+  var pendingFlyoutFocus = null;
+  var pendingFocusListenerOn = false;
   var bridgeLastAppliedHash = "";
   var bridgeTombstones = {};
   var bridgeKnownIds = {};
@@ -332,8 +335,10 @@
     });
     Promise.all(jobs).then(function(){
       if(!changed) return;
-      req.updatedAt = bridgeNow();
-      core.requests.update(req, { images:req.images, attachments:req.attachments });
+      bridgeRefreshHoldUntil = Date.now() + 1500;
+      /* Media metadata arrived over the bridge; persisting it must not count
+         as a user edit that revokes an existing Ready confirmation, and must
+         not create a newer revision that can override one. */
       saveNow();
       if(role === "flyout" && state.section) renderFlyout(state.section);
       if(role === "dock") updateDockBadges();
@@ -495,31 +500,12 @@
     return !bridgeConnected && !companionPresence.open;
   }
 
-  function discardCompanionDraft(){
-    var discarded = false;
-    if(typeof pendingRequest !== "undefined" && pendingRequest){
-      if(typeof discardPending === "function") discardPending();
-      else pendingRequest = null;
-      discarded = true;
-    }
-    if(typeof composeDirty !== "undefined" && composeDirty){
-      composeDirty = false;
-      if(typeof state !== "undefined" && state.mode === "compose" && typeof setMode === "function") setMode("idle");
-      discarded = true;
-    }
-    if(discarded) toast(lx("companionDraftDiscarded"), "error");
-  }
-
   function updateCompanionLock(){
     var overlayLocked = companionOverlayLocked();
     /* No in-page lock card: the content script removes the whole host when
-       the app is not alive. This flag only keeps writes and drafts safe for
-       the short interval before the host is torn down. */
+       the app is not alive. Presence/status updates must be side-effect free:
+       they never discard a draft, switch mode, refresh data or move focus. */
     try{ document.body.setAttribute("data-companion-locked", overlayLocked ? "1" : "0"); }catch(err){ /* ignore */ }
-    if(overlayLocked && !companionWasLocked) discardCompanionDraft();
-    if(!overlayLocked && companionWasLocked && typeof bridgeRefreshFromStorage === "function"){
-      bridgeRefreshFromStorage();
-    }
     companionWasLocked = overlayLocked;
   }
 
@@ -545,9 +531,7 @@
           lastAt: Date.now()
         };
       }
-      if(companionPresence.open && !activeProjectId && typeof bridgeRefreshFromStorage === "function"){
-        bridgeRefreshFromStorage();
-      }
+      /* Status changes are text-only; they never re-render the panel. */
       updateBridgeUI();
     });
   }
@@ -971,6 +955,7 @@
       return false;
     }
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
+    var storageSaved = true;
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
     bridgePeerRequestCount = incoming.length;
@@ -1024,7 +1009,14 @@
         }
       }
 
-      if(core && core.storage && core.storage.saveState) core.storage.saveState(app);
+      if(core && core.storage && core.storage.saveState){
+        storageSaved = false;
+        for(var saveAttempt = 0; saveAttempt < 2; saveAttempt += 1){
+          try{ storageSaved = core.storage.saveState(app) !== false; }catch(err){ storageSaved = false; }
+          if(storageSaved) break;
+        }
+      }
+      bridgeRefreshHoldUntil = Date.now() + 1500;
       /* The project registry owns the name and the one ledger id; keep both
          aligned with the app so a stop/start never prompts again. */
       touchActiveProject(app.project, app.updatedAt || stamp || bridgeNow(), app.ledgerId);
@@ -1050,7 +1042,21 @@
         if(att && att.id) bridgeMediaMarkPending("file", att.id);
       });
     });
-    reloadSharedState(incomingProjectId || activeProjectId);
+    if(storageSaved){
+      if(typeof clearStorageFailure === "function") clearStorageFailure();
+      reloadSharedState(incomingProjectId || activeProjectId);
+    }else{
+      /* A failed write must never be followed by a storage reload: it would
+         discard the just-applied bridge data (including a Ready confirmation)
+         and the next refresh would push that stale copy back to the app. */
+      if(typeof setStorageFailure === "function"){
+        setStorageFailure(core && core.storage && core.storage.getLastSaveError
+          ? core.storage.getLastSaveError()
+          : null);
+      }
+      if(typeof updateDockBadges === "function") updateDockBadges();
+      if(role === "flyout" && state.section) renderFlyout(state.section);
+    }
     updateBridgeUI();
     bridgeStats.applied++;
     setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
@@ -1481,6 +1487,9 @@
     if(bridgeWatchTimer){ clearInterval(bridgeWatchTimer); bridgeWatchTimer = null; }
     bridgeWatchTimer = setInterval(function(){
       if(!bridgeConnected) return;
+      /* A backgrounded app tab throttles the page heartbeat; a hidden panel
+         must not declare the bridge dead just because it is not focused. */
+      if(document.visibilityState === "hidden") return;
       if(Date.now() - bridgeLastHeard > BRIDGE_STALE_MS){
         bridgeConnected = false;
         updateBridgeUI();
@@ -1524,6 +1533,13 @@
      opened or re-rendered while closed. */
   function bridgeRefreshFromStorage(){
     if(!hasHost || bridgeSuppress || bridgeAdoptingProject) return;
+    /* A local edit may still be inside the 380 ms save debounce, and a bridge
+       apply just wrote a newer revision. Reloading storage in either window
+       would overwrite the in-flight confirmation with the previous snapshot. */
+    if(typeof saveTimer !== "undefined" && saveTimer) return;
+    if(state.saving === "saving") return;
+    if(Date.now() < bridgeRefreshHoldUntil) return;
+    if(typeof storageOk !== "undefined" && !storageOk) return;
     /* A panel that mounted before the app created or selected a project still
        needs to adopt it. Project-registry storage events are the only signal a
        plain page gets (there is no bridge HELLO on that tab). Adoption is data
@@ -1543,14 +1559,23 @@
     if(Date.now() < panelToolBusyUntil) return;
     var before = bridgeStateSignature();
     var projectId = activeProjectId;
-    reloadSharedState(projectId);
+    /* Load data-only first: a no-op storage event must not rebuild the
+       focused section. Render only when the signature actually changed. */
+    reloadSharedState(projectId, true);
     if(bridgeStateSignature() === before) return;
+    if(role === "flyout" && state.section === "list"){
+      updateList();
+      renderArchiveProjectTree();
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }
     /* Do not push local data over a different same-project app ledger while
        both sides hold requests. The user must choose; otherwise a storage
-       refresh from the source ledger would silently overwrite the app. */
+       refresh from the source ledger would silently overwrite the app. An
+       empty local side may still adopt the non-empty peer. */
     if(bridgeConflict || (bridgePeerLedgerId && app.ledgerId &&
        String(bridgePeerLedgerId) !== String(app.ledgerId) &&
-       bridgePeerRequestCount > 0 && app.requests.length === 0)){
+       bridgePeerRequestCount > 0 && app.requests.length > 0)){
       return;
     }
     bridgeNotifyChange();
@@ -1583,6 +1608,10 @@
        non-allowlisted pages, so no data leaves the two approved origins. */
     setTimeout(function(){ bridgePost("RL_APP_SNAPSHOT"); }, 120);
     startCompanionProbe();
+    if(!pendingFocusListenerOn){
+      window.addEventListener("focus", flushPendingFlyoutFocus);
+      pendingFocusListenerOn = true;
+    }
     try{
       window.__rlBridgePanel = Object.freeze({
         connected:function(){ return bridgeConnected; },
@@ -1600,7 +1629,8 @@
         tabId:function(){ return panelTabScope; },
         requests:function(){
           return app && Array.isArray(app.requests) ? app.requests.map(function(req){
-            return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length };
+            return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length,
+              confirmed:req.confirmed === true, updatedAt:req.updatedAt || "" };
           }) : [];
         },
         presence:function(){ return { checked:companionPresence.checked, open:companionPresence.open, mode:companionPresence.mode, port:companionPresence.port }; },

@@ -19,6 +19,11 @@ html:not(.is-ready) body{visibility:hidden}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 input{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+/* Text controls draw focus with their accent border only (never a second
+   outline). Component rules below set the actual border color. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible{outline:none;outline-offset:0}
 
 *{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 ::-webkit-scrollbar{width:9px;height:9px}

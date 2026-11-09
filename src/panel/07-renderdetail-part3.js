@@ -296,6 +296,13 @@
     lastSize = -1;
     if(restoreFocus !== false){
       var back = preview.returnFocus;
+      if(!back || !document.body.contains(back) || back.disabled){
+        /* A data refresh rebuilt the grid while the preview was open; match
+           the replacement cell by image id instead of the detached node. */
+        back = preview.imageId
+          ? document.querySelector('.thumb[data-image-id="' + preview.imageId + '"]')
+          : null;
+      }
       if(back && document.body.contains(back) && !back.disabled){
         try{ back.focus(); }catch(err){ /* ignore */ }
       }
@@ -346,6 +353,8 @@
         el:overlay,
         close:close,
         url:url,
+        section:state.section,
+        imageId:img.id,
         returnFocus:trigger || document.activeElement || null
       };
       document.documentElement.classList.add("is-image-preview");

@@ -307,6 +307,8 @@ async function createRequestInPanel(cdp, dockSession, flyoutSession, title, desc
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
@@ -323,6 +325,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -335,7 +340,7 @@ async function main() {
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
-    const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html" });
+    const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html?rl-local=1" });
     let appSession = await attach(cdp, appTarget.targetId);
     await sleep(900);
     await dismissOnboarding(cdp, appSession);

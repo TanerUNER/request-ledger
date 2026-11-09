@@ -220,8 +220,8 @@ function seedLifecycleExpression() {
   };
   return `(() => {
     localStorage.setItem('rl-onboarding-v1', '1');
-    localStorage.setItem('oz-projeler-v1', ${JSON.stringify(JSON.stringify(registry))});
-    localStorage.setItem('oz-istek-defteri-p-${P_LIFE}', ${JSON.stringify(JSON.stringify(ledger))});
+    localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-projeler-v1', ${JSON.stringify(JSON.stringify(registry))});
+    localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${P_LIFE}', ${JSON.stringify(JSON.stringify(ledger))});
     return true;
   })()`;
 }
@@ -289,6 +289,8 @@ async function screenshot(cdp, sessionId, name) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
@@ -311,6 +313,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -322,7 +327,7 @@ async function main() {
     const cdp = new CDP(version.webSocketDebuggerUrl);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
-    const appTarget = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html" });
+    const appTarget = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html?rl-local=1" });
     let appSession = await attach(cdp, appTarget.targetId);
     await sleep(500);
     await evaluate(cdp, appSession, seedLifecycleExpression() + "; location.reload();");
@@ -605,7 +610,7 @@ async function main() {
 
     /* Closing one of two app tabs must not stop the server; closing the last
        live app page starts the 5 s close grace. Reload already survived above. */
-    const secondApp = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html" });
+    const secondApp = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html?rl-local=1" });
     const secondSession = await attach(cdp, secondApp.targetId);
     await sleep(1800);
     await cdp.send("Target.closeTarget", { targetId: secondApp.targetId });

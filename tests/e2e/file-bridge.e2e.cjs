@@ -236,7 +236,7 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
   await sleep(900);
 
   await evaluate(cdp, pageSession,
-    "localStorage.setItem('oz-istek-defteri-v1', " + JSON.stringify(seedLedger(name, ledgerId, name + " request")) + "); location.reload();");
+    "localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-v1', " + JSON.stringify(seedLedger(name, ledgerId, name + " request")) + "); location.reload();");
   await sleep(2200);
   pageSession = await attach(cdp, target.targetId);
   await openActiveProject(cdp, pageSession);
@@ -440,6 +440,8 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
@@ -455,6 +457,9 @@ async function main() {
       "--enable-unsafe-extension-debugging",
       "--allow-file-access-from-files",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",

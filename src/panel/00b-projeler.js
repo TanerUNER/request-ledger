@@ -98,6 +98,14 @@
   function writeRegistry(registry){
     try{
       if(typeof localStorage === "undefined") return false;
+      if(!registry || !Array.isArray(registry.projects)) return false;
+      /* Never let a repeated merge append the same project id twice. */
+      var seen = {};
+      registry.projects = registry.projects.filter(function(project){
+        if(!project || typeof project.id !== "string" || !project.id || seen[project.id]) return false;
+        seen[project.id] = true;
+        return true;
+      });
       localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry));
       projectRegistry = registry;
       return true;
@@ -145,7 +153,11 @@
       var legacy = null;
       try{ legacy = JSON.parse(legacyRaw); }catch(err){ legacy = null; }
       if(legacy && Array.isArray(legacy.requests)){
-        var id = newProjectId();
+        /* A quota failure can stop the registry write. Use a stable id derived
+           from the legacy ledger so a retry overwrites the same project ledger
+           key instead of accumulating one copy per boot. */
+        var legacyTag = String(legacy.ledgerId || "").replace(/[^A-Za-z0-9_]/g, "").slice(-24);
+        var id = "prj_legacy" + (legacyTag ? "_" + legacyTag : "");
         var stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
         var legacyName = normalizeProjectName(legacy.project);
         var project = {

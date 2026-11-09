@@ -201,6 +201,8 @@ function ensureProjectFolder(projectId, name, requestedSlug) {
     createdAt: previous.createdAt || stamp,
     updatedAt: stamp,
     exportTarget: previous.exportTarget || "",
+    ledgerId: previous.ledgerId || "",
+    archiveCollapsed: previous.archiveCollapsed === true,
     requestCount: Number(previous.requestCount) || 0,
   };
   writeProjectMeta(slug, meta);
@@ -243,6 +245,93 @@ function writeExportFiles(slug, files) {
     written.push(name);
   });
   return { folder: exportDir, files: written };
+}
+
+/* ---------- disk truth: project data, archive, media, active id ---------- */
+
+function findProjectSlug(projectId) {
+  if (!projectId) return null;
+  try {
+    if (!fs.existsSync(projectsRoot)) return null;
+    const entries = fs.readdirSync(projectsRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const meta = readProjectMeta(entry.name);
+      if (meta && meta.projectId === projectId) return meta.slug || entry.name;
+    }
+  } catch (error) { /* ignore */ }
+  return null;
+}
+
+function readJsonFile(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function readProjectLedger(slug) {
+  const { folder } = projectFolder(slug);
+  return readJsonFile(path.join(folder, "ledger.json"), null);
+}
+
+function readProjectArchive(slug) {
+  const { folder } = projectFolder(slug);
+  return readJsonFile(path.join(folder, "archive.json"), { records: [], drafts: [], history: [] });
+}
+
+function writeProjectArchive(slug, archive) {
+  const { folder } = projectFolder(slug);
+  fs.mkdirSync(folder, { recursive: true });
+  const payload = {
+    records: Array.isArray(archive && archive.records) ? archive.records : [],
+    drafts: Array.isArray(archive && archive.drafts) ? archive.drafts : [],
+    history: Array.isArray(archive && archive.history) ? archive.history : [],
+  };
+  fs.writeFileSync(path.join(folder, "archive.json"), JSON.stringify(payload, null, 2) + "\n", "utf8");
+  return payload;
+}
+
+function mediaIndexFile(slug) {
+  const { folder } = projectFolder(slug);
+  return path.join(folder, "media.json");
+}
+
+function readMediaIndex(slug) {
+  const list = readJsonFile(mediaIndexFile(slug), []);
+  return Array.isArray(list) ? list : [];
+}
+
+function writeMediaIndex(slug, list) {
+  const { folder } = projectFolder(slug);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(mediaIndexFile(slug), JSON.stringify(list, null, 2) + "\n", "utf8");
+}
+
+function safeMediaId(value) {
+  return /^[A-Za-z0-9_-]{1,80}$/.test(String(value || ""));
+}
+
+function mediaFilePath(slug, id) {
+  const { folder } = projectFolder(slug);
+  const mediaDir = path.join(folder, "media");
+  const file = path.join(mediaDir, String(id));
+  if (!file.startsWith(mediaDir + path.sep)) throw new Error("invalid media path");
+  return file;
+}
+
+function activeProjectFile() {
+  return path.join(projectsRoot, ".active");
+}
+
+function readActiveProjectId() {
+  try { return fs.readFileSync(activeProjectFile(), "utf8").trim(); } catch (error) { return ""; }
+}
+
+function writeActiveProjectId(projectId) {
+  fs.mkdirSync(projectsRoot, { recursive: true });
+  fs.writeFileSync(activeProjectFile(), String(projectId || "").slice(0, 120) + "\n", "utf8");
 }
 
 function writeLock() {
@@ -516,6 +605,176 @@ const server = http.createServer(function (request, response) {
     return;
   }
 
+  if (pathname === "/__rl/bootstrap") {
+    if (request.method !== "GET") {
+      response.writeHead(405, { allow: "GET" });
+      response.end("method not allowed");
+      return;
+    }
+    const projects = [];
+    try {
+      if (fs.existsSync(projectsRoot)) {
+        fs.readdirSync(projectsRoot, { withFileTypes: true }).forEach(function (entry) {
+          if (!entry.isDirectory()) return;
+          const meta = readProjectMeta(entry.name);
+          if (meta) projects.push(meta);
+        });
+      }
+    } catch (error) { /* ignore */ }
+    sendJson(response, 200, { ok: true, activeId: readActiveProjectId(), projects: projects });
+    return;
+  }
+
+  if (pathname === "/__rl/load") {
+    if (request.method !== "GET") {
+      response.writeHead(405, { allow: "GET" });
+      response.end("method not allowed");
+      return;
+    }
+    const projectId = String((query && query.get("projectId")) || "").slice(0, 120);
+    const slug = findProjectSlug(projectId);
+    if (!slug) {
+      sendJson(response, 404, { ok: false, error: "project not found" });
+      return;
+    }
+    try {
+      sendJson(response, 200, {
+        ok: true,
+        project: readProjectMeta(slug),
+        ledger: readProjectLedger(slug),
+        archive: readProjectArchive(slug),
+        media: readMediaIndex(slug),
+      });
+    } catch (error) {
+      sendJson(response, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (pathname === "/__rl/active") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 1024 * 1024).then(function (body) {
+      const projectId = String(body && body.projectId || "").slice(0, 120);
+      if (!projectId || !findProjectSlug(projectId)) {
+        sendJson(response, 400, { ok: false, error: "unknown project" });
+        return;
+      }
+      writeActiveProjectId(projectId);
+      sendJson(response, 200, { ok: true, activeId: projectId });
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/media") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 40 * 1024 * 1024).then(function (body) {
+      if (!body || typeof body !== "object") {
+        sendJson(response, 400, { ok: false, error: "invalid body" });
+        return;
+      }
+      const id = String(body.id || "");
+      if (!safeMediaId(id)) {
+        sendJson(response, 400, { ok: false, error: "invalid media id" });
+        return;
+      }
+      const slug = findProjectSlug(String(body.projectId || ""));
+      if (!slug) {
+        sendJson(response, 404, { ok: false, error: "project not found" });
+        return;
+      }
+      const dataUrl = String(body.dataUrl || "");
+      const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl);
+      if (!match) {
+        sendJson(response, 400, { ok: false, error: "invalid media data" });
+        return;
+      }
+      try {
+        const bytes = Buffer.from(match[2], "base64");
+        if (!bytes.length || bytes.length > 32 * 1024 * 1024) {
+          sendJson(response, 413, { ok: false, error: "media too large" });
+          return;
+        }
+        const file = mediaFilePath(slug, id);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, bytes);
+        const list = readMediaIndex(slug).filter(function (item) { return item && item.id !== id; });
+        list.push({
+          id: id,
+          kind: body.kind === "file" ? "file" : "image",
+          name: String(body.name || id).slice(0, 180),
+          type: String(body.type || match[1] || "application/octet-stream").slice(0, 120),
+          ext: String(body.ext || "").slice(0, 20),
+          size: bytes.length,
+        });
+        writeMediaIndex(slug, list);
+        sendJson(response, 200, { ok: true, id: id, size: bytes.length, url: "/__rl/media/" + slug + "/" + id });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (pathname.indexOf("/__rl/media/") === 0) {
+    const rest = pathname.slice("/__rl/media/".length).split("/");
+    if (rest.length !== 2) {
+      response.writeHead(400);
+      response.end("bad media path");
+      return;
+    }
+    const slug = rest[0];
+    const id = rest[1];
+    if (!/^[a-z0-9-]{1,90}$/.test(slug) || !safeMediaId(id)) {
+      response.writeHead(400);
+      response.end("bad media path");
+      return;
+    }
+    if (request.method === "GET") {
+      try {
+        const file = mediaFilePath(slug, id);
+        if (!fs.existsSync(file)) {
+          response.writeHead(404);
+          response.end("not found");
+          return;
+        }
+        const meta = readMediaIndex(slug).find(function (item) { return item && item.id === id; });
+        const data = fs.readFileSync(file);
+        response.writeHead(200, {
+          "content-type": meta && meta.type ? meta.type : "application/octet-stream",
+          "content-length": data.length,
+          "cache-control": "no-store",
+        });
+        response.end(data);
+      } catch (error) {
+        response.writeHead(404);
+        response.end("not found");
+      }
+      return;
+    }
+    if (request.method === "DELETE") {
+      try {
+        const file = mediaFilePath(slug, id);
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+        writeMediaIndex(slug, readMediaIndex(slug).filter(function (item) { return item && item.id !== id; }));
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+    response.writeHead(405, { allow: "GET, DELETE" });
+    response.end("method not allowed");
+    return;
+  }
+
   if (pathname === "/__rl/projects") {
     if (request.method === "GET") {
       const projects = [];
@@ -528,7 +787,7 @@ const server = http.createServer(function (request, response) {
           });
         }
       } catch (error) { /* ignore */ }
-      sendJson(response, 200, { ok: true, projects: projects });
+      sendJson(response, 200, { ok: true, activeId: readActiveProjectId(), projects: projects });
       return;
     }
     if (request.method !== "POST") {
@@ -566,11 +825,15 @@ const server = http.createServer(function (request, response) {
         const result = ensureProjectFolder(body.projectId, body.name, body.slug);
         const snapshot = body.snapshot && typeof body.snapshot === "object" ? body.snapshot : {};
         fs.writeFileSync(path.join(result.folder, "ledger.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
-        if (Array.isArray(body.records)) {
+        if (body.archive && typeof body.archive === "object") {
+          writeProjectArchive(result.slug, body.archive);
+        } else if (Array.isArray(body.records)) {
           fs.writeFileSync(path.join(result.folder, "records.json"), JSON.stringify(body.records, null, 2) + "\n", "utf8");
         }
         const meta = Object.assign({}, result.meta, {
           updatedAt: new Date().toISOString(),
+          ledgerId: String(snapshot.ledgerId || result.meta.ledgerId || ""),
+          archiveCollapsed: body.archiveCollapsed === true,
           requestCount: Array.isArray(snapshot.requests) ? snapshot.requests.length : 0,
         });
         writeProjectMeta(result.slug, meta);

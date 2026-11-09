@@ -127,6 +127,7 @@ const API_EPILOGUE = `const api = {
     close: close,
     loadState: loadState,
     saveState: saveState,
+    getLastSaveError: getLastSaveError,
     loadTheme: loadTheme,
     saveTheme: saveTheme,
     getSetting: getSetting,

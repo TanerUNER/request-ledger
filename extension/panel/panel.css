@@ -165,6 +165,11 @@ html:not(.is-ready) body{visibility:hidden}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 input{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+/* Text controls draw focus with their accent border only (never a second
+   outline). Component rules below set the actual border color. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible{outline:none;outline-offset:0}
 
 *{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 ::-webkit-scrollbar{width:9px;height:9px}
@@ -2164,10 +2169,15 @@ html[data-theme="dark"] .toast{
 }
 .dock-card{transition:none !important}
 
-/* a11y: restore visible keyboard focus on form controls */
+/* a11y: form controls have ONE focus style — the accent border. The outer
+   outline here duplicated the component border and looked like a second,
+   tab-like frame. Rows/options keep their own focus treatment.
+   `:focus` is included for the custom select trigger so a programmatic or
+   mouse focus still paints the same single accent ring as the text fields. */
 .fld:focus-visible,
 .textarea:focus-visible,
-.sel-btn:focus-visible,
+.sel-btn:focus,
+.sel-btn:focus-visible{outline:none;outline-offset:0;border-color:var(--accent)}
 .sel-opt:focus-visible,
 .exp-warn-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}
 

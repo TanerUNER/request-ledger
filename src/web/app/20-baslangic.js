@@ -4,14 +4,17 @@
   async function init(){
     /* Active companion presence marker for the extension content script. */
     try{ document.documentElement.setAttribute("data-request-ledger-app", "1"); }catch(err){ /* ignore */ }
-    initProjectRegistry();
-    if(!state.ledgerId) state.ledgerId = newLedgerId();
     try{
       idb = await openDB();
     }catch(err){
       console.warn("IndexedDB açılamadı", err);
       idbFailed = true;
     }
+    /* In server mode the disk is the source of truth: hydrate the browser
+       cache (registry, ledgers, archive) before opening the last project. */
+    try{ await serverDiskBootstrap(); }catch(err){ console.warn("Sunucu verisi yüklenemedi", err); }
+    initProjectRegistry();
+    if(!state.ledgerId) state.ledgerId = newLedgerId();
     /* One-time Phase 1 → Phase 2 media/snapshot scope migration. */
     const registry = readRegistry();
     const scopeTarget = legacyScopeTarget(registry);

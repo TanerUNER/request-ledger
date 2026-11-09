@@ -324,6 +324,11 @@
   var TOAST_LAYER_WIDTH = 320;
   var TOAST_MAX_WIDTH = 300;
   var TOAST_MAX = 3;
+  /* A permanent reserved band at the bottom of the viewport. The flyout is
+     always capped above it, whether a toast is visible or not, so show/hide
+     never reflows the panel. Long/stacked toasts scroll inside this band. */
+  var TOAST_ZONE_HEIGHT = 96;
+  var TOAST_ZONE_LAYER_MAX = 72;
   var TOAST_SHIFT = 18;
   var TOAST_IN_MS = 220;
   var TOAST_OUT_MS = 240;
@@ -461,13 +466,16 @@
     "align-items: flex-end !important",
     "justify-content: flex-end !important",
     "gap: 8px !important",
-    "pointer-events: none !important",
+    "pointer-events: auto !important",
     "z-index: " + OVERLAY_Z + " !important",
     "background: transparent !important",
     "border: 0 !important",
     "margin: 0 !important",
     "padding: 0 !important",
-    "overflow: visible !important",
+    "max-height: " + TOAST_ZONE_LAYER_MAX + "px !important",
+    "overflow-y: auto !important",
+    "overflow-x: hidden !important",
+    "overscroll-behavior: contain !important",
     "visibility: visible !important",
     "opacity: 1 !important",
     "transform: none !important",
@@ -778,33 +786,17 @@
     return DOCK_CARD_TOP + anchorTop + anchorHeight;
   }
 
-  /* Toasts live just above the viewport bottom. While any toast is visible,
-     reserve its measured height + gap so the flyout footer never sits under
-     it. The inset is zero when the stack is empty, so no space is wasted. */
-  var toastInsetNow = 0;
-  var toastSyncTimer = null;
+  /* The toast band is permanent, so this is a constant rather than the
+     measured stack height. Geometry must not change on toast events. */
+  var toastInsetNow = TOAST_ZONE_HEIGHT;
 
   function measureToastInset() {
-    if (!toastLayer || !toastLayer.children.length) return 0;
-    var rect = toastLayer.getBoundingClientRect();
-    if (!rect || !isFinite(rect.height) || rect.height <= 0) return 0;
-    return Math.ceil(rect.height + 12);
+    return TOAST_ZONE_HEIGHT;
   }
 
   function syncToastInset() {
-    var next = measureToastInset();
-    if (next === toastInsetNow) return;
-    toastInsetNow = next;
-    if (!isOpen || !flyoutFrame) return;
-    if (toastSyncTimer) { clearTimeout(toastSyncTimer); toastSyncTimer = null; }
-    if (!reducedMotion()) {
-      setImportant(flyoutFrame, "transition", "top " + TOAST_IN_MS + "ms ease, height " + TOAST_IN_MS + "ms ease");
-    }
-    placeFlyout(lastCardHeight || flyoutAvailableHeight());
-    toastSyncTimer = setTimeout(function () {
-      toastSyncTimer = null;
-      if (flyoutFrame && isOpen) setImportant(flyoutFrame, "transition", "none");
-    }, TOAST_IN_MS + 30);
+    /* intentionally geometry-free: show/hide only changes the layer content */
+    toastInsetNow = TOAST_ZONE_HEIGHT;
   }
 
   function flyoutSpaceBelow() {
@@ -1085,7 +1077,7 @@
     }
     toastAll = [];
     toastActive = [];
-    toastInsetNow = 0;
+    toastInsetNow = TOAST_ZONE_HEIGHT;
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncToastInset);
   }
 

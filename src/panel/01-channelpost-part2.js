@@ -91,29 +91,54 @@
   }
 
   function syncStorageUI(){
-    if(storageOk) return;
+    if(storageOk){
+      for(var k = 0; k < storageBlockedNodes.length; k++){
+        var blocked = storageBlockedNodes[k];
+        if(blocked){
+          blocked.disabled = false;
+          blocked.removeAttribute("aria-disabled");
+        }
+      }
+      storageBlockedNodes = [];
+      return;
+    }
     var nodes = document.querySelectorAll(STORAGE_BLOCKED_SELECTOR + ',[data-save-dependent]');
     for(var i = 0; i < nodes.length; i++){
+      if(!nodes[i].disabled) storageBlockedNodes.push(nodes[i]);
       nodes[i].disabled = true;
       nodes[i].setAttribute("aria-disabled", "true");
     }
     var fileInputs = document.querySelectorAll('input[type="file"]');
     for(var j = 0; j < fileInputs.length; j++){
+      if(!fileInputs[j].disabled) storageBlockedNodes.push(fileInputs[j]);
       fileInputs[j].disabled = true;
       fileInputs[j].setAttribute("aria-disabled", "true");
     }
   }
 
-  function setStorageFailure(){
+  function setStorageFailure(reason){
+    storageFailureReason = reason ? String(reason.name || reason.message || reason) : "";
     if(!storageOk) return;
     storageOk = false;
     var banners = document.querySelectorAll("#rl-storage-banner");
     for(var i = 0; i < banners.length; i++){
       banners[i].hidden = false;
       banners[i].setAttribute("aria-label", lx("storageUnavailable"));
-      banners[i].title = lx("storageUnavailable");
+      banners[i].title = storageFailureReason ? lx("storageUnavailable") + ": " + storageFailureReason : lx("storageUnavailable");
       banners[i].textContent = lx("storageUnavailable");
     }
+    syncStorageUI();
+  }
+
+  /* A transient write failure must not lock the panel forever: the next
+     successful save clears the banner and re-enables the controls it disabled. */
+  function clearStorageFailure(){
+    storageFailureReason = "";
+    if(storageOk) return;
+    storageOk = true;
+    storageNotified = false;
+    var banners = document.querySelectorAll("#rl-storage-banner");
+    for(var i = 0; i < banners.length; i++) banners[i].hidden = true;
     syncStorageUI();
   }
 
@@ -357,9 +382,17 @@
         return new Promise(function(resolve){ setTimeout(resolve, 250); })
           .then(function(){ return core.storage.init(); })
           .catch(function(){
-            /* IndexedDB truly blocked/denied: the panel still opens, but writes
-               are disabled and a persistent banner explains why. */
-            storageOk = false;
+            /* IndexedDB can be blocked while the sibling frame opens the same
+               database. Text saves use localStorage and must keep working.
+               Probe localStorage: only a real text-storage failure disables
+               writes and shows the red banner. */
+            var textWritable = true;
+            try{
+              localStorage.setItem("rl-storage-probe", "1");
+              localStorage.removeItem("rl-storage-probe");
+            }catch(err){ textWritable = false; }
+            if(textWritable) mediaStorageOk = false;
+            else storageOk = false;
           });
       })
       .then(function(){
@@ -622,14 +655,22 @@
       return false;
     }
     var ok = false;
-    try{ ok = !!core.storage.saveState(app); }catch(err){ ok = false; }
+    var saveError = null;
+    for(var attempt = 0; attempt < 2 && !ok; attempt += 1){
+      try{ ok = !!core.storage.saveState(app); }catch(err){ ok = false; }
+      if(!ok && core.storage.getLastSaveError) saveError = core.storage.getLastSaveError();
+    }
     if(!ok){
-      setStorageFailure();
+      setStorageFailure(saveError);
       if(!storageNotified){
         storageNotified = true;
-        toast(lx("storageWriteFailed"), "error");
+        var quota = saveError && (/quota/i.test(String(saveError.name || "")) ||
+          /quota/i.test(String(saveError.message || "")));
+        toast(lx(quota ? "storageFull" : "storageWriteFailed"), "error");
       }
     }else{
+      clearStorageFailure();
+      bridgeRefreshHoldUntil = Date.now() + 1000;
       if(activeProjectId){
         touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO(), app && app.ledgerId);
         resetProjectSnapshot();

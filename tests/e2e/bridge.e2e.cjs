@@ -30,7 +30,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html";
+const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
 /* 127.0.0.1 is now a companion origin, so the negative case uses a different
    loopback host. The product server binds only 127.0.0.1; this test-only server
    serves the same files on 127.0.0.2. */
@@ -296,6 +296,8 @@ async function switchPanelProject(cdp, flyoutSession, projectId) {
 }
 
 async function main() {
+  /* server-disk reset: each e2e starts from an empty projects/ disk */
+  try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
@@ -311,6 +313,9 @@ async function main() {
       "--user-data-dir=" + PROFILE,
       "--enable-unsafe-extension-debugging",
       "--remote-debugging-port=" + PORT,
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
@@ -615,12 +620,12 @@ async function main() {
     };
     const seedRegistry = JSON.stringify(JSON.stringify(conflictRegistry));
     await evaluate(cdp, flyoutSession, `(() => {
-      localStorage.setItem('oz-projeler-v1', ${seedRegistry});
-      localStorage.setItem('oz-istek-defteri-p-${conflictId}', ${JSON.stringify(JSON.stringify(extConflictLedger))});
+      localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-projeler-v1', ${seedRegistry});
+      localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${conflictId}', ${JSON.stringify(JSON.stringify(extConflictLedger))});
     })()`);
     await evaluate(cdp, pageSession, `(() => {
-      localStorage.setItem('oz-projeler-v1', ${seedRegistry});
-      localStorage.setItem('oz-istek-defteri-p-${conflictId}', ${JSON.stringify(JSON.stringify(appConflictLedger))});
+      localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-projeler-v1', ${seedRegistry});
+      localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-p-${conflictId}', ${JSON.stringify(JSON.stringify(appConflictLedger))});
       location.reload();
     })()`);
     await sleep(2600);

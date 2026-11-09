@@ -80,6 +80,9 @@
   var searchTimer = null;
   var storageOk = true;
   var storageNotified = false;
+  var storageBlockedNodes = [];
+  var storageFailureReason = "";
+  var mediaStorageOk = true;
 
   var listFilter = { q:"", type:"all", status:"all" };
   var openRowMenuId = null;
@@ -355,6 +358,7 @@
     imageFallback:{ tr:"görsel", en:"image" },
     storageUnavailable:{ tr:"Depolama kullanılamıyor — veriler kaydedilemez", en:"Storage unavailable — changes cannot be saved" },
     storageWriteFailed:{ tr:"Kayıt yazılamadı. Tarayıcı depolaması dolu veya kapalı.", en:"Could not save. Browser storage is full or unavailable." },
+    storageFull:{ tr:"Depolama dolu. Yedek alıp Yedekleme → Temizle ile eski verileri kaldır.", en:"Storage is full. Export a backup, then use Backup → Clear to remove old data." },
     quotaExceeded:{ tr:"Depolama alanı doldu. Görsel eklenemedi.", en:"Storage is full. The image could not be added." },
 
     /* live bridge (web app <-> extension) */
@@ -773,6 +777,14 @@
   function writeRegistry(registry){
     try{
       if(typeof localStorage === "undefined") return false;
+      if(!registry || !Array.isArray(registry.projects)) return false;
+      /* Never let a repeated merge append the same project id twice. */
+      var seen = {};
+      registry.projects = registry.projects.filter(function(project){
+        if(!project || typeof project.id !== "string" || !project.id || seen[project.id]) return false;
+        seen[project.id] = true;
+        return true;
+      });
       localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry));
       projectRegistry = registry;
       return true;
@@ -820,7 +832,11 @@
       var legacy = null;
       try{ legacy = JSON.parse(legacyRaw); }catch(err){ legacy = null; }
       if(legacy && Array.isArray(legacy.requests)){
-        var id = newProjectId();
+        /* A quota failure can stop the registry write. Use a stable id derived
+           from the legacy ledger so a retry overwrites the same project ledger
+           key instead of accumulating one copy per boot. */
+        var legacyTag = String(legacy.ledgerId || "").replace(/[^A-Za-z0-9_]/g, "").slice(-24);
+        var id = "prj_legacy" + (legacyTag ? "_" + legacyTag : "");
         var stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
         var legacyName = normalizeProjectName(legacy.project);
         var project = {
@@ -1568,29 +1584,54 @@
   }
 
   function syncStorageUI(){
-    if(storageOk) return;
+    if(storageOk){
+      for(var k = 0; k < storageBlockedNodes.length; k++){
+        var blocked = storageBlockedNodes[k];
+        if(blocked){
+          blocked.disabled = false;
+          blocked.removeAttribute("aria-disabled");
+        }
+      }
+      storageBlockedNodes = [];
+      return;
+    }
     var nodes = document.querySelectorAll(STORAGE_BLOCKED_SELECTOR + ',[data-save-dependent]');
     for(var i = 0; i < nodes.length; i++){
+      if(!nodes[i].disabled) storageBlockedNodes.push(nodes[i]);
       nodes[i].disabled = true;
       nodes[i].setAttribute("aria-disabled", "true");
     }
     var fileInputs = document.querySelectorAll('input[type="file"]');
     for(var j = 0; j < fileInputs.length; j++){
+      if(!fileInputs[j].disabled) storageBlockedNodes.push(fileInputs[j]);
       fileInputs[j].disabled = true;
       fileInputs[j].setAttribute("aria-disabled", "true");
     }
   }
 
-  function setStorageFailure(){
+  function setStorageFailure(reason){
+    storageFailureReason = reason ? String(reason.name || reason.message || reason) : "";
     if(!storageOk) return;
     storageOk = false;
     var banners = document.querySelectorAll("#rl-storage-banner");
     for(var i = 0; i < banners.length; i++){
       banners[i].hidden = false;
       banners[i].setAttribute("aria-label", lx("storageUnavailable"));
-      banners[i].title = lx("storageUnavailable");
+      banners[i].title = storageFailureReason ? lx("storageUnavailable") + ": " + storageFailureReason : lx("storageUnavailable");
       banners[i].textContent = lx("storageUnavailable");
     }
+    syncStorageUI();
+  }
+
+  /* A transient write failure must not lock the panel forever: the next
+     successful save clears the banner and re-enables the controls it disabled. */
+  function clearStorageFailure(){
+    storageFailureReason = "";
+    if(storageOk) return;
+    storageOk = true;
+    storageNotified = false;
+    var banners = document.querySelectorAll("#rl-storage-banner");
+    for(var i = 0; i < banners.length; i++) banners[i].hidden = true;
     syncStorageUI();
   }
 
@@ -1834,9 +1875,17 @@
         return new Promise(function(resolve){ setTimeout(resolve, 250); })
           .then(function(){ return core.storage.init(); })
           .catch(function(){
-            /* IndexedDB truly blocked/denied: the panel still opens, but writes
-               are disabled and a persistent banner explains why. */
-            storageOk = false;
+            /* IndexedDB can be blocked while the sibling frame opens the same
+               database. Text saves use localStorage and must keep working.
+               Probe localStorage: only a real text-storage failure disables
+               writes and shows the red banner. */
+            var textWritable = true;
+            try{
+              localStorage.setItem("rl-storage-probe", "1");
+              localStorage.removeItem("rl-storage-probe");
+            }catch(err){ textWritable = false; }
+            if(textWritable) mediaStorageOk = false;
+            else storageOk = false;
           });
       })
       .then(function(){
@@ -2099,14 +2148,22 @@
       return false;
     }
     var ok = false;
-    try{ ok = !!core.storage.saveState(app); }catch(err){ ok = false; }
+    var saveError = null;
+    for(var attempt = 0; attempt < 2 && !ok; attempt += 1){
+      try{ ok = !!core.storage.saveState(app); }catch(err){ ok = false; }
+      if(!ok && core.storage.getLastSaveError) saveError = core.storage.getLastSaveError();
+    }
     if(!ok){
-      setStorageFailure();
+      setStorageFailure(saveError);
       if(!storageNotified){
         storageNotified = true;
-        toast(lx("storageWriteFailed"), "error");
+        var quota = saveError && (/quota/i.test(String(saveError.name || "")) ||
+          /quota/i.test(String(saveError.message || "")));
+        toast(lx(quota ? "storageFull" : "storageWriteFailed"), "error");
       }
     }else{
+      clearStorageFailure();
+      bridgeRefreshHoldUntil = Date.now() + 1000;
       if(activeProjectId){
         touchActiveProject(app ? app.project : "", app && app.updatedAt ? app.updatedAt : nowISO(), app && app.ledgerId);
         resetProjectSnapshot();
@@ -2140,8 +2197,9 @@
     }catch(err){ /* standalone */ }
   }
 
-  function reloadSharedState(projectId){
+  function reloadSharedState(projectId, skipSectionRender){
     if(!core || !core.storage || typeof core.storage.loadState !== "function") return;
+    var previousApp = app;
     /* Keep the project that owns the incoming bridge data; another frame may
        have written a different registry.activeId in the meantime. */
     syncStorageScope(projectId);
@@ -2151,6 +2209,27 @@
     }
     app = loaded || defaultApp();
     if(!Array.isArray(app.requests)) app.requests = [];
+    /* A stale disk copy must never revoke a confirmation this frame already
+       applied and saved (or is about to save). Confirmation changes always
+       carry a fresh request updatedAt, so the newer revision wins. */
+    if(loaded && previousApp && Array.isArray(previousApp.requests) && previousApp !== app){
+      var diskById = {};
+      for(var di = 0; di < app.requests.length; di++){
+        if(app.requests[di] && app.requests[di].id) diskById[app.requests[di].id] = app.requests[di];
+      }
+      for(var li = 0; li < previousApp.requests.length; li++){
+        var local = previousApp.requests[li];
+        if(!local || !local.id || local.confirmed !== true) continue;
+        var disk = diskById[local.id];
+        /* A request deleted by another frame stays deleted; only revive the
+           confirmation bit when the disk copy is the older revision. */
+        if(!disk) continue;
+        if(String(disk.updatedAt || "") <= String(local.updatedAt || "")){
+          disk.confirmed = true;
+          disk.updatedAt = local.updatedAt;
+        }
+      }
+    }
     if(!Array.isArray(app.agents)) app.agents = [];
     /* The registry owns the one ledger id. A storage refresh can run before
        core.storage has switched scopes (or can find no payload); defaultApp()
@@ -2199,13 +2278,15 @@
 
     /* Bridge traffic updates data only. It must never call refreshSection(),
        which broadcasts RL_OPEN_SECTION and can reveal the flyout. */
-    if(role === "flyout" && state.section === "list"){
-      /* A bridge patch refreshes rows/counts in place: a full render would
-         reset the selected archive tab, search focus and scroll position. */
-      updateList();
-      renderArchiveProjectTree();
-    }else if(role === "flyout" && state.section){
-      renderFlyout(state.section);
+    if(!skipSectionRender){
+      if(role === "flyout" && state.section === "list"){
+        /* A bridge patch refreshes rows/counts in place: a full render would
+           reset the selected archive tab, search focus and scroll position. */
+        updateList();
+        renderArchiveProjectTree();
+      }else if(role === "flyout" && state.section){
+        renderFlyout(state.section);
+      }
     }
     broadcastState();
   }
@@ -4928,13 +5009,83 @@
     toast(lx("pickCancelled"));
   }
 
+  /* A bridge/probe refresh may rebuild the flyout while the user is typing.
+     Capture the focused field (request id + field key + caret) and restore it
+     only when this is still the same section/request and the panel has focus.
+     Without the focus check a background tab would steal focus on every
+     remote patch. */
+  function captureFlyoutFocus(){
+    var el = document.activeElement;
+    if(!el || el === document.body || !els.body || !els.body.contains(el)) return null;
+    var tag = el.tagName;
+    var focusable = /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(tag) || el.isContentEditable || el.tabIndex >= 0;
+    if(!focusable) return null;
+    if(!document.hasFocus()) return null;
+    var req = typeof activeRequest === "function" ? activeRequest() : null;
+    var selector = "";
+    if(el.id) selector = "#" + el.id;
+    else if(el.getAttribute("data-field")) selector = '[data-field="' + el.getAttribute("data-field").replace(/"/g, '\\"') + '"]';
+    else if(el.getAttribute("data-image-id")) selector = '[data-image-id="' + el.getAttribute("data-image-id").replace(/"/g, '\\"') + '"]';
+    if(!selector) return null;
+    var snapshot = {
+      section: document.body.dataset.section || "",
+      requestId: req && req.id ? req.id : "",
+      selector: selector,
+      start: null,
+      end: null,
+      direction: null
+    };
+    try{
+      if(typeof el.selectionStart === "number"){
+        snapshot.start = el.selectionStart;
+        snapshot.end = el.selectionEnd;
+        snapshot.direction = el.selectionDirection || "none";
+      }
+    }catch(err){ /* range/unsupported controls */ }
+    return snapshot;
+  }
+
+  function restoreFlyoutFocus(snapshot, section){
+    if(!snapshot || !els.body) return;
+    if(!document.hasFocus()){
+      pendingFlyoutFocus = { snapshot:snapshot, section:section };
+      return;
+    }
+    if(snapshot.section && snapshot.section !== section) return;
+    if(snapshot.requestId){
+      var req = typeof activeRequest === "function" ? activeRequest() : null;
+      if(!req || req.id !== snapshot.requestId) return;
+    }
+    var target = null;
+    try{ target = els.body.querySelector(snapshot.selector); }catch(err){ target = null; }
+    if(!target || target.disabled || !els.body.contains(target)) return;
+    try{ target.focus({ preventScroll:true }); }
+    catch(err){ try{ target.focus(); }catch(e){ /* ignore */ } }
+    if(snapshot.start != null){
+      try{ target.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction || "none"); }
+      catch(err){ /* unsupported control */ }
+    }
+  }
+
+  function flushPendingFlyoutFocus(){
+    if(!pendingFlyoutFocus) return;
+    var pending = pendingFlyoutFocus;
+    pendingFlyoutFocus = null;
+    if(document.activeElement && document.activeElement !== document.body) return;
+    restoreFlyoutFocus(pending.snapshot, pending.section);
+  }
+
   function renderFlyout(section){
     var spec = SECTION_SPECS[section];
     if(!spec) return;
+    var focusSnapshot = captureFlyoutFocus();
 
-    closeImagePreview(false);
     closeTabPicker(false);
     closeOpenSelect();
+    /* A data refresh in the same section must not close an open image
+       preview: the overlay lives on document.body and its blob URL is still
+       valid after the grid is rebuilt. */
+    if(!imagePreview || imagePreview.section !== section) closeImagePreview(false);
     revokeThumbs();
     tpOpen = false;
     openRowMenuId = null;
@@ -4988,6 +5139,7 @@
     els.body.scrollTop = 0;
     lastSize = -1;
     requestAnimationFrame(reportSize);
+    restoreFlyoutFocus(focusSnapshot, section);
   }
 
   /* ---------- shared form pieces ---------- */
@@ -5709,6 +5861,13 @@
     lastSize = -1;
     if(restoreFocus !== false){
       var back = preview.returnFocus;
+      if(!back || !document.body.contains(back) || back.disabled){
+        /* A data refresh rebuilt the grid while the preview was open; match
+           the replacement cell by image id instead of the detached node. */
+        back = preview.imageId
+          ? document.querySelector('.thumb[data-image-id="' + preview.imageId + '"]')
+          : null;
+      }
       if(back && document.body.contains(back) && !back.disabled){
         try{ back.focus(); }catch(err){ /* ignore */ }
       }
@@ -5759,6 +5918,8 @@
         el:overlay,
         close:close,
         url:url,
+        section:state.section,
+        imageId:img.id,
         returnFocus:trigger || document.activeElement || null
       };
       document.documentElement.classList.add("is-image-preview");
@@ -10499,9 +10660,9 @@
     activeRequestId = null;
     saveActivePointer(null);
     composeDirty = false;
-    flushSave();
+    var saved = flushSave();
     broadcastState();
-    toast(t("Kaydedildi"));
+    if(saved) toast(t("Kaydedildi"));
     /* v12: after ready, show every request again (filters/archive tab may
        have been left on an empty view). */
     listFilter = { q:"", type:"all", status:"all" };
@@ -11694,6 +11855,9 @@
   var bridgeSuppress = 0;
   var bridgeSendTimer = null;
   var bridgeWatchTimer = null;
+  var bridgeRefreshHoldUntil = 0;
+  var pendingFlyoutFocus = null;
+  var pendingFocusListenerOn = false;
   var bridgeLastAppliedHash = "";
   var bridgeTombstones = {};
   var bridgeKnownIds = {};
@@ -11975,8 +12139,10 @@
     });
     Promise.all(jobs).then(function(){
       if(!changed) return;
-      req.updatedAt = bridgeNow();
-      core.requests.update(req, { images:req.images, attachments:req.attachments });
+      bridgeRefreshHoldUntil = Date.now() + 1500;
+      /* Media metadata arrived over the bridge; persisting it must not count
+         as a user edit that revokes an existing Ready confirmation, and must
+         not create a newer revision that can override one. */
       saveNow();
       if(role === "flyout" && state.section) renderFlyout(state.section);
       if(role === "dock") updateDockBadges();
@@ -12138,31 +12304,12 @@
     return !bridgeConnected && !companionPresence.open;
   }
 
-  function discardCompanionDraft(){
-    var discarded = false;
-    if(typeof pendingRequest !== "undefined" && pendingRequest){
-      if(typeof discardPending === "function") discardPending();
-      else pendingRequest = null;
-      discarded = true;
-    }
-    if(typeof composeDirty !== "undefined" && composeDirty){
-      composeDirty = false;
-      if(typeof state !== "undefined" && state.mode === "compose" && typeof setMode === "function") setMode("idle");
-      discarded = true;
-    }
-    if(discarded) toast(lx("companionDraftDiscarded"), "error");
-  }
-
   function updateCompanionLock(){
     var overlayLocked = companionOverlayLocked();
     /* No in-page lock card: the content script removes the whole host when
-       the app is not alive. This flag only keeps writes and drafts safe for
-       the short interval before the host is torn down. */
+       the app is not alive. Presence/status updates must be side-effect free:
+       they never discard a draft, switch mode, refresh data or move focus. */
     try{ document.body.setAttribute("data-companion-locked", overlayLocked ? "1" : "0"); }catch(err){ /* ignore */ }
-    if(overlayLocked && !companionWasLocked) discardCompanionDraft();
-    if(!overlayLocked && companionWasLocked && typeof bridgeRefreshFromStorage === "function"){
-      bridgeRefreshFromStorage();
-    }
     companionWasLocked = overlayLocked;
   }
 
@@ -12188,9 +12335,7 @@
           lastAt: Date.now()
         };
       }
-      if(companionPresence.open && !activeProjectId && typeof bridgeRefreshFromStorage === "function"){
-        bridgeRefreshFromStorage();
-      }
+      /* Status changes are text-only; they never re-render the panel. */
       updateBridgeUI();
     });
   }
@@ -12614,6 +12759,7 @@
       return false;
     }
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
+    var storageSaved = true;
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
     bridgePeerRequestCount = incoming.length;
@@ -12667,7 +12813,14 @@
         }
       }
 
-      if(core && core.storage && core.storage.saveState) core.storage.saveState(app);
+      if(core && core.storage && core.storage.saveState){
+        storageSaved = false;
+        for(var saveAttempt = 0; saveAttempt < 2; saveAttempt += 1){
+          try{ storageSaved = core.storage.saveState(app) !== false; }catch(err){ storageSaved = false; }
+          if(storageSaved) break;
+        }
+      }
+      bridgeRefreshHoldUntil = Date.now() + 1500;
       /* The project registry owns the name and the one ledger id; keep both
          aligned with the app so a stop/start never prompts again. */
       touchActiveProject(app.project, app.updatedAt || stamp || bridgeNow(), app.ledgerId);
@@ -12693,7 +12846,21 @@
         if(att && att.id) bridgeMediaMarkPending("file", att.id);
       });
     });
-    reloadSharedState(incomingProjectId || activeProjectId);
+    if(storageSaved){
+      if(typeof clearStorageFailure === "function") clearStorageFailure();
+      reloadSharedState(incomingProjectId || activeProjectId);
+    }else{
+      /* A failed write must never be followed by a storage reload: it would
+         discard the just-applied bridge data (including a Ready confirmation)
+         and the next refresh would push that stale copy back to the app. */
+      if(typeof setStorageFailure === "function"){
+        setStorageFailure(core && core.storage && core.storage.getLastSaveError
+          ? core.storage.getLastSaveError()
+          : null);
+      }
+      if(typeof updateDockBadges === "function") updateDockBadges();
+      if(role === "flyout" && state.section) renderFlyout(state.section);
+    }
     updateBridgeUI();
     bridgeStats.applied++;
     setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
@@ -13124,6 +13291,9 @@
     if(bridgeWatchTimer){ clearInterval(bridgeWatchTimer); bridgeWatchTimer = null; }
     bridgeWatchTimer = setInterval(function(){
       if(!bridgeConnected) return;
+      /* A backgrounded app tab throttles the page heartbeat; a hidden panel
+         must not declare the bridge dead just because it is not focused. */
+      if(document.visibilityState === "hidden") return;
       if(Date.now() - bridgeLastHeard > BRIDGE_STALE_MS){
         bridgeConnected = false;
         updateBridgeUI();
@@ -13167,6 +13337,13 @@
      opened or re-rendered while closed. */
   function bridgeRefreshFromStorage(){
     if(!hasHost || bridgeSuppress || bridgeAdoptingProject) return;
+    /* A local edit may still be inside the 380 ms save debounce, and a bridge
+       apply just wrote a newer revision. Reloading storage in either window
+       would overwrite the in-flight confirmation with the previous snapshot. */
+    if(typeof saveTimer !== "undefined" && saveTimer) return;
+    if(state.saving === "saving") return;
+    if(Date.now() < bridgeRefreshHoldUntil) return;
+    if(typeof storageOk !== "undefined" && !storageOk) return;
     /* A panel that mounted before the app created or selected a project still
        needs to adopt it. Project-registry storage events are the only signal a
        plain page gets (there is no bridge HELLO on that tab). Adoption is data
@@ -13186,14 +13363,23 @@
     if(Date.now() < panelToolBusyUntil) return;
     var before = bridgeStateSignature();
     var projectId = activeProjectId;
-    reloadSharedState(projectId);
+    /* Load data-only first: a no-op storage event must not rebuild the
+       focused section. Render only when the signature actually changed. */
+    reloadSharedState(projectId, true);
     if(bridgeStateSignature() === before) return;
+    if(role === "flyout" && state.section === "list"){
+      updateList();
+      renderArchiveProjectTree();
+    }else if(role === "flyout" && state.section){
+      renderFlyout(state.section);
+    }
     /* Do not push local data over a different same-project app ledger while
        both sides hold requests. The user must choose; otherwise a storage
-       refresh from the source ledger would silently overwrite the app. */
+       refresh from the source ledger would silently overwrite the app. An
+       empty local side may still adopt the non-empty peer. */
     if(bridgeConflict || (bridgePeerLedgerId && app.ledgerId &&
        String(bridgePeerLedgerId) !== String(app.ledgerId) &&
-       bridgePeerRequestCount > 0 && app.requests.length === 0)){
+       bridgePeerRequestCount > 0 && app.requests.length > 0)){
       return;
     }
     bridgeNotifyChange();
@@ -13226,6 +13412,10 @@
        non-allowlisted pages, so no data leaves the two approved origins. */
     setTimeout(function(){ bridgePost("RL_APP_SNAPSHOT"); }, 120);
     startCompanionProbe();
+    if(!pendingFocusListenerOn){
+      window.addEventListener("focus", flushPendingFlyoutFocus);
+      pendingFocusListenerOn = true;
+    }
     try{
       window.__rlBridgePanel = Object.freeze({
         connected:function(){ return bridgeConnected; },
@@ -13243,7 +13433,8 @@
         tabId:function(){ return panelTabScope; },
         requests:function(){
           return app && Array.isArray(app.requests) ? app.requests.map(function(req){
-            return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length };
+            return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length,
+              confirmed:req.confirmed === true, updatedAt:req.updatedAt || "" };
           }) : [];
         },
         presence:function(){ return { checked:companionPresence.checked, open:companionPresence.open, mode:companionPresence.mode, port:companionPresence.port }; },

@@ -30,6 +30,8 @@
   let bridgeResolved = false;
   let bridgeStateSent = false;
   let bridgeForceApply = false;
+  let bridgeRejectedLedgerId = "";
+  let bridgeRejectedLedgerAt = 0;
   let bridgePeerSnapshot = null;
   let bridgeSuppress = 0;
   let bridgeSendTimer = null;
@@ -477,11 +479,10 @@
       }catch(err){ /* skip a broken media record */ }
     }
     if(changed){
-      req.updatedAt = nowISO();
+      /* Do not bump the request revision for a media blob arrival: the
+         metadata was already part of the request's revision. Bumping here can
+         resurrect a stale confirmed=false over a newer Ready confirmation. */
       saveNow();
-      /* The image/attachment ids did not change, only their blobs arrived.
-         Clear the render signatures so syncRow rebuilds the media blocks and
-         swaps the loading placeholder for the real image. */
       const row = typeof getRowEl === "function" ? getRowEl(req.id) : null;
       if(row){
         row.__imageSig = "";
@@ -795,12 +796,16 @@
     bridgeStateSent = false;
     if(winner === "app"){
       bridgeForceApply = false;
+      bridgeRejectedLedgerId = normalizeLedgerId(bridgePeerSnapshot && bridgePeerSnapshot.ledgerId);
+      bridgeRejectedLedgerAt = bridgeRejectedLedgerId ? Date.now() : 0;
       bridgeSendHello({ resolution:"app" });
       showToast(translateString("Defter seçimi kaydedildi."));
       updateBridgeIndicator();
       return;
     }
     bridgeForceApply = true;
+    bridgeRejectedLedgerId = normalizeLedgerId(state.ledgerId);
+    bridgeRejectedLedgerAt = bridgeRejectedLedgerId ? Date.now() : 0;
     const ack = bridgeEnvelope("RL_APP_ACK");
     ack.resolution = "extension";
     try{ window.postMessage(ack, bridgePostTarget()); }catch(err){ /* ignore */ }
@@ -814,7 +819,19 @@
     updateBridgeIndicator();
   }
 
+  function bridgeRejectStaleLoser(data){
+    if(!bridgeResolved || !bridgeRejectedLedgerId) return false;
+    if(bridgeRejectedLedgerAt && Date.now() - bridgeRejectedLedgerAt > 20000){
+      bridgeRejectedLedgerId = "";
+      bridgeRejectedLedgerAt = 0;
+      return false;
+    }
+    const incoming = normalizeLedgerId(data && data.ledgerId);
+    return !!(incoming && incoming === bridgeRejectedLedgerId);
+  }
+
   function bridgeReconcile(data){
+    if(bridgeRejectStaleLoser(data)) return;
     const peerProjectId = bridgeEnvelopeProjectId(data);
     const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     /* Phase 2c: a panel on another project is a project mismatch, not a ledger
@@ -1128,6 +1145,8 @@
     bridgeResolved = false;
     bridgeStateSent = false;
     bridgeForceApply = false;
+    bridgeRejectedLedgerId = "";
+    bridgeRejectedLedgerAt = 0;
     bridgePeerSnapshot = null;
     bridgePeerEmptyAsked = false;
     bridgeLoadTombstones();

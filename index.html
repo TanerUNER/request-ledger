@@ -4205,6 +4205,7 @@ const SEO_TITLE = document.title;
       syncActiveProjectRecord(payload.updatedAt);
       setSaveStatus("saved");
       bridgeNotifyChange();
+      if(typeof scheduleServerDiskSave === "function") scheduleServerDiskSave();
     }catch(err){
       console.error("Kayıt yapılamadı", err);
       setSaveStatus("error");
@@ -4223,8 +4224,10 @@ const SEO_TITLE = document.title;
     stateDirtySinceExport = true;
     setSaveStatus("saving");
     clearTimeout(saveTimer);
+
     saveTimer = setTimeout(function(){
       saveTimer = null;
+
       saveNow();
     }, 380);
   }
@@ -4300,7 +4303,12 @@ const SEO_TITLE = document.title;
           name:project.name,
           slug:slug,
           snapshot:ledgerPayload(),
-          records: (typeof records !== "undefined" && Array.isArray(records)) ? records : []
+          archive:{
+            records: (typeof records !== "undefined" && Array.isArray(records)) ? records : [],
+            drafts: (typeof drafts !== "undefined" && Array.isArray(drafts)) ? drafts : [],
+            history: (typeof historyItems !== "undefined" && Array.isArray(historyItems)) ? historyItems : []
+          },
+          archiveCollapsed: project.archiveCollapsed === true
         })
       });
       const data = await response.json();
@@ -4631,6 +4639,387 @@ const SEO_TITLE = document.title;
   }
 
   /* ============================================================
+     Server disk truth (server mode only)
+
+     A browser origin is port-scoped, so localStorage/IndexedDB cannot be the
+     authority in server mode. The local server owns projects/<slug>/ on disk.
+     This fragment hydrates the browser cache from disk on boot, migrates the
+     existing browser data once, mirrors autosaves back to disk and resolves
+     media through /__rl/media/.
+     ============================================================ */
+
+  var serverDiskMode = false;
+  var serverDiskReady = false;
+  var serverDiskActive = false;
+  var serverMediaIndex = {};     /* projectId -> { mediaId: meta } */
+  var serverArchives = {};       /* projectId -> { records, drafts, history } */
+  var serverSaveTimer = null;
+  var serverSaveBusy = false;
+  var serverSaveQueued = false;
+  var SERVER_DISK_SAVE_MS = 700;
+
+  function serverDiskEnabled(){
+    try{
+      if(localStorage.getItem("rl-local-mode") === "1") return false;
+      if(/[?&]rl-local=1/.test(window.location.search || "")) return false;
+    }catch(err){ /* ignore */ }
+    try{
+      return window.location.protocol === "http:" &&
+        /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+    }catch(err){ return false; }
+  }
+
+  function serverJson(url, options){
+    var init = options || {};
+    return fetch(url, {
+      method:init.method || "GET",
+      cache:"no-store",
+      headers:init.body ? { "content-type":"application/json" } : undefined,
+      body:init.body ? JSON.stringify(init.body) : undefined
+    }).then(function(response){
+      if(!response.ok) return null;
+      return response.json().catch(function(){ return null; });
+    });
+  }
+
+  function serverDiskSlug(projectId){
+    var project = projectId ? findProjectRecord(projectId) : null;
+    return project && project.folder ? project.folder : "";
+  }
+
+  function serverMediaUrl(projectId, mediaId){
+    var slug = serverDiskSlug(projectId);
+    if(!slug || !mediaId) return "";
+    return "/__rl/media/" + encodeURIComponent(slug) + "/" + encodeURIComponent(mediaId);
+  }
+
+  function serverMediaMeta(projectId, mediaId){
+    var index = projectId && serverMediaIndex[projectId];
+    return index && index[mediaId] ? index[mediaId] : null;
+  }
+
+  function serverIndexMedia(projectId, list){
+    var map = {};
+    (Array.isArray(list) ? list : []).forEach(function(item){
+      if(item && item.id) map[item.id] = item;
+    });
+    if(projectId) serverMediaIndex[projectId] = map;
+    return map;
+  }
+
+  function serverBlobToDataUrl(blob){
+    return new Promise(function(resolve, reject){
+      if(!blob){ reject(new Error("missing blob")); return; }
+      try{
+        var reader = new FileReader();
+        reader.onload = function(){ resolve(reader.result); };
+        reader.onerror = function(){ reject(reader.error || new Error("media read failed")); };
+        reader.readAsDataURL(blob);
+      }catch(err){ reject(err); }
+    });
+  }
+
+  /* Upload one blob to the disk project and keep the runtime index in sync.
+     Failures are silent: IndexedDB remains a same-session fallback. */
+  async function serverUploadMedia(kind, record){
+    if(!serverDiskMode || !activeProjectId || !record || !record.id || !record.blob) return false;
+    if(record.blob.size > 32 * 1024 * 1024) return false;
+    try{
+      var dataUrl = await serverBlobToDataUrl(record.blob);
+      var result = await serverJson("/__rl/media", {
+        method:"POST",
+        body:{
+          projectId:activeProjectId,
+          kind:kind === "file" ? "file" : "image",
+          id:record.id,
+          name:record.name || record.id,
+          type:record.type || record.blob.type || (kind === "file" ? "application/octet-stream" : "image/png"),
+          ext:record.ext || "",
+          dataUrl:dataUrl
+        }
+      });
+      if(!result || result.ok !== true) return false;
+      var index = serverMediaIndex[activeProjectId] || (serverMediaIndex[activeProjectId] = {});
+      index[record.id] = {
+        id:record.id, kind:kind === "file" ? "file" : "image",
+        name:record.name || record.id, type:record.type || record.blob.type || "",
+        ext:record.ext || "", size:record.blob.size
+      };
+      return true;
+    }catch(err){ return false; }
+  }
+
+  function serverDeleteMedia(kind, mediaId){
+    if(!serverDiskMode || !activeProjectId || !mediaId) return;
+    var projectId = activeProjectId;
+    var slug = serverDiskSlug(projectId);
+    if(!slug) return;
+    try{
+      fetch("/__rl/media/" + encodeURIComponent(slug) + "/" + encodeURIComponent(mediaId), {
+        method:"DELETE", cache:"no-store"
+      }).catch(function(){ /* best effort */ });
+    }catch(err){ /* ignore */ }
+    var index = serverMediaIndex[projectId];
+    if(index) delete index[mediaId];
+  }
+
+  /* Fetch a blob from disk when the local IndexedDB cache misses. */
+  async function serverFetchMedia(projectId, mediaId){
+    var url = serverMediaUrl(projectId, mediaId);
+    if(!url) return null;
+    try{
+      var response = await fetch(url, { cache:"no-store" });
+      if(!response.ok) return null;
+      var blob = await response.blob();
+      return { id:mediaId, blob:blob, type:blob.type || "application/octet-stream" };
+    }catch(err){ return null; }
+  }
+
+  function serverProjectFromMeta(meta){
+    return {
+      id:meta.projectId,
+      name:meta.name,
+      createdAt:meta.createdAt,
+      updatedAt:meta.updatedAt,
+      ledgerId:meta.ledgerId || "",
+      folder:meta.slug || "",
+      exportTarget:meta.exportTarget || "",
+      archiveCollapsed:meta.archiveCollapsed === true
+    };
+  }
+
+  async function serverHydrateProject(meta){
+    var data = await serverJson("/__rl/load?projectId=" + encodeURIComponent(meta.projectId));
+    if(!data || data.ok !== true) return;
+    var ledger = data.ledger && typeof data.ledger === "object" ? data.ledger : null;
+    if(ledger){
+      ledger.project = ledger.project || meta.name;
+      ledger.projectCreated = true;
+      ledger.ledgerId = ledger.ledgerId || meta.ledgerId || "";
+      localStorage.setItem(projectLedgerKey(meta.projectId), JSON.stringify(ledger));
+    }
+    var archive = data.archive && typeof data.archive === "object"
+      ? data.archive : { records:[], drafts:[], history:[] };
+    serverArchives[meta.projectId] = archive;
+    serverIndexMedia(meta.projectId, data.media);
+    /* Seed IndexedDB so the existing archive loaders work unchanged. */
+    if(idb){
+      try{ await idbCollectionClear(RECORDS_STORE, meta.projectId); }catch(err){ /* ignore */ }
+      try{ await idbCollectionClear(DRAFTS_STORE, meta.projectId); }catch(err){ /* ignore */ }
+      try{ await idbHistoryClear(meta.projectId); }catch(err){ /* ignore */ }
+      for(var ri = 0; ri < (archive.records || []).length; ri++){
+        var record = Object.assign({}, archive.records[ri], { projectId:meta.projectId });
+        await idbCollectionPut(RECORDS_STORE, record).catch(function(){ /* ignore */ });
+      }
+      for(var di = 0; di < (archive.drafts || []).length; di++){
+        var draft = Object.assign({}, archive.drafts[di], { projectId:meta.projectId });
+        await idbCollectionPut(DRAFTS_STORE, draft).catch(function(){ /* ignore */ });
+      }
+      for(var hi = 0; hi < (archive.history || []).length; hi++){
+        var entry = Object.assign({}, archive.history[hi], { projectId:meta.projectId });
+        await idbHistoryPut(entry).catch(function(){ /* ignore */ });
+      }
+    }
+  }
+
+  async function serverMigrateProject(project){
+    if(!project || !project.id) return false;
+    var raw = null;
+    try{ raw = localStorage.getItem(projectLedgerKey(project.id)); }catch(err){ raw = null; }
+    if(!raw) return false;
+    var ledger = null;
+    try{ ledger = JSON.parse(raw); }catch(err){ ledger = null; }
+    if(!ledger || !Array.isArray(ledger.requests)) return false;
+    var created = await serverJson("/__rl/projects", {
+      method:"POST",
+      body:{ projectId:project.id, name:project.name, slug:project.folder || project.name }
+    });
+    if(!created || created.ok !== true) return false;
+    var slug = created.slug || project.folder;
+    if(slug && project.folder !== slug) updateProjectRecord(project.id, { folder:slug });
+    /* Upload the media referenced by the ledger and its archive. */
+    var mediaIds = {};
+    function collect(reqs){
+      (Array.isArray(reqs) ? reqs : []).forEach(function(req){
+        (Array.isArray(req && req.images) ? req.images : []).forEach(function(img){
+          if(img && img.id && !mediaIds[img.id]) mediaIds[img.id] = { kind:"image", meta:img };
+        });
+        (Array.isArray(req && req.attachments) ? req.attachments : []).forEach(function(att){
+          if(att && att.id && !mediaIds[att.id]) mediaIds[att.id] = { kind:"file", meta:att };
+        });
+      });
+    }
+    collect(ledger.requests);
+    var archive = { records:[], drafts:[], history:[] };
+    if(idb){
+      archive.records = await idbCollectionGetAll(RECORDS_STORE, project.id).catch(function(){ return []; });
+      archive.drafts = await idbCollectionGetAll(DRAFTS_STORE, project.id).catch(function(){ return []; });
+      archive.history = await idbHistoryGetAll(project.id).catch(function(){ return []; });
+      archive.records.forEach(function(record){ collect(record.requests); });
+      archive.drafts.forEach(function(draft){ collect(draft.requests); });
+      archive.history.forEach(function(entry){ collect(entry.requests); });
+    }
+    var ids = Object.keys(mediaIds);
+    for(var i = 0; i < ids.length; i++){
+      var id = ids[i];
+      var item = mediaIds[id];
+      var record = item.kind === "image"
+        ? await idbGet(id).catch(function(){ return null; })
+        : await idbFileGet(id).catch(function(){ return null; })
+      ;
+      if(!record || !record.blob) continue;
+      try{
+        var dataUrl = await serverBlobToDataUrl(record.blob);
+        await serverJson("/__rl/media", {
+          method:"POST",
+          body:{
+            projectId:project.id,
+            kind:item.kind,
+            id:id,
+            name:item.meta.name || id,
+            type:item.meta.type || record.blob.type || "",
+            ext:item.meta.ext || "",
+            dataUrl:dataUrl
+          }
+        });
+      }catch(err){ /* backup-only media stays local */ }
+    }
+    var saved = await serverJson("/__rl/save", {
+      method:"POST",
+      body:{
+        projectId:project.id,
+        name:project.name,
+        slug:slug,
+        snapshot:ledger,
+        archive:archive,
+        archiveCollapsed:project.archiveCollapsed === true
+      }
+    });
+    return !!(saved && saved.ok === true);
+  }
+
+  async function serverDiskBootstrap(){
+    if(!serverDiskEnabled()) return false;
+    var boot = null;
+    try{ boot = await serverJson("/__rl/bootstrap"); }catch(err){ boot = null; }
+    if(!boot || boot.ok !== true) return false;
+    serverDiskMode = true;
+    var serverProjects = Array.isArray(boot.projects) ? boot.projects : [];
+    var localRegistry = readRegistry();
+    var localById = {};
+    (localRegistry && Array.isArray(localRegistry.projects) ? localRegistry.projects : []).forEach(function(project){
+      if(project && project.id) localById[project.id] = project;
+    });
+    var serverById = {};
+    serverProjects.forEach(function(meta){ if(meta && meta.projectId) serverById[meta.projectId] = meta; });
+
+    /* Browser-only projects: migrate once. Same-id projects: the newer
+       revision wins; a stale cache must never overwrite the disk. */
+    var allIds = {};
+    Object.keys(localById).forEach(function(id){ allIds[id] = true; });
+    Object.keys(serverById).forEach(function(id){ allIds[id] = true; });
+    var merged = [];
+    for(var id of Object.keys(allIds)){
+      var local = localById[id] || null;
+      var server = serverById[id] || null;
+      if(local && !server){
+        await serverMigrateProject(local);
+        var created = await serverJson("/__rl/load?projectId=" + encodeURIComponent(id));
+        if(created && created.ok === true && created.project){
+          serverById[id] = created.project;
+          server = created.project;
+          await serverHydrateProject(created.project);
+        }else{
+          merged.push(local);
+          continue;
+        }
+      }
+      if(server){
+        var serverStamp = String(server.updatedAt || "");
+        var localStamp = local ? String(local.updatedAt || "") : "";
+        if(local && localStamp && localStamp > serverStamp){
+          await serverMigrateProject(local);
+        }else{
+          await serverHydrateProject(server);
+        }
+        merged.push(serverProjectFromMeta(server));
+      }
+    }
+    var preferred = "";
+    if(localRegistry && localRegistry.activeId && merged.some(function(project){ return project.id === localRegistry.activeId; })){
+      preferred = localRegistry.activeId;
+    }else if(boot.activeId && merged.some(function(project){ return project.id === boot.activeId; })){
+      preferred = boot.activeId;
+    }else if(merged.length){
+      preferred = merged.slice().sort(function(a, b){
+        return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+      })[0].id;
+    }
+    var nextRegistry = { version:1, activeId:preferred, projects:merged };
+    try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(nextRegistry)); }catch(err){ /* quota */ }
+    projectRegistry = nextRegistry;
+    activeProjectId = preferred;
+    serverDiskReady = true;
+    serverDiskActive = true;
+    return true;
+  }
+
+  function serverMarkActive(projectId){
+    if(!serverDiskMode || !projectId) return;
+    serverJson("/__rl/active", { method:"POST", body:{ projectId:projectId } }).catch(function(){ /* best effort */ });
+  }
+
+  function serverDiskPayload(){
+    return {
+      projectId:activeProjectId,
+      name:state.project,
+      slug:serverDiskSlug(activeProjectId),
+      snapshot:ledgerPayload(),
+      archive:{
+        records:Array.isArray(records) ? records : [],
+        drafts:Array.isArray(drafts) ? drafts : [],
+        history:Array.isArray(historyItems) ? historyItems : []
+      },
+      archiveCollapsed:(function(){
+        var project = findProjectRecord(activeProjectId);
+        return !!(project && project.archiveCollapsed === true);
+      })()
+    };
+  }
+
+  async function serverDiskSaveNow(){
+    if(!serverDiskMode || !activeProjectId) return false;
+    if(serverSaveBusy){ serverSaveQueued = true; return false; }
+    serverSaveBusy = true;
+    var projectId = activeProjectId;
+    try{
+      var saved = await serverSaveProject(projectId);
+      if(saved){
+        var project = findProjectRecord(projectId);
+        if(project && serverDiskSlug(projectId)) updateProjectRecord(projectId, { folder:serverDiskSlug(projectId) });
+      }
+      return saved;
+    }catch(err){ return false; }
+    finally{
+      serverSaveBusy = false;
+      if(serverSaveQueued){
+        serverSaveQueued = false;
+        scheduleServerDiskSave();
+      }
+    }
+  }
+
+  function scheduleServerDiskSave(){
+    if(!serverDiskMode || !activeProjectId) return;
+    if(serverSaveTimer) clearTimeout(serverSaveTimer);
+    serverSaveTimer = setTimeout(function(){
+      serverSaveTimer = null;
+      serverDiskSaveNow();
+    }, SERVER_DISK_SAVE_MS);
+  }
+
+
+  /* ============================================================
      IndexedDB / görseller
      ============================================================ */
   function openDB(){
@@ -4672,7 +5061,7 @@ const SEO_TITLE = document.title;
     return copy;
   }
   function idbPut(record){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ reject(new Error("IndexedDB kapalı")); return; }
       const tx = idb.transaction(IMG_STORE, "readwrite");
       tx.objectStore(IMG_STORE).put(withProjectScope(record));
@@ -4680,23 +5069,36 @@ const SEO_TITLE = document.title;
       tx.onerror = function(){ reject(tx.error || new Error("Görsel kaydedilemedi")); };
       tx.onabort = function(){ reject(tx.error || new Error("Görsel kaydedilemedi")); };
     });
+    const usingServer = typeof serverDiskMode !== "undefined" && serverDiskMode;
+    return usingServer
+      ? promise.then(function(){ return serverUploadMedia("image", record); })
+      : promise;
   }
   function idbGet(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(null); return; }
       const tx = idb.transaction(IMG_STORE, "readonly");
       const request = tx.objectStore(IMG_STORE).get(id);
       request.onsuccess = function(){ resolve(request.result || null); };
       request.onerror = function(){ reject(request.error || new Error("Görsel okunamadı")); };
     });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(record){
+      if(record) return record;
+      return serverFetchMedia(activeProjectId, id);
+    });
   }
   function idbDelete(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(); return; }
       const tx = idb.transaction(IMG_STORE, "readwrite");
       tx.objectStore(IMG_STORE).delete(id);
       tx.oncomplete = function(){ resolve(); };
       tx.onerror = function(){ reject(tx.error || new Error("Görsel silinemedi")); };
+    });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(){
+      serverDeleteMedia("image", id);
     });
   }
   function idbClear(){
@@ -4709,7 +5111,7 @@ const SEO_TITLE = document.title;
     });
   }
   function idbFilePut(record){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ reject(new Error("IndexedDB kapalı")); return; }
       const tx = idb.transaction(FILE_STORE, "readwrite");
       tx.objectStore(FILE_STORE).put(withProjectScope(record));
@@ -4717,23 +5119,36 @@ const SEO_TITLE = document.title;
       tx.onerror = function(){ reject(tx.error || new Error("Dosya kaydedilemedi")); };
       tx.onabort = function(){ reject(tx.error || new Error("Dosya kaydedilemedi")); };
     });
+    const usingServer = typeof serverDiskMode !== "undefined" && serverDiskMode;
+    return usingServer
+      ? promise.then(function(){ return serverUploadMedia("file", record); })
+      : promise;
   }
   function idbFileGet(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(null); return; }
       const tx = idb.transaction(FILE_STORE, "readonly");
       const request = tx.objectStore(FILE_STORE).get(id);
       request.onsuccess = function(){ resolve(request.result || null); };
       request.onerror = function(){ reject(request.error || new Error("Dosya okunamadı")); };
     });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(record){
+      if(record) return record;
+      return serverFetchMedia(activeProjectId, id);
+    });
   }
   function idbFileDelete(id){
-    return new Promise(function(resolve, reject){
+    const promise = new Promise(function(resolve, reject){
       if(!idb){ resolve(); return; }
       const tx = idb.transaction(FILE_STORE, "readwrite");
       tx.objectStore(FILE_STORE).delete(id);
       tx.oncomplete = function(){ resolve(); };
       tx.onerror = function(){ reject(tx.error || new Error("Dosya silinemedi")); };
+    });
+    if(!(typeof serverDiskMode !== "undefined" && serverDiskMode)) return promise;
+    return promise.then(function(){
+      serverDeleteMedia("file", id);
     });
   }
   function idbFilesClear(){
@@ -5207,6 +5622,15 @@ const SEO_TITLE = document.title;
   }
   async function loadImageURL(id){
     if(imageUrlCache.has(id)) return imageUrlCache.get(id);
+    /* Server mode: media lives on disk and the URL survives port changes. */
+    if(typeof serverDiskMode !== "undefined" && serverDiskMode && activeProjectId &&
+       typeof serverMediaMeta === "function" && serverMediaMeta(activeProjectId, id)){
+      const serverUrl = serverMediaUrl(activeProjectId, id);
+      if(serverUrl){
+        imageUrlCache.set(id, serverUrl);
+        return serverUrl;
+      }
+    }
     if(!idb) return null;
     try{
       const rec = await idbGet(id);
@@ -9649,6 +10073,7 @@ const SEO_TITLE = document.title;
     }
     cancelScheduledSave();
     activeProjectId = project.id;
+    if(typeof serverMarkActive === "function") serverMarkActive(project.id);
     targetFolderHandle = null;
     targetFolderNeedsPermission = false;
     loadStateForProject(project.id, project.name);
@@ -11117,6 +11542,8 @@ const SEO_TITLE = document.title;
   let bridgeResolved = false;
   let bridgeStateSent = false;
   let bridgeForceApply = false;
+  let bridgeRejectedLedgerId = "";
+  let bridgeRejectedLedgerAt = 0;
   let bridgePeerSnapshot = null;
   let bridgeSuppress = 0;
   let bridgeSendTimer = null;
@@ -11564,11 +11991,10 @@ const SEO_TITLE = document.title;
       }catch(err){ /* skip a broken media record */ }
     }
     if(changed){
-      req.updatedAt = nowISO();
+      /* Do not bump the request revision for a media blob arrival: the
+         metadata was already part of the request's revision. Bumping here can
+         resurrect a stale confirmed=false over a newer Ready confirmation. */
       saveNow();
-      /* The image/attachment ids did not change, only their blobs arrived.
-         Clear the render signatures so syncRow rebuilds the media blocks and
-         swaps the loading placeholder for the real image. */
       const row = typeof getRowEl === "function" ? getRowEl(req.id) : null;
       if(row){
         row.__imageSig = "";
@@ -11882,12 +12308,16 @@ const SEO_TITLE = document.title;
     bridgeStateSent = false;
     if(winner === "app"){
       bridgeForceApply = false;
+      bridgeRejectedLedgerId = normalizeLedgerId(bridgePeerSnapshot && bridgePeerSnapshot.ledgerId);
+      bridgeRejectedLedgerAt = bridgeRejectedLedgerId ? Date.now() : 0;
       bridgeSendHello({ resolution:"app" });
       showToast(translateString("Defter seçimi kaydedildi."));
       updateBridgeIndicator();
       return;
     }
     bridgeForceApply = true;
+    bridgeRejectedLedgerId = normalizeLedgerId(state.ledgerId);
+    bridgeRejectedLedgerAt = bridgeRejectedLedgerId ? Date.now() : 0;
     const ack = bridgeEnvelope("RL_APP_ACK");
     ack.resolution = "extension";
     try{ window.postMessage(ack, bridgePostTarget()); }catch(err){ /* ignore */ }
@@ -11901,7 +12331,19 @@ const SEO_TITLE = document.title;
     updateBridgeIndicator();
   }
 
+  function bridgeRejectStaleLoser(data){
+    if(!bridgeResolved || !bridgeRejectedLedgerId) return false;
+    if(bridgeRejectedLedgerAt && Date.now() - bridgeRejectedLedgerAt > 20000){
+      bridgeRejectedLedgerId = "";
+      bridgeRejectedLedgerAt = 0;
+      return false;
+    }
+    const incoming = normalizeLedgerId(data && data.ledgerId);
+    return !!(incoming && incoming === bridgeRejectedLedgerId);
+  }
+
   function bridgeReconcile(data){
+    if(bridgeRejectStaleLoser(data)) return;
     const peerProjectId = bridgeEnvelopeProjectId(data);
     const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     /* Phase 2c: a panel on another project is a project mismatch, not a ledger
@@ -12215,6 +12657,8 @@ const SEO_TITLE = document.title;
     bridgeResolved = false;
     bridgeStateSent = false;
     bridgeForceApply = false;
+    bridgeRejectedLedgerId = "";
+    bridgeRejectedLedgerAt = 0;
     bridgePeerSnapshot = null;
     bridgePeerEmptyAsked = false;
     bridgeLoadTombstones();
@@ -13816,14 +14260,17 @@ const SEO_TITLE = document.title;
   async function init(){
     /* Active companion presence marker for the extension content script. */
     try{ document.documentElement.setAttribute("data-request-ledger-app", "1"); }catch(err){ /* ignore */ }
-    initProjectRegistry();
-    if(!state.ledgerId) state.ledgerId = newLedgerId();
     try{
       idb = await openDB();
     }catch(err){
       console.warn("IndexedDB açılamadı", err);
       idbFailed = true;
     }
+    /* In server mode the disk is the source of truth: hydrate the browser
+       cache (registry, ledgers, archive) before opening the last project. */
+    try{ await serverDiskBootstrap(); }catch(err){ console.warn("Sunucu verisi yüklenemedi", err); }
+    initProjectRegistry();
+    if(!state.ledgerId) state.ledgerId = newLedgerId();
     /* One-time Phase 1 → Phase 2 media/snapshot scope migration. */
     const registry = readRegistry();
     const scopeTarget = legacyScopeTarget(registry);
