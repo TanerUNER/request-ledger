@@ -679,6 +679,17 @@ function handlePanelMessage(message, sendResponse) {
       sendResponse({ ok: true, id: chrome.runtime.id, version: VERSION });
       return false;
 
+    case "RL_DATA_CHANGED": {
+      /* Fan out to every extension page (all panel frames, including a
+         backgrounded app tab). Content scripts do not receive this. */
+      sendToPanel({
+        type: "RL_BRIDGE_DATA_CHANGED",
+        projectId: typeof message.projectId === "string" ? message.projectId.slice(0, 120) : ""
+      });
+      sendResponse({ ok: true });
+      return false;
+    }
+
     case "RL_TABS_LIST":
       collectTabs(normalizeTabId(message.excludeTabId)).then(
         function (tabs) { sendResponse({ ok: true, tabs: tabs }); },

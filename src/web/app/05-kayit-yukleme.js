@@ -33,18 +33,36 @@
       updatedAt: null
     };
   }
+  /* Write the current ledger payload for a project. Used when a project was
+     created before its empty ledger existed, so a reload never mints a new
+     ledgerId for the same project. */
+  function persistProjectLedger(projectId){
+    if(!projectId) return;
+    try{
+      const payload = ledgerPayload();
+      payload.updatedAt = nowISO();
+      localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      state.updatedAt = payload.updatedAt;
+    }catch(err){
+      console.warn("Proje defteri yazılamadı", err);
+    }
+  }
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
     resetLedgerState(projectName, fallbackLanguage);
     let raw = null;
     try{ raw = localStorage.getItem(projectLedgerKey(projectId)); }catch(err){ raw = null; }
-    if(!raw) return;
+    if(!raw){
+      persistProjectLedger(projectId);
+      return;
+    }
     try{
       const parsed = JSON.parse(raw);
       if(!parsed || !Array.isArray(parsed.requests)) return;
       /* The registry owns the project name. The ledger may still carry an
          older name until the next save overwrites it. */
-      state.ledgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId ? parsed.ledgerId : newLedgerId();
+      const hasLedgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId;
+      state.ledgerId = hasLedgerId ? parsed.ledgerId : newLedgerId();
       state.requests = parsed.requests.map(function(req, index){ return normalizeRequest(req, index); });
       state.agents = Array.isArray(parsed.agents) ? parsed.agents.map(normalizeAgent) : [];
       state.language = parsed.language === "tr" ? "tr" : "en";
@@ -58,6 +76,7 @@
         }
       });
       state.updatedAt = parsed.updatedAt || null;
+      if(!hasLedgerId) persistProjectLedger(projectId);
     }catch(err){
       console.warn("Kayıt okunamadı", err);
       showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");

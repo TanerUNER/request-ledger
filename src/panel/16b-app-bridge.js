@@ -272,6 +272,8 @@
   var appCapturePending = null; /* { tabId } while a web-app screenshot runs */
   var appTabsBusy = false;
   var APP_IMAGE_MAX_CHARS = 8 * 1024 * 1024;
+  var bridgePeerLedgerId = "";
+  var bridgePeerRequestCount = 0;
 
   /* The app sends its interface language with every pick/capture control
      request so the injected overlay can never fall back to a stale panel
@@ -627,6 +629,8 @@
     if(activeProjectId && incomingProjectId !== activeProjectId) return false;
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
+    if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
+    bridgePeerRequestCount = incoming.length;
 
     var signature = bridgeSignatureFromData(data);
     if(signature && signature === bridgeStateSignature()){
@@ -778,13 +782,27 @@
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
+    if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
+    if(Array.isArray(data.requests)) bridgePeerRequestCount = data.requests.length;
     /* A project created from the app payload starts with the app's ledger id. */
     if(adoptedNewProject && typeof data.ledgerId === "string" && data.ledgerId) app.ledgerId = data.ledgerId;
 
     var pageHas = bridgeHasData(data.requests, bridgeEnvelopeProjectName(data) || data.project, data.projectCreated === false ? false : true);
+    var pageRequestCount = Array.isArray(data.requests) ? data.requests.length : 0;
     /* A local project with no requests holds no user data worth protecting;
        it is adopted from the app instead of opening a ledger conflict. */
     var panelHas = !!(app && Array.isArray(app.requests) && app.requests.length > 0);
+    /* Empty panel project: take the app's ledger id even when both sides are
+       empty and bridgeApply() would treat it as an echo. This is what keeps
+       two panel frames from saving different ledger ids for one project. */
+    if(peerProjectId === activeProjectId && !panelHas &&
+       typeof data.ledgerId === "string" && data.ledgerId &&
+       String(app.ledgerId) !== String(data.ledgerId)){
+      app.ledgerId = data.ledgerId;
+      if(core && core.storage && core.storage.saveState){
+        try{ core.storage.saveState(app); }catch(err){ /* first save retries */ }
+      }
+    }
 
     if(data.resolution === "app"){
       bridgeConflict = false;
@@ -807,7 +825,7 @@
 
     var sameProject = Boolean(peerProjectId && activeProjectId && peerProjectId === activeProjectId);
     if(sameProject && !adoptedNewProject && data.ledgerId && app.ledgerId &&
-       String(data.ledgerId) !== String(app.ledgerId) && pageHas && panelHas){
+       String(data.ledgerId) !== String(app.ledgerId) && pageRequestCount > 0 && panelHas){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -856,9 +874,10 @@
     bridgeProjectMismatch = false;
     if(bridgeConflict) return; /* wait for the user's ledger decision */
 
-    var incomingHas = bridgeHasData(data.upserts || data.requests, bridgeEnvelopeProjectName(data) || data.project, data.projectCreated === false ? false : true);
+    var incomingRequestCount = (Array.isArray(data.upserts) ? data.upserts.length : (Array.isArray(data.requests) ? data.requests.length : 0));
     if(peerProjectId === activeProjectId && data.ledgerId && app.ledgerId &&
-       String(data.ledgerId) !== String(app.ledgerId) && incomingHas && (app.requests.length || bridgeLedgerSynced)){
+       String(data.ledgerId) !== String(app.ledgerId) &&
+       incomingRequestCount > 0 && app.requests.length > 0){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -895,6 +914,8 @@
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
+    if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerLedgerId = data.ledgerId;
+    if(!data.heartbeat && Array.isArray(data.requests)) bridgePeerRequestCount = data.requests.length;
     if(data.heartbeat === true){
       bridgePost("RL_APP_ACK", { heartbeat:true, ledgerId:app.ledgerId });
       return;
@@ -919,6 +940,8 @@
     bridgeConnected = false;
     bridgeLastHeard = 0;
     bridgePeerProjectId = "";
+    bridgePeerLedgerId = "";
+    bridgePeerRequestCount = 0;
     bridgeProjectMismatch = false;
     updateBridgeUI();
   }
@@ -927,8 +950,11 @@
     if(!data || typeof data !== "object") return;
     if(data.source !== "request-ledger-host") return;
     if(typeof data.pageOrigin === "string" && bridgeAllowedOrigin(data.pageOrigin)) bridgePageOrigin = data.pageOrigin;
+    if(data.type === "RL_BRIDGE_CONTEXT"){
+      panelPageToken = typeof data.pageToken === "string" ? data.pageToken : "";
+      return;
+    }
     bridgeStats.received++;
-    if(data.type === "RL_BRIDGE_CONTEXT") return;
     if(data.type === "RL_APP_TABS_REQUEST"){
       if(!bridgeAllowedOrigin(data.pageOrigin)) return;
       handleAppTabsRequest(data);
@@ -968,6 +994,8 @@
     var peer = bridgePeerHello;
     bridgeSuppress++;
     try{
+      bridgePeerLedgerId = typeof peer.ledgerId === "string" ? peer.ledgerId : bridgePeerLedgerId;
+      bridgePeerRequestCount = Array.isArray(peer.requests) ? peer.requests.length : 0;
       bridgeApply(peer, "replace");
       bridgeConflict = false;
       bridgePeerHello = null;
@@ -1029,6 +1057,10 @@
     var aligned = !!bridgePeerProjectId && bridgePeerProjectId === activeProjectId;
     bridgeConflict = false;
     bridgePeerHello = null;
+    if(!aligned){
+      bridgePeerLedgerId = "";
+      bridgePeerRequestCount = 0;
+    }
     bridgeLedgerSynced = aligned;
     bridgeProjectMismatch = !aligned;
     bridgeLoadTombstones();
@@ -1046,12 +1078,50 @@
     updateBridgeUI();
   }
 
+  /* The panel can be edited on another tab (its own extension storage is
+     shared). When this tab becomes visible or the storage changes, reload the
+     active project's ledger and push it through the bridge. No section is
+     opened or re-rendered while closed. */
+  function bridgeRefreshFromStorage(){
+    if(!hasHost || !activeProjectId || bridgeSuppress || bridgeAdoptingProject) return;
+    /* A pick/capture result is being written; do not reload the old ledger
+       over it while the panel returns from the overlay. */
+    if(typeof pickPending !== "undefined" && pickPending) return;
+    if(typeof capturePending !== "undefined" && capturePending) return;
+    if(Date.now() < panelToolBusyUntil) return;
+    var before = bridgeStateSignature();
+    var projectId = activeProjectId;
+    reloadSharedState(projectId);
+    if(bridgeStateSignature() === before) return;
+    /* Do not push local data over a different same-project app ledger while
+       both sides hold requests. The user must choose; otherwise a storage
+       refresh from the source ledger would silently overwrite the app. */
+    if(bridgeConflict || (bridgePeerLedgerId && app.ledgerId &&
+       String(bridgePeerLedgerId) !== String(app.ledgerId) &&
+       (bridgePeerRequestCount > 0 || app.requests.length === 0))){
+      return;
+    }
+    bridgeNotifyChange();
+  }
+
   function initAppBridge(){
     if(!hasHost) return;
     if(role !== "dock" && role !== "flyout") return;
     bridgeLoadTombstones();
     bridgeResetKnownIds();
     if(app && (app.requests.length > 0 || String(app.project || "").trim())) bridgeLedgerSynced = true;
+    window.addEventListener("storage", function(event){
+      if(!event || !event.key) return;
+      if(event.key === PROJECTS_KEY ||
+         (activeProjectId && event.key === projectLedgerKey(activeProjectId))){
+        bridgeRefreshFromStorage();
+      }
+    });
+    document.addEventListener("visibilitychange", function(){
+      if(document.visibilityState === "visible") bridgeRefreshFromStorage();
+    });
+    window.addEventListener("focus", bridgeRefreshFromStorage);
+    window.addEventListener("pageshow", bridgeRefreshFromStorage);
     bridgeWatch();
     /* Advertise our ledger once the panel is ready. The host drops this on
        non-allowlisted pages, so no data leaves the two approved origins. */

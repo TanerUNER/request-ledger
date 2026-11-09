@@ -392,6 +392,14 @@
     if(!Array.isArray(app.agents)) app.agents = [];
     app.project = project.name;
     if(!loaded && !app.ledgerId) app.ledgerId = newLedgerId();
+    /* Persist the empty ledger immediately; opening a project twice must keep
+       the same ledgerId instead of minting a new one each time. */
+    if((!loaded || !app.ledgerId) && core && core.storage && core.storage.saveState &&
+       !(typeof bridgeAdoptingProject !== "undefined" && bridgeAdoptingProject)){
+      /* Do not seed an empty ledger while the app payload is still adopting:
+         the app's ledgerId/data must win the first write. */
+      try{ core.storage.saveState(app); }catch(err){ /* the first save retries */ }
+    }
     if(!app.language) app.language = "en";
     if(app.language === "tr" || app.language === "en"){
       state.lang = app.language;
@@ -440,9 +448,9 @@
     broadcastState();
     if(preserveSection){
       /* Bridge adoption only refreshes the current explicit section. It must
-         never open a section on the user's behalf. */
+         never open a section or broadcast RL_OPEN_SECTION; dock labels and
+         badges were already updated above. */
       if(role === "flyout" && state.section) renderFlyout(state.section);
-      else if(role === "dock" && state.active) refreshSection(state.active);
     }else if(role === "flyout" && state.section === "project"){
       showSection("list");
     }else if(role === "flyout" && state.section){

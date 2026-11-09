@@ -126,6 +126,8 @@
 
   /* Phase 8 — tab picker / screenshot / element picker */
   var originTabId = null;     /* dock cache; flyouts resolve their own tab */
+  var panelPageToken = "";    /* host page token: channel messages are page-local */
+  var panelToolBusyUntil = 0; /* pick/capture result is being written */
   var originWaiters = [];     /* pending fallback callbacks, never cross-tab authoritative */
   var tabPicker = null;       /* { el, mode:"capture"|"pick", tabs, index } */
   var capturePending = false;

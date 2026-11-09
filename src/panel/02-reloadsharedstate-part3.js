@@ -38,7 +38,8 @@
     updateMarquee();
     syncProjectGate();
 
-    if(role === "dock" && state.active) refreshSection(state.active);
+    /* Bridge traffic updates data only. It must never call refreshSection(),
+       which broadcasts RL_OPEN_SECTION and can reveal the flyout. */
     if(role === "flyout" && state.section === "list"){
       /* A bridge patch refreshes rows/counts in place: a full render would
          reset the selected archive tab, search focus and scroll position. */
@@ -262,6 +263,10 @@
 
   function onRuntimeMessage(message){
     if(!message || typeof message !== "object") return;
+    if(message.type === "RL_BRIDGE_DATA_CHANGED"){
+      if(message.projectId === activeProjectId) bridgeRefreshFromStorage();
+      return;
+    }
     /* App-initiated picks are consumed by the dock frame only. The worker
        broadcasts results to every extension page, so the flag keeps the
        flyout from also applying the same pick to its own request. */
@@ -352,15 +357,32 @@
         if(changes["rl-sync"]){
           var stamp = changes["rl-sync"].newValue;
           if(stamp && stamp.id && stamp.id !== instanceId){
-            reloadSharedState();
+            /* Chrome storage events wake every extension context, including a
+               backgrounded app tab. Refresh and mirror the new ledger. */
+            bridgeRefreshFromStorage();
           }
         }
       });
     }catch(err){ /* standalone / storage unavailable */ }
   }
 
+  var PANEL_PAGE_SCOPED = {
+    open:1, close:1, focus:1, action:1, state:1,
+    ready:1, discard:1, cancel:1
+  };
+
   function onChannelMessage(message){
     if(!message || typeof message !== "object") return;
+    /* Dock/flyout share one BroadcastChannel across every tab. Section and
+       action messages are only valid inside the same host page; another
+       tab's panel must never open or switch this page's section. */
+    if(panelPageToken && PANEL_PAGE_SCOPED[message.type] && message.pageToken !== panelPageToken){
+      return;
+    }
+    if(message.type === "data-changed"){
+      if(message.projectId === activeProjectId) bridgeRefreshFromStorage();
+      return;
+    }
 
     if(role === "dock"){
       if(message.type === "state"){
@@ -545,6 +567,11 @@
       if(!bridgeAllowedOrigin(event.origin)) return;
       bridgePageOrigin = event.origin;
       onBridgeHostMessage(data);
+      return;
+    }
+
+    if(role === "flyout" && data.type === "RL_HOST_CLOSE_SECTION"){
+      hideSection();
       return;
     }
 

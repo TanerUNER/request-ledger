@@ -4101,18 +4101,36 @@ const SEO_TITLE = document.title;
       updatedAt: null
     };
   }
+  /* Write the current ledger payload for a project. Used when a project was
+     created before its empty ledger existed, so a reload never mints a new
+     ledgerId for the same project. */
+  function persistProjectLedger(projectId){
+    if(!projectId) return;
+    try{
+      const payload = ledgerPayload();
+      payload.updatedAt = nowISO();
+      localStorage.setItem(projectLedgerKey(projectId), JSON.stringify(payload));
+      state.updatedAt = payload.updatedAt;
+    }catch(err){
+      console.warn("Proje defteri yazılamadı", err);
+    }
+  }
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
     resetLedgerState(projectName, fallbackLanguage);
     let raw = null;
     try{ raw = localStorage.getItem(projectLedgerKey(projectId)); }catch(err){ raw = null; }
-    if(!raw) return;
+    if(!raw){
+      persistProjectLedger(projectId);
+      return;
+    }
     try{
       const parsed = JSON.parse(raw);
       if(!parsed || !Array.isArray(parsed.requests)) return;
       /* The registry owns the project name. The ledger may still carry an
          older name until the next save overwrites it. */
-      state.ledgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId ? parsed.ledgerId : newLedgerId();
+      const hasLedgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId;
+      state.ledgerId = hasLedgerId ? parsed.ledgerId : newLedgerId();
       state.requests = parsed.requests.map(function(req, index){ return normalizeRequest(req, index); });
       state.agents = Array.isArray(parsed.agents) ? parsed.agents.map(normalizeAgent) : [];
       state.language = parsed.language === "tr" ? "tr" : "en";
@@ -4126,6 +4144,7 @@ const SEO_TITLE = document.title;
         }
       });
       state.updatedAt = parsed.updatedAt || null;
+      if(!hasLedgerId) persistProjectLedger(projectId);
     }catch(err){
       console.warn("Kayıt okunamadı", err);
       showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");
@@ -11285,27 +11304,34 @@ const SEO_TITLE = document.title;
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
+    const incomingRequestCount = (Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : [])).length;
+    const localRequestCount = state.requests.length;
     const localHas = bridgeHasData(state.requests, state.project, state.projectCreated);
+    /* A conflict requires data on both sides. An open project with zero
+       requests is empty for this purpose, even though it has a name. */
     if(!bridgeForceApply && !bridgeResolved && data.type === "RL_APP_SNAPSHOT" &&
        peerProjectId && peerProjectId === activeProjectId &&
        typeof data.ledgerId === "string" && data.ledgerId && state.ledgerId &&
-       data.ledgerId !== state.ledgerId && incomingHas && localHas){
+       data.ledgerId !== state.ledgerId && incomingRequestCount > 0 && localRequestCount > 0){
       bridgePeerSnapshot = data;
       bridgeOpenConflict();
       return;
     }
-    /* A freshly mounted panel advertises an empty ledger. It can only adopt
+    /* A freshly mounted panel advertises an empty project. It can only adopt
        ours if it receives a HELLO, and the boot HELLO may have been sent
-       before the panel existed. Ask once while the panel reports no ledger;
-       the flag resets as soon as it reports one. */
-    if(!incomingHas && localHas && !bridgeConflictOpen && !bridgeResolved && !bridgeForceApply &&
-       !bridgePeerEmptyAsked && (typeof data.ledgerId !== "string" || !data.ledgerId)){
+       before the panel existed. Ask once per empty peer state; reset when the
+       peer actually reports requests. */
+    if(incomingRequestCount > 0) bridgePeerEmptyAsked = false;
+    if(incomingRequestCount === 0 && localRequestCount > 0 &&
+       !bridgeConflictOpen && !bridgeResolved && !bridgeForceApply &&
+       !bridgePeerEmptyAsked){
       bridgePeerEmptyAsked = true;
       bridgeSendHello();
       return;
     }
     let mode = "merge";
-    if(bridgeForceApply || (!localHas && incomingHas)) mode = "replace";
+    /* Empty local project + non-empty peer: adopt the peer ledger and id. */
+    if(bridgeForceApply || (!localRequestCount && incomingRequestCount > 0)) mode = "replace";
     bridgeApply(data, mode);
     if(mode === "replace") bridgeForceApply = false;
   }
@@ -11389,7 +11415,6 @@ const SEO_TITLE = document.title;
     if(typeof data.v !== "number" || data.v !== BRIDGE_VERSION) return;
 
     bridgeStats.received++;
-    if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerEmptyAsked = false;
     if(data.type === "RL_APP_BYE"){
       bridgeConnected = false;
       bridgePeerSnapshot = null;

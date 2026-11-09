@@ -1,6 +1,7 @@
   function clearPickPending(){
     var wasPending = pickPending;
     pickPending = false;
+    panelToolBusyUntil = Date.now() + 1500;
     if(pickTimer){ clearTimeout(pickTimer); pickTimer = null; }
     syncCaptureControls();
     setPickStatus("");

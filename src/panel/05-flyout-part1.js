@@ -464,6 +464,7 @@
   function clearCapturePending(){
     var wasPending = capturePending;
     capturePending = false;
+    panelToolBusyUntil = Date.now() + 1500;
     if(captureTimer){ clearTimeout(captureTimer); captureTimer = null; }
     syncCaptureControls();
     setCaptureStatus("");

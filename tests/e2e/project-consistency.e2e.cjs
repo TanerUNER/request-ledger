@@ -28,6 +28,7 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
 const WEB_URL = "http://localhost:8080/index.html";
+const TARGET_URL = "http://localhost:8080/tests/fixtures/picker-target.html";
 const SHOT_DIR = path.resolve(ROOT, "..", ".opencode", "workspace", "reports", "bridge-fixes");
 const EXT_ID = "hapajcbgcfllhkiohhkechekajencdod";
 const CHROME_CANDIDATES = [
@@ -267,6 +268,49 @@ async function openList(cdp, dockSession) {
   await sleep(700);
 }
 
+async function closeList(cdp, dockSession) {
+  await evaluate(cdp, dockSession, "window.RLPanel.close()");
+  await sleep(600);
+}
+
+async function createRequestInOtherPanel(cdp, targetUrl, title, description) {
+  const before = await cdp.send("Target.getTargets");
+  const known = new Set(before.targetInfos.map((target) => target.targetId));
+  const target = await cdp.send("Target.createTarget", { url: targetUrl });
+  const pageSession = await attach(cdp, target.targetId);
+  await waitFor(() => evaluate(cdp, pageSession, "!!document.getElementById('rl-host')"), "other tab dock", 20000);
+  const targets = await waitFor(async () => {
+    const current = await cdp.send("Target.getTargets");
+    const dock = current.targetInfos.find((t) => t.url.includes("role=dock") && !known.has(t.targetId));
+    const flyout = current.targetInfos.find((t) => t.url.includes("role=flyout") && !known.has(t.targetId));
+    return dock && flyout ? { dock, flyout } : null;
+  }, "other tab panel");
+  const dockSession = await attach(cdp, targets.dock.targetId);
+  const flyoutSession = await attach(cdp, targets.flyout.targetId);
+  await waitFor(() => evaluate(cdp, dockSession,
+    "!!document.querySelector('[data-section=\"new\"]')"), "other new button", 20000);
+  await evaluate(cdp, dockSession, "document.querySelector('[data-section=\"new\"]').click()");
+  await waitFor(() => evaluate(cdp, flyoutSession, "!!document.getElementById('rl-new-title')"), "other new form");
+  await evaluate(cdp, flyoutSession, `(() => {
+    const input = document.getElementById('rl-new-title');
+    input.value = ${JSON.stringify(title)};
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('[data-act="create"]').click();
+  })()`);
+  await sleep(700);
+  await evaluate(cdp, flyoutSession, "document.querySelector('[data-act=\"save-section\"]').click()");
+  await waitFor(() => evaluate(cdp, flyoutSession, "!!document.getElementById('rl-desc-input')"), "other desc step");
+  await evaluate(cdp, flyoutSession, `(() => {
+    const input = document.getElementById('rl-desc-input');
+    input.value = ${JSON.stringify(description)};
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('[data-act="save-section"]').click();
+  })()`);
+  await sleep(1200);
+  await cdp.send("Target.closeTarget", { targetId: target.targetId });
+  await sleep(300);
+}
+
 function panelState(cdp, flyoutSession) {
   return evaluate(cdp, flyoutSession, `(() => ({
     project: window.__rlBridgePanel && window.__rlBridgePanel.projectName(),
@@ -332,7 +376,7 @@ async function main() {
         return /Project One request/.test(text) && !/Legacy request/.test(text);
       })()`) === true);
 
-    const opened = await openPanel(cdp, pageSession);
+    let opened = await openPanel(cdp, pageSession);
     await waitFor(() => evaluate(cdp, opened.flyoutSession,
       "window.__rlBridgePanel && window.__rlBridgePanel.connected()"), "panel connected", 20000);
     await openList(cdp, opened.dockSession);
@@ -352,13 +396,78 @@ async function main() {
       await evaluate(cdp, pageSession, "!document.getElementById('confirmModal').classList.contains('is-open')") === true);
     await screenshot(cdp, pageSession, "03-two-projects-test-project.png");
 
-    /* Switch to the legacy project; both surfaces must follow and show its
-       own request. */
+    /* Close the app tab's panel, then create a request from the panel on
+       another tab. The app tab is backgrounded; bridge/storage traffic must
+       update it without opening any section in the app window. */
+    await closeList(cdp, opened.dockSession);
+    await waitFor(() => evaluate(cdp, opened.flyoutSession,
+      "document.body.getAttribute('data-section') === null"), "app panel stays closed");
+    check("app panel is hidden before the other-tab edit",
+      await evaluate(cdp, pageSession, "document.getElementById('rl-flyout').style.display === 'none'") === true);
+
+    await createRequestInOtherPanel(cdp, TARGET_URL, "Background request", "Created from another tab.");
+    const backgroundStart = Date.now();
+    const backgroundUpdate = await waitFor(async () => {
+      const value = await readApp(cdp, pageSession);
+      return value.test.requests.length === 2 &&
+        value.test.requests.some((item) => item.title === "Background request") ? value : null;
+    }, "background panel edit reaches the app", 5000);
+    const backgroundElapsed = Date.now() - backgroundStart;
+    check("background panel edit reaches the app", backgroundUpdate.test.requests.length === 2, backgroundUpdate);
+    check("background panel edit reaches the app within 1 s", backgroundElapsed < 1000, backgroundElapsed);
+    const closedState = {
+      section: await evaluate(cdp, opened.flyoutSession, "document.body.getAttribute('data-section')"),
+      display: await evaluate(cdp, pageSession, "document.getElementById('rl-flyout').style.display")
+    };
+    check("bridge traffic keeps the app-window panel closed",
+      closedState.section === null && closedState.display === "none", closedState);
+    check("app renders the background request without a reload",
+      await evaluate(cdp, pageSession,
+        "Array.from(document.querySelectorAll('.req')).some((row) => /Background request/.test(row.innerText))") === true);
+
+    await cdp.send("Target.activateTarget", { targetId: pageTarget.targetId });
+    await openList(cdp, opened.dockSession);
+    const panelBackground = await waitFor(async () => {
+      const state = await panelState(cdp, opened.flyoutSession);
+      return state.rows.length === 2 ? state : null;
+    }, "panel list after background edit", 15000);
+    check("panel list and counts include the background request",
+      panelBackground.rows.some((row) => /Background request/.test(row)) &&
+      panelBackground.listCount === "2" && panelBackground.projectCount === "2", panelBackground);
+
+    /* Exact owner sequence: reload the app while Test Project has the panel-
+       created request. No conflict, same project ledger id, rows intact. */
+    await cdp.send("Page.reload", {}, pageSession);
+    await sleep(2400);
+    pageSession = await attach(cdp, pageTarget.targetId);
+    await dismissOnboarding(cdp, pageSession);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(P_TEST)), "Test Project after background reload", 15000);
+    const afterBackgroundReload = await readApp(cdp, pageSession);
+    const extensionAfterReload = await readExtension(cdp);
+    check("background request survives the app reload",
+      afterBackgroundReload.activeId === P_TEST &&
+      afterBackgroundReload.test.requests.some((item) => item.title === "Background request") &&
+      afterBackgroundReload.legacy.requests.some((item) => item.title === "Legacy request"), afterBackgroundReload);
+    check("reload keeps one ledger id for Test Project",
+      afterBackgroundReload.test.ledgerId === extensionAfterReload.test.ledgerId, {
+        app: afterBackgroundReload.test.ledgerId,
+        panel: extensionAfterReload.test.ledgerId
+      });
+    check("background reload shows no conflict modal",
+      await evaluate(cdp, pageSession, "!document.getElementById('confirmModal').classList.contains('is-open')") === true);
+    opened = await openPanel(cdp, pageSession);
+
+    /* Switch to the legacy project while the app-window panel is closed.
+       Bridge adoption must not open it. */
     await openProject(cdp, pageSession, P_LEGACY);
     await waitFor(() => evaluate(cdp, pageSession,
       "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(P_LEGACY)), "app legacy project", 15000);
     await waitFor(() => evaluate(cdp, opened.flyoutSession,
       "window.__rlBridgePanel && window.__rlBridgePanel.projectId() === " + JSON.stringify(P_LEGACY)), "panel legacy project", 15000);
+    check("project switch does not open the closed app-window panel",
+      await evaluate(cdp, opened.flyoutSession, "document.body.getAttribute('data-section') === null") === true &&
+      await evaluate(cdp, pageSession, "document.getElementById('rl-flyout').style.display === 'none'") === true);
     await openList(cdp, opened.dockSession);
     await waitFor(() => evaluate(cdp, pageSession,
       "Array.from(document.querySelectorAll('.req')).some((row) => /Legacy request/.test(row.innerText))"), "app legacy row");
@@ -424,6 +533,48 @@ async function main() {
     check("Use extension ledger replaces only the same project",
       afterExtChoice.test.requests.some((item) => item.title === "Extension winner request") &&
       afterExtChoice.legacy.requests.some((item) => item.title === "Legacy request"), afterExtChoice);
+
+    /* Empty side adopts the non-empty side. App empty, extension has data:
+       no conflict; app takes the extension ledger id and request. */
+    await evaluate(cdp, pageSession, `localStorage.setItem('oz-istek-defteri-p-${P_TEST}', ${JSON.stringify(JSON.stringify(ledger("Test Project", "ledger_app_empty", [])))}); true`);
+    await seedExtension(cdp, P_TEST, [request("IST-005", "Adopted extension request")], legacyRequests, "ledger_ext_data");
+    await cdp.send("Page.reload", {}, pageSession);
+    await sleep(2400);
+    pageSession = await attach(cdp, pageTarget.targetId);
+    await dismissOnboarding(cdp, pageSession);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.connected()"), "bridge after empty-app reload", 15000);
+    const adoptedByApp = await waitFor(async () => {
+      const value = await readApp(cdp, pageSession);
+      return value.test.requests.some((item) => item.title === "Adopted extension request") ? value : null;
+    }, "empty app adopts extension data", 15000);
+    const extensionAdopted = await readExtension(cdp);
+    check("empty app adopts the extension ledger silently",
+      adoptedByApp.test.ledgerId === "ledger_ext_data" &&
+      adoptedByApp.test.requests.some((item) => item.title === "Adopted extension request"), adoptedByApp.test);
+    check("empty-side adoption keeps one ledger id",
+      extensionAdopted.test.ledgerId === adoptedByApp.test.ledgerId, {
+        app: adoptedByApp.test.ledgerId,
+        panel: extensionAdopted.test.ledgerId
+      });
+
+    /* Extension empty, app has data: no conflict; extension adopts the app
+       ledger id and request. */
+    await seedExtension(cdp, P_TEST, [], legacyRequests, "ledger_ext_empty");
+    await cdp.send("Page.reload", {}, pageSession);
+    await sleep(2400);
+    pageSession = await attach(cdp, pageTarget.targetId);
+    await dismissOnboarding(cdp, pageSession);
+    await waitFor(() => evaluate(cdp, pageSession,
+      "window.__rlBridge && window.__rlBridge.connected()"), "bridge after empty-extension reload", 15000);
+    const extensionAdoptsApp = await waitFor(async () => {
+      const value = await readExtension(cdp);
+      return value.test && value.test.requests.some((item) => item.title === "Adopted extension request") ? value : null;
+    }, "empty extension adopts app data", 15000);
+    const appAfterAdoption = await readApp(cdp, pageSession);
+    check("empty extension adopts the app ledger silently",
+      extensionAdoptsApp.test.ledgerId === appAfterAdoption.test.ledgerId &&
+      extensionAdoptsApp.test.requests.some((item) => item.title === "Adopted extension request"), extensionAdoptsApp.test);
 
     const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in project consistency flow", errors.length === 0,

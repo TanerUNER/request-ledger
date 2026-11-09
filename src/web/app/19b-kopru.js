@@ -485,27 +485,34 @@
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
+    const incomingRequestCount = (Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : [])).length;
+    const localRequestCount = state.requests.length;
     const localHas = bridgeHasData(state.requests, state.project, state.projectCreated);
+    /* A conflict requires data on both sides. An open project with zero
+       requests is empty for this purpose, even though it has a name. */
     if(!bridgeForceApply && !bridgeResolved && data.type === "RL_APP_SNAPSHOT" &&
        peerProjectId && peerProjectId === activeProjectId &&
        typeof data.ledgerId === "string" && data.ledgerId && state.ledgerId &&
-       data.ledgerId !== state.ledgerId && incomingHas && localHas){
+       data.ledgerId !== state.ledgerId && incomingRequestCount > 0 && localRequestCount > 0){
       bridgePeerSnapshot = data;
       bridgeOpenConflict();
       return;
     }
-    /* A freshly mounted panel advertises an empty ledger. It can only adopt
+    /* A freshly mounted panel advertises an empty project. It can only adopt
        ours if it receives a HELLO, and the boot HELLO may have been sent
-       before the panel existed. Ask once while the panel reports no ledger;
-       the flag resets as soon as it reports one. */
-    if(!incomingHas && localHas && !bridgeConflictOpen && !bridgeResolved && !bridgeForceApply &&
-       !bridgePeerEmptyAsked && (typeof data.ledgerId !== "string" || !data.ledgerId)){
+       before the panel existed. Ask once per empty peer state; reset when the
+       peer actually reports requests. */
+    if(incomingRequestCount > 0) bridgePeerEmptyAsked = false;
+    if(incomingRequestCount === 0 && localRequestCount > 0 &&
+       !bridgeConflictOpen && !bridgeResolved && !bridgeForceApply &&
+       !bridgePeerEmptyAsked){
       bridgePeerEmptyAsked = true;
       bridgeSendHello();
       return;
     }
     let mode = "merge";
-    if(bridgeForceApply || (!localHas && incomingHas)) mode = "replace";
+    /* Empty local project + non-empty peer: adopt the peer ledger and id. */
+    if(bridgeForceApply || (!localRequestCount && incomingRequestCount > 0)) mode = "replace";
     bridgeApply(data, mode);
     if(mode === "replace") bridgeForceApply = false;
   }
@@ -589,7 +596,6 @@
     if(typeof data.v !== "number" || data.v !== BRIDGE_VERSION) return;
 
     bridgeStats.received++;
-    if(typeof data.ledgerId === "string" && data.ledgerId) bridgePeerEmptyAsked = false;
     if(data.type === "RL_APP_BYE"){
       bridgeConnected = false;
       bridgePeerSnapshot = null;

@@ -1,5 +1,12 @@
   function channelPost(message){
-    try{ if(channel) channel.postMessage(message); }catch(err){ /* ignore */ }
+    try{
+      if(channel){
+        if(panelPageToken && message.pageToken === undefined){
+          message.pageToken = panelPageToken;
+        }
+        channel.postMessage(message);
+      }
+    }catch(err){ /* ignore */ }
   }
 
   function toHost(type, payload){
@@ -579,6 +586,15 @@
     broadcastState();
     /* live bridge: mirror the new text state to an open web app */
     if(ok) bridgeNotifyChange();
+    /* Other tabs share the same extension storage. Notify their panels so a
+       request created there reaches the app even while this app tab is
+       backgrounded; storage events alone can be delayed. */
+    if(ok && activeProjectId){
+      channelPost({ type:"data-changed", projectId:activeProjectId });
+      /* Runtime delivery also reaches a panel frame in a backgrounded tab,
+         where BroadcastChannel/storage events can be delayed. */
+      sendRuntime({ type:"RL_DATA_CHANGED", projectId:activeProjectId });
+    }
     /* shell v11 §1: the ring must reflect the same state we just wrote */
     if(role === "dock") updateDockBadges();
     return ok;

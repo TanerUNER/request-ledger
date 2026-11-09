@@ -107,6 +107,9 @@
     "https://taneruner.github.io": 1
   };
   var COMPANION_LOCAL_ORIGIN = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::[0-9]{1,5})?$/;
+  /* Panel channel messages are page-local. Scoping them with this per-page
+     token prevents another tab's panel from opening this page's flyout. */
+  var hostPageToken = "rlpage_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
   var BRIDGE_IN_TYPES = {
     RL_APP_HELLO: 1,
     RL_APP_PATCH: 1,
@@ -158,7 +161,8 @@
       source: "request-ledger-host",
       type: "RL_BRIDGE_CONTEXT",
       v: 1,
-      pageOrigin: companionPageOrigin()
+      pageOrigin: companionPageOrigin(),
+      pageToken: hostPageToken
     });
   }
 
@@ -2764,6 +2768,12 @@
       hideFlyoutNow();
     }
 
+    if (wasOpen) {
+      /* Keep the hidden flyout's state in sync with the host. Without this,
+         it keeps a stale state.section and later bridge updates can act on a
+         section the user already closed. */
+      postTo(flyoutFrame, { source: "request-ledger-host", type: "RL_HOST_CLOSE_SECTION" });
+    }
     if (wasOpen && notifyDock) {
       postToDock("RL_HOST_CLOSE_SECTION");
     }
