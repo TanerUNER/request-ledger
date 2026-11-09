@@ -26,7 +26,8 @@ const SEO_TITLE = document.title;
         ],
         fixes: [
           "Köprü proje benimsemesi artık panelde bir bölümü kendiliğinden açmaz; kullanıcının son açık bölümü korunur.",
-          "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez."
+          "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez.",
+          "Proje kimliği köprüde ayrıştırıldı: farklı projeler iki defter uyarısı üretmez, yeniden yükleme son projeyi ve kendi defterini açar, eski “Ortak Zemin” kaydı “İçe aktarılan proje” olarak yeniden adlandırılır."
         ]
       },
       en: {
@@ -40,7 +41,8 @@ const SEO_TITLE = document.title;
         ],
         fixes: [
           "Bridge project adoption no longer opens a panel section by itself; the user's last explicit section is preserved.",
-          "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation."
+          "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation.",
+          "Project identity is bridge-scoped: different projects never trigger a global ledger conflict, reload reopens the last project and its own ledger, and the old “Ortak Zemin” record is renamed “Imported project”."
         ]
       }
     },

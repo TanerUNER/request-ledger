@@ -29,7 +29,10 @@
     renderHistoryTree();
     renderList();
     refreshGlobal();
-    renderProjectGate();
+    /* Restore the last explicit project, not just the gate. This keeps the
+       app, the stored activeId and the open ledger in one origin after F5. */
+    if(registry && registry.activeId) openProjectById(registry.activeId);
+    else renderProjectGate();
     applyArchiveCollapsed(false, false);
     syncArchiveResponsiveState();
     applyLanguage(state.language);

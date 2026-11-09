@@ -697,6 +697,11 @@
     return pair ? (use === "tr" ? pair.tr : pair.en) : "Imported project";
   }
 
+  function isLegacyDefaultProjectName(name){
+    var value = normalizeProjectName(name);
+    return value === "Ortak Zemin" || value === "Common Ground";
+  }
+
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     var id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -725,7 +730,18 @@
       var activeId = typeof parsed.activeId === "string" && projects.some(function(project){ return project.id === parsed.activeId; })
         ? parsed.activeId
         : null;
-      return { version: 1, activeId: activeId, projects: projects };
+      var renamed = false;
+      projects.forEach(function(project){
+        if(isLegacyDefaultProjectName(project.name)){
+          project.name = importedProjectName();
+          renamed = true;
+        }
+      });
+      var registry = { version: 1, activeId: activeId, projects: projects };
+      if(renamed){
+        try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry)); }catch(err){ /* quota */ }
+      }
+      return registry;
     }catch(err){
       console.warn("[rl-panel] project registry could not be read", err);
       return null;
@@ -784,9 +800,12 @@
       if(legacy && Array.isArray(legacy.requests)){
         var id = newProjectId();
         var stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
+        var legacyName = normalizeProjectName(legacy.project);
         var project = {
           id: id,
-          name: normalizeProjectName(legacy.project) || importedProjectName(legacy.language),
+          name: isLegacyDefaultProjectName(legacyName)
+            ? importedProjectName(legacy.language)
+            : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
           exportTarget: "",
@@ -808,12 +827,16 @@
   }
 
   /* Point core.storage at the active project's ledger and IndexedDB scope. */
-  function syncStorageScope(){
+  function syncStorageScope(preferredId){
     var registry = readRegistry();
     projectRegistry = registry;
-    var id = registry && registry.activeId && findProjectRecordIn(registry, registry.activeId)
-      ? registry.activeId
+    var preferred = preferredId && registry && findProjectRecordIn(registry, preferredId)
+      ? preferredId
       : null;
+    var id = preferred ||
+      (registry && registry.activeId && findProjectRecordIn(registry, registry.activeId)
+        ? registry.activeId
+        : null);
     activeProjectId = id;
     var key = id ? projectLedgerKey(id) : LEGACY_STORAGE_KEY;
     try{
@@ -1937,9 +1960,11 @@
     }catch(err){ /* standalone */ }
   }
 
-  function reloadSharedState(){
+  function reloadSharedState(projectId){
     if(!core || !core.storage || typeof core.storage.loadState !== "function") return;
-    syncStorageScope();
+    /* Keep the project that owns the incoming bridge data; another frame may
+       have written a different registry.activeId in the meantime. */
+    syncStorageScope(projectId);
     var loaded = null;
     if(activeProjectId){
       try{ loaded = core.storage.loadState(); }catch(err){ loaded = null; }
@@ -11958,7 +11983,7 @@
   function bridgeApply(data, mode){
     if(!app) return false;
     var incomingProjectId = bridgeEnvelopeProjectId(data);
-    if(incomingProjectId && activeProjectId && incomingProjectId !== activeProjectId) return false;
+    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
 
@@ -12023,7 +12048,7 @@
       bridgeSuppress--;
     }
 
-    reloadSharedState();
+    reloadSharedState(incomingProjectId || activeProjectId);
     updateBridgeUI();
     bridgeStats.applied++;
     return true;
@@ -12097,6 +12122,9 @@
        app payload). The panel never applies another project's ledger. */
     var peerProjectId = bridgeEnvelopeProjectId(data);
     var adoptedNewProject = false;
+    /* A HELLO without a project identity cannot be assigned to the open
+       project; wait for the app to identify its project. */
+    if(activeProjectId && !peerProjectId) return;
     if(peerProjectId && peerProjectId !== activeProjectId){
       if(!bridgeAdoptProject(peerProjectId, bridgeEnvelopeProjectName(data), data)){
         bridgePeerProjectId = peerProjectId;
@@ -12136,7 +12164,9 @@
       return;
     }
 
-    if(!adoptedNewProject && data.ledgerId && app.ledgerId && String(data.ledgerId) !== String(app.ledgerId) && pageHas && panelHas){
+    var sameProject = Boolean(peerProjectId && activeProjectId && peerProjectId === activeProjectId);
+    if(sameProject && !adoptedNewProject && data.ledgerId && app.ledgerId &&
+       String(data.ledgerId) !== String(app.ledgerId) && pageHas && panelHas){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -12171,7 +12201,7 @@
     if(Number(data.v) !== BRIDGE_VERSION) return;
     bridgeMarkHeard();
     var peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && peerProjectId !== activeProjectId){
+    if(activeProjectId && peerProjectId !== activeProjectId){
       if(!activeProjectId && bridgeAdoptProject(peerProjectId, bridgeEnvelopeProjectName(data), data)){
         /* adopted, fall through and merge the patch */
       }else{
@@ -12186,7 +12216,8 @@
     if(bridgeConflict) return; /* wait for the user's ledger decision */
 
     var incomingHas = bridgeHasData(data.upserts || data.requests, bridgeEnvelopeProjectName(data) || data.project, data.projectCreated === false ? false : true);
-    if(data.ledgerId && app.ledgerId && String(data.ledgerId) !== String(app.ledgerId) && incomingHas && (app.requests.length || bridgeLedgerSynced)){
+    if(peerProjectId === activeProjectId && data.ledgerId && app.ledgerId &&
+       String(data.ledgerId) !== String(app.ledgerId) && incomingHas && (app.requests.length || bridgeLedgerSynced)){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -12209,15 +12240,17 @@
     if(Number(data.v) !== BRIDGE_VERSION) return;
     bridgeMarkHeard();
     var peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      bridgeConflict = false;
-      updateBridgeUI();
-      if(data.heartbeat === true){
-        bridgePost("RL_APP_ACK", { heartbeat:true, ledgerId:app.ledgerId, requests:[], agents:[], deletedIds:[] });
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || data.conflict === true){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        bridgeConflict = false;
+        updateBridgeUI();
+        if(data.heartbeat === true){
+          bridgePost("RL_APP_ACK", { heartbeat:true, ledgerId:app.ledgerId, requests:[], agents:[], deletedIds:[] });
+        }
+        return;
       }
-      return;
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;

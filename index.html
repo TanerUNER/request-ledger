@@ -2129,7 +2129,8 @@ const SEO_TITLE = document.title;
         ],
         fixes: [
           "Köprü proje benimsemesi artık panelde bir bölümü kendiliğinden açmaz; kullanıcının son açık bölümü korunur.",
-          "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez."
+          "Hazır onayı yeni bir revizyon damgası taşır; eşitleme sırasında onay durumu düşmez.",
+          "Proje kimliği köprüde ayrıştırıldı: farklı projeler iki defter uyarısı üretmez, yeniden yükleme son projeyi ve kendi defterini açar, eski “Ortak Zemin” kaydı “İçe aktarılan proje” olarak yeniden adlandırılır."
         ]
       },
       en: {
@@ -2143,7 +2144,8 @@ const SEO_TITLE = document.title;
         ],
         fixes: [
           "Bridge project adoption no longer opens a panel section by itself; the user's last explicit section is preserved.",
-          "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation."
+          "The Ready toggle carries a new revision, so item-level sync no longer drops the confirmation.",
+          "Project identity is bridge-scoped: different projects never trigger a global ledger conflict, reload reopens the last project and its own ledger, and the old “Ortak Zemin” record is renamed “Imported project”."
         ]
       }
     },
@@ -4188,6 +4190,10 @@ const SEO_TITLE = document.title;
     if(lang === "en") return "Imported project";
     return translateString("İçe aktarılan proje");
   }
+  function isLegacyDefaultProjectName(name){
+    const value = normalizeProjectName(name);
+    return value === "Ortak Zemin" || value === "Common Ground";
+  }
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     const id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -4214,7 +4220,21 @@ const SEO_TITLE = document.title;
       const activeId = typeof parsed.activeId === "string" && projects.some(function(project){ return project.id === parsed.activeId; })
         ? parsed.activeId
         : null;
-      return { version: 1, activeId: activeId, projects: projects };
+      /* Existing installs may still carry the old folder-derived default.
+         Rename it in place to the neutral translated label; the project stays
+         a normal, deletable project. */
+      let renamed = false;
+      projects.forEach(function(project){
+        if(isLegacyDefaultProjectName(project.name)){
+          project.name = importedProjectName();
+          renamed = true;
+        }
+      });
+      const registry = { version: 1, activeId: activeId, projects: projects };
+      if(renamed){
+        try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry)); }catch(err){ /* quota */ }
+      }
+      return registry;
     }catch(err){
       console.warn("Proje listesi okunamadı", err);
       return null;
@@ -4251,9 +4271,12 @@ const SEO_TITLE = document.title;
       if(legacy && Array.isArray(legacy.requests)){
         const id = newProjectId();
         const stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
+        const legacyName = normalizeProjectName(legacy.project);
         const project = {
           id: id,
-          name: normalizeProjectName(legacy.project) || importedProjectName(legacy.language),
+          name: isLegacyDefaultProjectName(legacyName)
+            ? importedProjectName(legacy.language)
+            : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
           exportTarget: "",
@@ -11123,7 +11146,10 @@ const SEO_TITLE = document.title;
   /* mode: "merge" (item-level) or "replace" (the user chose this ledger) */
   function bridgeApply(data, mode){
     const incomingProjectId = bridgeEnvelopeProjectId(data);
-    if(incomingProjectId && activeProjectId && incomingProjectId !== activeProjectId) return false;
+    /* Never apply another project's ledger to the open project. An empty id is
+       also refused while a project is open; the panel re-announces its identity
+       on the next HELLO. */
+    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
     const incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     const stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     const signature = bridgeSignatureFromData(data);
@@ -11245,20 +11271,23 @@ const SEO_TITLE = document.title;
 
   function bridgeReconcile(data){
     const peerProjectId = bridgeEnvelopeProjectId(data);
+    const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     /* Phase 2c: a panel on another project is a project mismatch, not a ledger
-       conflict. Show the status and apply nothing until both sides align. */
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      bridgePeerSnapshot = null;
-      updateBridgeIndicator();
-      return;
+       conflict. An empty identity with data is treated as foreign too. */
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || incomingHas){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        bridgePeerSnapshot = null;
+        updateBridgeIndicator();
+        return;
+      }
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
-    const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     const localHas = bridgeHasData(state.requests, state.project, state.projectCreated);
     if(!bridgeForceApply && !bridgeResolved && data.type === "RL_APP_SNAPSHOT" &&
+       peerProjectId && peerProjectId === activeProjectId &&
        typeof data.ledgerId === "string" && data.ledgerId && state.ledgerId &&
        data.ledgerId !== state.ledgerId && incomingHas && localHas){
       bridgePeerSnapshot = data;
@@ -11283,11 +11312,13 @@ const SEO_TITLE = document.title;
 
   function bridgeHandleAck(data){
     const peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      updateBridgeIndicator();
-      return;
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || data.conflict === true){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        updateBridgeIndicator();
+        return;
+      }
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
@@ -11373,7 +11404,7 @@ const SEO_TITLE = document.title;
     if(data.type === "RL_APP_ACK"){ bridgeHandleAck(data); return; }
     if(data.type === "RL_APP_PATCH"){
       const peerProjectId = bridgeEnvelopeProjectId(data);
-      if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
+      if(activeProjectId && peerProjectId !== activeProjectId){
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeIndicator();
@@ -12865,7 +12896,10 @@ const SEO_TITLE = document.title;
     renderHistoryTree();
     renderList();
     refreshGlobal();
-    renderProjectGate();
+    /* Restore the last explicit project, not just the gate. This keeps the
+       app, the stored activeId and the open ledger in one origin after F5. */
+    if(registry && registry.activeId) openProjectById(registry.activeId);
+    else renderProjectGate();
     applyArchiveCollapsed(false, false);
     syncArchiveResponsiveState();
     applyLanguage(state.language);

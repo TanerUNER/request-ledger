@@ -37,6 +37,11 @@
     return pair ? (use === "tr" ? pair.tr : pair.en) : "Imported project";
   }
 
+  function isLegacyDefaultProjectName(name){
+    var value = normalizeProjectName(name);
+    return value === "Ortak Zemin" || value === "Common Ground";
+  }
+
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     var id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -65,7 +70,18 @@
       var activeId = typeof parsed.activeId === "string" && projects.some(function(project){ return project.id === parsed.activeId; })
         ? parsed.activeId
         : null;
-      return { version: 1, activeId: activeId, projects: projects };
+      var renamed = false;
+      projects.forEach(function(project){
+        if(isLegacyDefaultProjectName(project.name)){
+          project.name = importedProjectName();
+          renamed = true;
+        }
+      });
+      var registry = { version: 1, activeId: activeId, projects: projects };
+      if(renamed){
+        try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry)); }catch(err){ /* quota */ }
+      }
+      return registry;
     }catch(err){
       console.warn("[rl-panel] project registry could not be read", err);
       return null;
@@ -124,9 +140,12 @@
       if(legacy && Array.isArray(legacy.requests)){
         var id = newProjectId();
         var stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
+        var legacyName = normalizeProjectName(legacy.project);
         var project = {
           id: id,
-          name: normalizeProjectName(legacy.project) || importedProjectName(legacy.language),
+          name: isLegacyDefaultProjectName(legacyName)
+            ? importedProjectName(legacy.language)
+            : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
           exportTarget: "",
@@ -148,12 +167,16 @@
   }
 
   /* Point core.storage at the active project's ledger and IndexedDB scope. */
-  function syncStorageScope(){
+  function syncStorageScope(preferredId){
     var registry = readRegistry();
     projectRegistry = registry;
-    var id = registry && registry.activeId && findProjectRecordIn(registry, registry.activeId)
-      ? registry.activeId
+    var preferred = preferredId && registry && findProjectRecordIn(registry, preferredId)
+      ? preferredId
       : null;
+    var id = preferred ||
+      (registry && registry.activeId && findProjectRecordIn(registry, registry.activeId)
+        ? registry.activeId
+        : null);
     activeProjectId = id;
     var key = id ? projectLedgerKey(id) : LEGACY_STORAGE_KEY;
     try{

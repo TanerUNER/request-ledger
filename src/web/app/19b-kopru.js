@@ -346,7 +346,10 @@
   /* mode: "merge" (item-level) or "replace" (the user chose this ledger) */
   function bridgeApply(data, mode){
     const incomingProjectId = bridgeEnvelopeProjectId(data);
-    if(incomingProjectId && activeProjectId && incomingProjectId !== activeProjectId) return false;
+    /* Never apply another project's ledger to the open project. An empty id is
+       also refused while a project is open; the panel re-announces its identity
+       on the next HELLO. */
+    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
     const incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     const stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
     const signature = bridgeSignatureFromData(data);
@@ -468,20 +471,23 @@
 
   function bridgeReconcile(data){
     const peerProjectId = bridgeEnvelopeProjectId(data);
+    const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     /* Phase 2c: a panel on another project is a project mismatch, not a ledger
-       conflict. Show the status and apply nothing until both sides align. */
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      bridgePeerSnapshot = null;
-      updateBridgeIndicator();
-      return;
+       conflict. An empty identity with data is treated as foreign too. */
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || incomingHas){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        bridgePeerSnapshot = null;
+        updateBridgeIndicator();
+        return;
+      }
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
-    const incomingHas = bridgeHasData(data.requests || data.upserts, bridgeEnvelopeProjectName(data), false);
     const localHas = bridgeHasData(state.requests, state.project, state.projectCreated);
     if(!bridgeForceApply && !bridgeResolved && data.type === "RL_APP_SNAPSHOT" &&
+       peerProjectId && peerProjectId === activeProjectId &&
        typeof data.ledgerId === "string" && data.ledgerId && state.ledgerId &&
        data.ledgerId !== state.ledgerId && incomingHas && localHas){
       bridgePeerSnapshot = data;
@@ -506,11 +512,13 @@
 
   function bridgeHandleAck(data){
     const peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      updateBridgeIndicator();
-      return;
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || data.conflict === true){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        updateBridgeIndicator();
+        return;
+      }
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
@@ -596,7 +604,7 @@
     if(data.type === "RL_APP_ACK"){ bridgeHandleAck(data); return; }
     if(data.type === "RL_APP_PATCH"){
       const peerProjectId = bridgeEnvelopeProjectId(data);
-      if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
+      if(activeProjectId && peerProjectId !== activeProjectId){
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeIndicator();

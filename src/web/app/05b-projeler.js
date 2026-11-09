@@ -21,6 +21,10 @@
     if(lang === "en") return "Imported project";
     return translateString("İçe aktarılan proje");
   }
+  function isLegacyDefaultProjectName(name){
+    const value = normalizeProjectName(name);
+    return value === "Ortak Zemin" || value === "Common Ground";
+  }
   function normalizeProjectRecord(record){
     if(!record || typeof record !== "object") return null;
     const id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
@@ -47,7 +51,21 @@
       const activeId = typeof parsed.activeId === "string" && projects.some(function(project){ return project.id === parsed.activeId; })
         ? parsed.activeId
         : null;
-      return { version: 1, activeId: activeId, projects: projects };
+      /* Existing installs may still carry the old folder-derived default.
+         Rename it in place to the neutral translated label; the project stays
+         a normal, deletable project. */
+      let renamed = false;
+      projects.forEach(function(project){
+        if(isLegacyDefaultProjectName(project.name)){
+          project.name = importedProjectName();
+          renamed = true;
+        }
+      });
+      const registry = { version: 1, activeId: activeId, projects: projects };
+      if(renamed){
+        try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry)); }catch(err){ /* quota */ }
+      }
+      return registry;
     }catch(err){
       console.warn("Proje listesi okunamadı", err);
       return null;
@@ -84,9 +102,12 @@
       if(legacy && Array.isArray(legacy.requests)){
         const id = newProjectId();
         const stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
+        const legacyName = normalizeProjectName(legacy.project);
         const project = {
           id: id,
-          name: normalizeProjectName(legacy.project) || importedProjectName(legacy.language),
+          name: isLegacyDefaultProjectName(legacyName)
+            ? importedProjectName(legacy.language)
+            : (legacyName || importedProjectName(legacy.language)),
           createdAt: stamp,
           updatedAt: stamp,
           exportTarget: "",

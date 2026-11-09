@@ -26,6 +26,10 @@ New capabilities and fixes:
   and the same port is reused instead of silently changing the origin.
 - **Fallback warning.** An unrelated busy port still falls back; the page is served with
   `?rl-moved=<port>` and shows the existing new-origin warning with the restore prompt.
+- **Project/ledger identity.** The bridge conflict is scoped to the same `projectId`; different
+  projects never trigger a global “Two ledgers found” dialog. Reload reopens the last active
+  project and its own ledger. The old “Ortak Zemin” record is renamed to the neutral translated
+  “Imported project” and remains a normal, deletable project.
 
 ## Previous release — 1.9.1 / 1.9.4 — workspace, capture tools and a calmer setup
 

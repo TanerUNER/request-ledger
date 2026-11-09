@@ -1,6 +1,8 @@
-  function reloadSharedState(){
+  function reloadSharedState(projectId){
     if(!core || !core.storage || typeof core.storage.loadState !== "function") return;
-    syncStorageScope();
+    /* Keep the project that owns the incoming bridge data; another frame may
+       have written a different registry.activeId in the meantime. */
+    syncStorageScope(projectId);
     var loaded = null;
     if(activeProjectId){
       try{ loaded = core.storage.loadState(); }catch(err){ loaded = null; }

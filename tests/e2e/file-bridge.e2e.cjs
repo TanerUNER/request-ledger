@@ -188,7 +188,8 @@ async function openActiveProject(cdp, pageSession) {
   await waitFor(async () => {
     return evaluate(cdp, pageSession, `(() => {
       const picker = document.getElementById('projectPicker');
-      if (!picker || picker.hidden) return false;
+      if (!picker) return false;
+      if (picker.hidden) return true;
       const reg = JSON.parse(localStorage.getItem('oz-projeler-v1') || 'null');
       const id = reg && reg.activeId;
       const row = id ? document.querySelector('#projectPickerList [data-project-id="' + id + '"]')

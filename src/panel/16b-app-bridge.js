@@ -624,7 +624,7 @@
   function bridgeApply(data, mode){
     if(!app) return false;
     var incomingProjectId = bridgeEnvelopeProjectId(data);
-    if(incomingProjectId && activeProjectId && incomingProjectId !== activeProjectId) return false;
+    if(activeProjectId && incomingProjectId !== activeProjectId) return false;
     var incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     var stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
 
@@ -689,7 +689,7 @@
       bridgeSuppress--;
     }
 
-    reloadSharedState();
+    reloadSharedState(incomingProjectId || activeProjectId);
     updateBridgeUI();
     bridgeStats.applied++;
     return true;
@@ -763,6 +763,9 @@
        app payload). The panel never applies another project's ledger. */
     var peerProjectId = bridgeEnvelopeProjectId(data);
     var adoptedNewProject = false;
+    /* A HELLO without a project identity cannot be assigned to the open
+       project; wait for the app to identify its project. */
+    if(activeProjectId && !peerProjectId) return;
     if(peerProjectId && peerProjectId !== activeProjectId){
       if(!bridgeAdoptProject(peerProjectId, bridgeEnvelopeProjectName(data), data)){
         bridgePeerProjectId = peerProjectId;
@@ -802,7 +805,9 @@
       return;
     }
 
-    if(!adoptedNewProject && data.ledgerId && app.ledgerId && String(data.ledgerId) !== String(app.ledgerId) && pageHas && panelHas){
+    var sameProject = Boolean(peerProjectId && activeProjectId && peerProjectId === activeProjectId);
+    if(sameProject && !adoptedNewProject && data.ledgerId && app.ledgerId &&
+       String(data.ledgerId) !== String(app.ledgerId) && pageHas && panelHas){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -837,7 +842,7 @@
     if(Number(data.v) !== BRIDGE_VERSION) return;
     bridgeMarkHeard();
     var peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && peerProjectId !== activeProjectId){
+    if(activeProjectId && peerProjectId !== activeProjectId){
       if(!activeProjectId && bridgeAdoptProject(peerProjectId, bridgeEnvelopeProjectName(data), data)){
         /* adopted, fall through and merge the patch */
       }else{
@@ -852,7 +857,8 @@
     if(bridgeConflict) return; /* wait for the user's ledger decision */
 
     var incomingHas = bridgeHasData(data.upserts || data.requests, bridgeEnvelopeProjectName(data) || data.project, data.projectCreated === false ? false : true);
-    if(data.ledgerId && app.ledgerId && String(data.ledgerId) !== String(app.ledgerId) && incomingHas && (app.requests.length || bridgeLedgerSynced)){
+    if(peerProjectId === activeProjectId && data.ledgerId && app.ledgerId &&
+       String(data.ledgerId) !== String(app.ledgerId) && incomingHas && (app.requests.length || bridgeLedgerSynced)){
       bridgeConflict = true;
       bridgePeerHello = data;
       bridgePost("RL_APP_ACK", { conflict:true, ledgerId:app.ledgerId });
@@ -875,15 +881,17 @@
     if(Number(data.v) !== BRIDGE_VERSION) return;
     bridgeMarkHeard();
     var peerProjectId = bridgeEnvelopeProjectId(data);
-    if(peerProjectId && activeProjectId && peerProjectId !== activeProjectId){
-      bridgePeerProjectId = peerProjectId;
-      bridgeProjectMismatch = true;
-      bridgeConflict = false;
-      updateBridgeUI();
-      if(data.heartbeat === true){
-        bridgePost("RL_APP_ACK", { heartbeat:true, ledgerId:app.ledgerId, requests:[], agents:[], deletedIds:[] });
+    if(activeProjectId && peerProjectId !== activeProjectId){
+      if(peerProjectId || data.conflict === true){
+        bridgePeerProjectId = peerProjectId;
+        bridgeProjectMismatch = true;
+        bridgeConflict = false;
+        updateBridgeUI();
+        if(data.heartbeat === true){
+          bridgePost("RL_APP_ACK", { heartbeat:true, ledgerId:app.ledgerId, requests:[], agents:[], deletedIds:[] });
+        }
+        return;
       }
-      return;
     }
     if(peerProjectId) bridgePeerProjectId = peerProjectId;
     bridgeProjectMismatch = false;
