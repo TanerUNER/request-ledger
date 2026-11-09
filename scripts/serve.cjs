@@ -643,10 +643,37 @@ const server = http.createServer(function (request, response) {
       return;
     }
     let rawPort = null;
+    let restart = false;
     try {
-      rawPort = new URL(request.url, "http://127.0.0.1").searchParams.get("port");
+      const query = new URL(request.url, "http://127.0.0.1").searchParams;
+      rawPort = query.get("port");
+      restart = query.get("restart") === "1";
     } catch (error) {
       rawPort = null;
+      restart = false;
+    }
+    /* In-place restart: spawn the replacement first, let it take over the
+       same port (resolveStartupPort stops the old same-app instance if it is
+       still bound), then exit. The page polls /__rl/status and reloads when
+       the new pid answers. */
+    if (restart) {
+      if (shuttingDown) {
+        sendJson(response, 409, { ok: false, error: "server is already stopping" });
+        return;
+      }
+      if (!spawnReboundServer(actualPort)) {
+        sendJson(response, 500, { ok: false, error: "could not start the replacement server" });
+        return;
+      }
+      sendJson(response, 200, {
+        ok: true,
+        restarting: true,
+        port: actualPort,
+        pid: process.pid,
+        url: baseUrl() + entryPage(),
+      });
+      setTimeout(function () { stopServer("restart"); }, 60);
+      return;
     }
     const requested = rawPort == null ? NaN : Number(String(rawPort).trim());
     if (!Number.isInteger(requested) || requested < 0 || requested > 65535) {

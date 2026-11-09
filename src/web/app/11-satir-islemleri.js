@@ -375,6 +375,10 @@
     if(!img) return;
     const url = await loadImageURL(imageId);
     if(!url){
+      if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", imageId)){
+        showToast(translateString("Görsel yükleniyor…"));
+        return;
+      }
       showToast("Görsel bulunamadı. Yedekten geri yüklemeyi deneyebilirsin.", "error");
       return;
     }

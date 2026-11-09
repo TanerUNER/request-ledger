@@ -239,6 +239,44 @@ async function attachPanel(cdp) {
   };
 }
 
+/* A reload can leave the previous iframe targets listed for a moment, and a
+   plain page also carries a (disconnected) panel. Walk every flyout target
+   and return the one whose bridge is connected. */
+async function waitConnectedPanel(cdp, timeoutMs) {
+  const started = Date.now();
+  let lastError = null;
+  while (Date.now() - started < (timeoutMs || 25000)) {
+    try {
+      const current = await cdp.send("Target.getTargets");
+      const flyouts = current.targetInfos.filter((target) => target.url.includes("role=flyout"));
+      for (const target of flyouts) {
+        let flyoutSession = null;
+        try {
+          flyoutSession = await attach(cdp, target.targetId);
+          const connected = await evaluate(cdp, flyoutSession,
+            "window.__rlBridgePanel && window.__rlBridgePanel.connected()");
+          if (connected !== true) continue;
+          const token = await evaluate(cdp, flyoutSession,
+            "window.__rlBridgePanel.pageToken()");
+          const docks = current.targetInfos.filter((entry) => entry.url.includes("role=dock"));
+          let dockSession = null;
+          for (const dock of docks) {
+            try {
+              const candidate = await attach(cdp, dock.targetId);
+              const dockToken = await evaluate(cdp, candidate,
+                "window.__rlBridgePanel && window.__rlBridgePanel.pageToken()");
+              if (dockToken === token) { dockSession = candidate; break; }
+            } catch (error) { /* stale iframe */ }
+          }
+          return { dockSession, flyoutSession };
+        } catch (error) { lastError = error; }
+      }
+    } catch (error) { lastError = error; }
+    await sleep(700);
+  }
+  throw lastError || new Error("timeout: connected panel");
+}
+
 async function screenshot(cdp, sessionId, name) {
   try {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
@@ -371,6 +409,39 @@ async function main() {
     const plainSession = await attach(cdp, plainTarget.targetId);
     await waitFor(() => evaluate(cdp, plainSession, "!!document.getElementById('rl-host')"), "plain page host", 20000);
 
+    /* Real in-place restart while the server is alive: the app asks the live
+       server to spawn its replacement on the same port and reloads itself
+       when the new pid answers. */
+    const pidBeforeRestart = await fetch("http://127.0.0.1:" + portA + "/__rl/status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => (data ? Number(data.pid) : 0))
+      .catch(() => 0);
+    await waitFor(() => evaluate(cdp, appSession,
+      "(() => { const button = document.getElementById('restartServerBtn'); return button && !button.hidden; })()"),
+      "app detects the live server before restart", 15000);
+    await evaluate(cdp, appSession, "document.getElementById('restartServerBtn').click()");
+    const inPlace = await waitFor(async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:" + portA + "/__rl/status");
+        const data = response.ok ? await response.json() : null;
+        return data && Number(data.pid) !== pidBeforeRestart ? data : null;
+      } catch (error) { return null; }
+    }, "in-place restart on the same port", 20000);
+    check("Restart server replaces the process on the same port",
+      inPlace.port === portA && Number(inPlace.pid) !== pidBeforeRestart, inPlace);
+    await primeServer(portA);
+    appSession = await attach(cdp, appTarget.targetId);
+    await waitFor(() => evaluate(cdp, appSession,
+      "window.__rlBridge && window.__rlBridge.connected() && !window.__rlBridge.serverStopped()"), "app after in-place restart", 25000);
+    check("Restart server reloads and reconnects the app",
+      await evaluate(cdp, appSession, "window.__rlBridge.ledgerId()") === L_LIFE);
+    await waitFor(() => evaluate(cdp, appSession,
+      "(() => { const button = document.getElementById('restartServerBtn'); return button && !button.hidden; })()"),
+      "app detects the restarted server", 15000);
+    panel = await waitConnectedPanel(cdp, 25000);
+    check("Restart server reconnects the panel",
+      await evaluate(cdp, panel.flyoutSession, "window.__rlBridgePanel.serverStopped()") === false);
+
     /* Explicit Stop from the app: the app becomes blocked, the heartbeat and
        bridge stop, and the panel switches to "App server stopped" without
        applying further bridge traffic. */
@@ -380,7 +451,7 @@ async function main() {
       return pid > 0 ? pid : null;
     }, "app reaches the reused server before stop", 15000);
     check("app reaches the active server before Stop", reachablePid > 0, reachablePid);
-    const stoppedPid = reused.pid;
+    const stoppedPid = reachablePid;
     await evaluate(cdp, appSession, "document.getElementById('railStopBtn').click()");
     await waitFor(() => evaluate(cdp, appSession,
       "document.getElementById('confirmModal').classList.contains('is-open')"), "stop confirmation", 5000);
@@ -395,13 +466,18 @@ async function main() {
     })()`), "app server blocked state", 10000);
     check("Stop: app shows the blocked server state",
       blocked.visible === true && blocked.inert === true && blocked.serverStopped === true, blocked);
+    const blockedUi = await evaluate(cdp, appSession, `(() => ({
+      retry: !!document.getElementById('serverBlockedRetry'),
+      text: (document.getElementById('serverBlockedText') || {}).textContent || ''
+    }))()`);
+    check("blocked state has no non-working reconnect button and names start.cmd",
+      blockedUi.retry === false && /start\.cmd/.test(blockedUi.text), blockedUi);
     const hostHidden = await waitFor(() => evaluate(cdp, appSession,
       "!document.getElementById('rl-host')"), "extension host hides after stop", 9000).catch(() => false);
     check("stopped server hides the extension host completely", hostHidden === true);
     const plainHostHidden = await waitFor(() => evaluate(cdp, plainSession,
       "!document.getElementById('rl-host')"), "plain page host hides after stop", 9000).catch(() => false);
     check("stopped server hides the extension on other pages too", plainHostHidden === true);
-    try { await cdp.send("Target.closeTarget", { targetId: plainTarget.targetId }); } catch (error) { /* ignore */ }
     await screenshot(cdp, appSession, "05-server-blocked.png");
     const stoppedApp = await evaluate(cdp, appSession, `(() => {
       const raw = localStorage.getItem('oz-istek-defteri-p-${P_LIFE}');
@@ -465,21 +541,28 @@ async function main() {
     check("restart clears the blocked app state and reconnect conflict",
       appReconnected.blocked === false && appReconnected.conflict === false &&
       appReconnected.ledgerId === L_LIFE && appReconnected.rows === 1, appReconnected);
-    panel = await attachPanel(cdp);
-    const panelReconnected = await waitFor(() => evaluate(cdp, panel.flyoutSession, `(() => {
+    panel = await waitConnectedPanel(cdp, 25000);
+    const panelReconnected = await evaluate(cdp, panel.flyoutSession, `(() => {
       const state = {
         stopped: window.__rlBridgePanel.serverStopped(),
         connected: window.__rlBridgePanel.connected(),
         ledgerId: window.__rlBridgePanel.ledgerId()
       };
       return !state.stopped && state.connected ? state : null;
-    })()`), "panel reconnects after restart", 20000);
+    })()`);
     check("panel reconnects without a conflict and keeps the ledger",
       panelReconnected.stopped === false && panelReconnected.connected === true &&
       panelReconnected.ledgerId === L_LIFE, panelReconnected);
     check("data survives the stop/restart pair",
       await evaluate(cdp, appSession,
         "Array.from(document.querySelectorAll('.req')).some((row) => /Lifecycle request/.test(row.innerText))") === true);
+
+    /* The plain page kept its tab through the stop. When the server starts
+       again the companion must come back there too, without a reload. */
+    const plainHostBack = await waitFor(() => evaluate(cdp, plainSession,
+      "!!document.getElementById('rl-host')"), "plain page host returns after restart", 15000).catch(() => false);
+    check("extension returns automatically after the server starts again", plainHostBack === true);
+    try { await cdp.send("Target.closeTarget", { targetId: plainTarget.targetId }); } catch (error) { /* ignore */ }
 
     /* A genuinely unrelated process on the requested port forces fallback.
        The page URL must carry the warning marker and the page must show it. */

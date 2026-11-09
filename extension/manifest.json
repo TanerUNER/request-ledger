@@ -18,6 +18,7 @@
   },
   "action": {
     "default_title": "Request Ledger",
+    "default_popup": "panel/about.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

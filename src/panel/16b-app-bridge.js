@@ -163,6 +163,35 @@
   var bridgePeerMedia = {};
   var bridgeMediaSending = false;
 
+  /* Metadata can arrive before the blob. Keep a short pending window so the
+     detail view can show "Loading image…" instead of a premature missing
+     placeholder; a real failure turns into "not found" after the timeout. */
+  var BRIDGE_MEDIA_PENDING_MS = 15000;
+  var bridgeMediaPending = {};
+
+  function bridgeMediaMarkPending(kind, id){
+    if(!id) return;
+    var key = bridgeMediaKey(kind, id);
+    if(!(key in bridgeMediaPending)) bridgeMediaPending[key] = Date.now();
+  }
+
+  function bridgeMediaPendingRemaining(kind, id){
+    if(!id) return 0;
+    var at = bridgeMediaPending[bridgeMediaKey(kind, id)];
+    if(!at) return 0;
+    var left = BRIDGE_MEDIA_PENDING_MS - (Date.now() - at);
+    return left > 0 ? left : 0;
+  }
+
+  function bridgeMediaIsPending(kind, id){
+    return bridgeMediaPendingRemaining(kind, id) > 0;
+  }
+
+  function bridgeMediaClearPending(kind, id){
+    if(!id) return;
+    delete bridgeMediaPending[bridgeMediaKey(kind, id)];
+  }
+
   function bridgeMediaOut(item, kind){
     if(!item || typeof item.id !== "string" || !item.id) return null;
     var out = {
@@ -238,6 +267,11 @@
       (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
     });
     if(!ids.length) return;
+    ids.forEach(function(value){
+      var parts = String(value).split(":");
+      var kind = parts.shift();
+      if(kind === "image" || kind === "file") bridgeMediaMarkPending(kind, parts.join(":"));
+    });
     bridgePost("RL_APP_MEDIA_REQUEST", { ids:ids.slice(0, 100) });
   }
 
@@ -263,6 +297,7 @@
         if(blob.size > BRIDGE_MEDIA_MAX_BYTES) return;
         if(kind === "image"){
           return core.storage.putImage({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" }).then(function(){
+            changed = true;
             var list = Array.isArray(req.images) ? req.images : [];
             if(!list.some(function(entry){ return entry.id === item.id; })){
               list.push({
@@ -278,6 +313,7 @@
         return core.storage.putFile({
           id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream"
         }).then(function(){
+          changed = true;
           var list = Array.isArray(req.attachments) ? req.attachments : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -291,6 +327,7 @@
         });
       }).then(function(){
         bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+        bridgeMediaClearPending(kind, item.id);
       }).catch(function(){ /* skip broken media */ });
     });
     Promise.all(jobs).then(function(){
@@ -1001,6 +1038,18 @@
       bridgeSuppress--;
     }
 
+    /* Metadata that just arrived through the bridge is expected to be
+       followed by its blob. Mark it before the first render so the loading
+       state wins the race with the async storage read. */
+    incoming.forEach(function(raw){
+      if(!raw || typeof raw !== "object") return;
+      (Array.isArray(raw.images) ? raw.images : []).forEach(function(img){
+        if(img && img.id) bridgeMediaMarkPending("image", img.id);
+      });
+      (Array.isArray(raw.attachments) ? raw.attachments : []).forEach(function(att){
+        if(att && att.id) bridgeMediaMarkPending("file", att.id);
+      });
+    });
     reloadSharedState(incomingProjectId || activeProjectId);
     updateBridgeUI();
     bridgeStats.applied++;
@@ -1548,6 +1597,7 @@
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
         pageToken:function(){ return panelPageToken; },
         pageOrigin:function(){ return bridgePageOrigin; },
+        tabId:function(){ return panelTabScope; },
         requests:function(){
           return app && Array.isArray(app.requests) ? app.requests.map(function(req){
             return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length };

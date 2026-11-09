@@ -316,6 +316,7 @@
     req.images.forEach(function(img, index){
       const thumb = document.createElement("div");
       thumb.className = "thumb";
+      thumb.dataset.imageId = img.id;
       const open = document.createElement("button");
       open.type = "button";
       open.className = "thumb__open";
@@ -337,6 +338,22 @@
       thumbs.appendChild(thumb);
       loadImageURL(img.id).then(function(url){
         if(!url){
+          if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+            thumb.classList.add("is-loading");
+            open.remove();
+            const loading = document.createElement("span");
+            loading.textContent = translateString("Görsel yükleniyor…");
+            thumb.prepend(loading);
+            const wait = typeof bridgeMediaPendingRemaining === "function"
+              ? bridgeMediaPendingRemaining("image", img.id)
+              : 1000;
+            setTimeout(function(){
+              if(!document.body.contains(thumb)) return;
+              if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)) return;
+              renderImages(row, req);
+            }, Math.max(600, wait + 100));
+            return;
+          }
           thumb.classList.add("is-missing");
           open.remove();
           const missing = document.createElement("span");

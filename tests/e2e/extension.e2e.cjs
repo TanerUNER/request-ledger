@@ -151,6 +151,30 @@ async function main() {
     check("extension loads with the pinned id", loaded.id === "hapajcbgcfllhkiohhkechekajencdod", loaded);
     await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: DOWNLOADS });
 
+    /* Toolbar action popup: a static About card, not the in-page dock. */
+    const aboutTarget = await cdp.send("Target.createTarget", {
+      url: "chrome-extension://" + loaded.id + "/panel/about.html"
+    });
+    const aboutSession = await attach(cdp, aboutTarget.targetId);
+    await sleep(600);
+    const about = await evaluate(cdp, aboutSession, `(() => ({
+      title: (document.getElementById('aboutTitle') || {}).textContent || '',
+      version: (document.getElementById('aboutVersion') || {}).textContent || '',
+      desc: (document.getElementById('aboutDesc') || {}).textContent || '',
+      note: (document.getElementById('aboutNote') || {}).textContent || '',
+      repo: (document.getElementById('aboutRepo') || {}).href || '',
+      support: (document.getElementById('aboutSupport') || {}).href || '',
+      license: document.body.innerText.indexOf('MIT') >= 0,
+      popup: chrome.runtime.getManifest().action.default_popup || ''
+    }))()`);
+    check("toolbar popup shows About, version, links, license and app requirement",
+      /Request Ledger/.test(about.title) && about.version === "1.9.5" &&
+      about.popup === "panel/about.html" &&
+      /uygulama|app/i.test(about.note) && /github\.com/i.test(about.repo) &&
+      /buymeacoffee/i.test(about.support) && about.license === true, about);
+    await cdp.send("Target.closeTarget", { targetId: aboutTarget.targetId });
+    await sleep(200);
+
     const page = await cdp.send("Target.createTarget", { url: WEB_URL });
     const pageSession = await attach(cdp, page.targetId);
     await cdp.send("Page.enable", {}, pageSession);
@@ -400,12 +424,12 @@ async function main() {
     );
 
     await evaluate(cdp, flyoutSession, `document.querySelector('[data-act="ready"]').click()`);
-    await sleep(800);
-    const confirmed = await evaluate(cdp, flyoutSession, `(() => {
+    const confirmed = await waitFor(() => evaluate(cdp, flyoutSession, `(() => {
       const reg = JSON.parse(localStorage.getItem('oz-projeler-v1'));
       const st = JSON.parse(localStorage.getItem('oz-istek-defteri-p-' + reg.activeId));
-      return { confirmed: st.requests[0].confirmed, status: window.IstekCore.requests.status(st.requests[0]) };
-    })()`);
+      const value = { confirmed: st.requests[0].confirmed, status: window.IstekCore.requests.status(st.requests[0]) };
+      return value.confirmed === true && value.status === "ready" ? value : null;
+    })()`), "ready confirmation state", 6000);
     check("ready confirmation locks the request in state", confirmed.confirmed === true && confirmed.status === "ready", confirmed);
 
     await evaluate(cdp, dockSession, `document.querySelector('[data-section="list"]').click()`);

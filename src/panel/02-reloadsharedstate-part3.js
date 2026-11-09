@@ -336,22 +336,35 @@
 
   /* shell v10 §19: every tab mirrors rl-pinned / rl-side written by any other
      tab. Applying only on an actual change keeps the host echo (which persists
-     the same value again) from looping. */
+     the same value again) from looping. Pin is per tab in the companion
+     (session key rl-pinned:<tab>); rl-side and folder prefs stay global. */
+  function applyPinnedPreference(nextPinned){
+    if(nextPinned === state.pinned) return;
+    state.pinned = nextPinned;
+    syncPinUI();
+    sendLauncherUI();
+    if(nextPinned) clearAutoHide();
+    else if(role === "dock" && state.dock === "open" && !state.active) scheduleAutoHide();
+  }
+
   function watchStoragePrefs(){
     try{
       if(typeof chrome === "undefined" || !chrome.storage || !chrome.storage.onChanged) return;
       chrome.storage.onChanged.addListener(function(changes, area){
-        if(area && area !== "local") return;
         if(!changes) return;
-
-        if(changes["rl-pinned"]){
-          var nextPinned = !!changes["rl-pinned"].newValue;
-          if(nextPinned !== state.pinned){
-            state.pinned = nextPinned;
-            syncPinUI();
-            sendLauncherUI();
-            if(nextPinned) clearAutoHide();
-            else if(role === "dock" && state.dock === "open" && !state.active) scheduleAutoHide();
+        var perTab = panelTabScope > 0;
+        if(perTab){
+          var pinKey = prefKey("rl-pinned");
+          if(area === "session" && changes[pinKey]){
+            applyPinnedPreference(!!changes[pinKey].newValue);
+          }
+          /* Local pin values are shared by older surfaces; a per-tab panel
+             must not adopt them. */
+          if(area !== "local") return;
+        }else{
+          if(area && area !== "local") return;
+          if(changes["rl-pinned"]){
+            applyPinnedPreference(!!changes["rl-pinned"].newValue);
           }
         }
 
@@ -537,6 +550,14 @@
       }
     };
     try{
+      if(typeof chrome !== "undefined" && chrome.storage && panelTabScope > 0 && chrome.storage.session){
+        chrome.storage.session.get([prefKey("rl-pinned")], function(values){
+          try{ if(chrome.runtime && chrome.runtime.lastError){ apply(state.pinned); return; } }
+          catch(err){ /* ignore */ }
+          apply(values && values[prefKey("rl-pinned")]);
+        });
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.get(["rl-pinned"], function(values){
           try{ if(chrome.runtime && chrome.runtime.lastError){ apply(state.pinned); return; } }

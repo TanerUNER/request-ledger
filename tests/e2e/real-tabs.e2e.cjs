@@ -417,16 +417,19 @@ async function main() {
     await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
     await sleep(400);
 
-    /* Panel-only theme toggle, persisted as rl-theme. */
+    /* Panel-only theme toggle, persisted per tab as rl-theme:<tabId>. */
     const appThemeBefore = await evaluate(cdp, appSession,
       "document.documentElement.getAttribute('data-theme')");
     const themeBefore = await evaluate(cdp, appPanel.flyoutSession,
       "document.documentElement.getAttribute('data-theme')");
+    const appTabId = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.tabId()");
+    check("panel iframe carries the host tab id", appTabId > 0, appTabId);
     await evaluate(cdp, appPanel.dockSession, "document.getElementById('rl-theme-toggle').click()");
     const themeAfter = await evaluate(cdp, appPanel.flyoutSession,
       "document.documentElement.getAttribute('data-theme')");
-    const storedTheme = await evaluate(cdp, appPanel.dockSession,
-      "new Promise((resolve) => chrome.storage.local.get('rl-theme', (value) => resolve(value['rl-theme'] || ''))) ");
+    const storedTheme = await evaluate(cdp, appPanel.flyoutSession,
+      `new Promise((resolve) => chrome.storage.session.get('rl-theme:${appTabId}', (value) => resolve(value['rl-theme:${appTabId}'] || '')))`);
     check("panel theme toggle flips the panel only",
       themeAfter !== themeBefore && themeAfter === storedTheme &&
       await evaluate(cdp, appSession, "document.documentElement.getAttribute('data-theme')") === appThemeBefore,
@@ -631,9 +634,144 @@ async function main() {
     check("app attachment upload reaches the panel", !!appUploaded && !!panelUpload, panelUpload);
     await screenshot(cdp, appSession, "17-media-attachment-upload.png");
 
-    /* Toast inset: the sticky footer must stay above every visible toast. */
+    /* Metadata can arrive before its blob. Both surfaces must show a neutral
+       loading state, then render the image when RL_APP_MEDIA lands — with no
+       page reload. */
+    const pendingPanelImage = "e2e-pending-panel-" + Date.now();
+    const pendingAppImage = "e2e-pending-app-" + Date.now();
+    const onePixelPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+    await evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+      const req = JSON.parse(raw).requests.find((item) => item.id === 'IST-001');
+      req.images = (req.images || []).concat([{ id:${JSON.stringify(pendingPanelImage)}, name:'pending-panel.png', type:'image/png', ext:'png', size:68, w:1, h:1, file:'' }]);
+      req.updatedAt = new Date(Date.now() + 1000).toISOString();
+      window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+        ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
+        upserts:[req], updatedAt: req.updatedAt }, '*');
+      return true;
+    })()`);
     await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
     await sleep(600);
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const row = document.querySelector('[data-request-id="IST-001"]');
+      if (row) row.click();
+      return !!row;
+    })()`);
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      `(() => { const cell = document.querySelector('#rl-img-grid .thumb[data-image-id="${pendingPanelImage}"]'); return cell && cell.classList.contains('is-loading') ? true : null; })()`),
+      "panel pending thumb", 10000);
+    const panelPending = await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const cell = document.querySelector('#rl-img-grid .thumb[data-image-id="${pendingPanelImage}"]');
+      return cell ? { loading: cell.classList.contains('is-loading'), missing: cell.classList.contains('is-missing'), text: cell.innerText } : null;
+    })()`);
+    check("panel shows a loading image while the blob is pending",
+      panelPending && panelPending.loading === true && panelPending.missing === false,
+      panelPending);
+
+    await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_MEDIA', v:1,
+      ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(), requestId:'IST-001',
+      media:[{ kind:'image', id:${JSON.stringify(pendingPanelImage)},
+        meta:{ id:${JSON.stringify(pendingPanelImage)}, name:'pending-panel.png', type:'image/png', ext:'png', size:68, w:1, h:1 },
+        dataUrl:${JSON.stringify(onePixelPng)} }] }, '*')`);
+    const panelArrived = await waitFor(() => evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const cell = document.querySelector('#rl-img-grid .thumb[data-image-id="${pendingPanelImage}"]');
+      const img = cell && cell.querySelector('img');
+      return img && /^blob:/.test(img.src) && !cell.classList.contains('is-loading') && !cell.classList.contains('is-missing') ? { ok:true } : null;
+    })()`), "panel renders arrived media", 12000);
+    check("panel renders the image when the blob arrives without a reload", !!panelArrived);
+
+    const appPendingRequest = await evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+      const req = JSON.parse(raw).requests.find((item) => item.id === 'IST-001');
+      req.images = (req.images || []).concat([{ id:${JSON.stringify(pendingAppImage)}, name:'pending-app.png', type:'image/png', ext:'png', size:68, w:1, h:1, file:'' }]);
+      req.updatedAt = new Date(Date.now() + 1000).toISOString();
+      return req;
+    })()`);
+    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_PATCH', v:1,
+      ledgerId: window.__rlBridgePanel.ledgerId(), projectId: window.__rlBridgePanel.projectId(),
+      upserts:[${JSON.stringify(appPendingRequest)}], updatedAt: ${JSON.stringify(appPendingRequest.updatedAt)} }, '*')`);
+    const appHasPendingMeta = await waitFor(() => evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+      const req = raw ? JSON.parse(raw).requests.find((item) => item.id === 'IST-001') : null;
+      return !!(req && (req.images || []).some((item) => item.id === '${pendingAppImage}'));
+    })()`), "app receives pending media metadata", 10000).catch(() => false);
+    if (!appHasPendingMeta) {
+      console.log("APP PENDING META DEBUG", JSON.stringify(await evaluate(cdp, appSession, `(() => ({
+        bridge: window.__rlBridge ? {
+          connected: window.__rlBridge.connected(),
+          projectId: window.__rlBridge.projectId(),
+          ledgerId: window.__rlBridge.ledgerId(),
+          rejects: window.__rlBridge.rejects()
+        } : null
+      }))()`)));
+    }
+    check("app receives pending image metadata", appHasPendingMeta === true);
+    await evaluate(cdp, appSession, `(() => {
+      const row = document.querySelector('.req[data-id="IST-001"]');
+      if (row && !row.classList.contains('is-open')) {
+        const toggle = row.querySelector('[data-action="toggle"]');
+        if (toggle) toggle.click();
+      }
+      return !!row;
+    })()`);
+    const appPending = await waitFor(() => evaluate(cdp, appSession, `(() => {
+      const cell = document.querySelector('.req[data-id="IST-001"] .thumb[data-image-id="${pendingAppImage}"]');
+      return cell && cell.classList.contains('is-loading') ? { loading:true, missing:cell.classList.contains('is-missing'), text:cell.innerText } : null;
+    })()`), "app pending thumb", 10000);
+    check("app shows a loading image while the blob is pending", !!appPending && appPending.missing === false, appPending);
+
+    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_MEDIA', v:1,
+      ledgerId: window.__rlBridgePanel.ledgerId(), projectId: window.__rlBridgePanel.projectId(), requestId:'IST-001',
+      media:[{ kind:'image', id:${JSON.stringify(pendingAppImage)},
+        meta:{ id:${JSON.stringify(pendingAppImage)}, name:'pending-app.png', type:'image/png', ext:'png', size:68, w:1, h:1 },
+        dataUrl:${JSON.stringify(onePixelPng)} }] }, '*')`);
+    const appArrived = await waitFor(() => evaluate(cdp, appSession, `(() => {
+      const cell = document.querySelector('.req[data-id="IST-001"] .thumb[data-image-id="${pendingAppImage}"]');
+      const img = cell && cell.querySelector('img');
+      return img && /^blob:/.test(img.src) && !cell.classList.contains('is-loading') ? { ok:true } : null;
+    })()`), "app renders arrived media", 12000).catch(async () => {
+      const debug = await evaluate(cdp, appSession, `(async () => {
+        const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+        const req = raw ? JSON.parse(raw).requests.find((item) => item.id === 'IST-001') : null;
+        const db = await new Promise((resolve) => {
+          const open = indexedDB.open('oz-istek-defteri');
+          open.onsuccess = () => resolve(open.result);
+          open.onerror = () => resolve(null);
+        });
+        const blobSize = await new Promise((resolve) => {
+          if (!db) return resolve(-1);
+          const tx = db.transaction('images', 'readonly');
+          const get = tx.objectStore('images').get('${pendingAppImage}');
+          get.onsuccess = () => resolve(get.result && get.result.blob ? get.result.blob.size : 0);
+          get.onerror = () => resolve(-1);
+        });
+        return {
+          hasImage: !!(req && (req.images || []).some((item) => item.id === '${pendingAppImage}')),
+          images: req ? (req.images || []).map((item) => item.id) : [],
+          blobSize: blobSize,
+          stats: window.__rlBridge ? window.__rlBridge.stats() : null,
+          relay: window.__rlBridgeHost ? window.__rlBridgeHost.toPage() : -1,
+          bridge: window.__rlBridge ? {
+            enabled: window.__rlBridge.enabled(),
+            connected: window.__rlBridge.connected(),
+            rejects: window.__rlBridge.rejects()
+          } : null
+        };
+      })()`);
+      console.log("MEDIA ARRIVAL DEBUG", JSON.stringify(debug));
+      return null;
+    });
+    check("app renders the image when the blob arrives without a reload", !!appArrived);
+    await screenshot(cdp, appSession, "18-media-pending-resolved.png");
+
+    /* Toast inset: the sticky footer must stay above every visible toast. */
+    await evaluate(cdp, appPanel.dockSession,
+      "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "!!document.getElementById('rl-save-record')"), "list footer button", 8000);
+    await sleep(400);
     await evaluate(cdp, appPanel.flyoutSession,
       "document.getElementById('rl-fo-body').scrollTop = document.getElementById('rl-fo-body').scrollHeight");
     await sleep(300);
@@ -687,6 +825,66 @@ async function main() {
     const tabBPanel = await readPanel(cdp, otherPanel.flyoutSession);
     check("Tab B panel adopts the same project and ledger",
       tabBPanel.projectId === appProjectId && tabBPanel.ledgerId === afterCreate.bridge.ledgerId, tabBPanel);
+
+    /* Per-tab pin/theme isolation: preferences must not leak across tabs. */
+    const tabAId = await evaluate(cdp, appPanel.flyoutSession, "window.__rlBridgePanel.tabId()");
+    const tabBId = await evaluate(cdp, otherPanel.flyoutSession, "window.__rlBridgePanel.tabId()");
+    check("Tab A and Tab B have different panel tab ids",
+      tabAId > 0 && tabBId > 0 && tabAId !== tabBId, { tabAId, tabBId });
+
+    const themeA = await evaluate(cdp, appPanel.flyoutSession,
+      "document.documentElement.getAttribute('data-theme')");
+    const themeBBefore = await evaluate(cdp, otherPanel.flyoutSession,
+      "document.documentElement.getAttribute('data-theme')");
+    await evaluate(cdp, otherPanel.dockSession, "document.getElementById('rl-theme-toggle').click()");
+    const themeBAfter = await evaluate(cdp, otherPanel.flyoutSession,
+      "document.documentElement.getAttribute('data-theme')");
+    const tabBThemeStored = await evaluate(cdp, otherPanel.flyoutSession,
+      `new Promise((resolve) => chrome.storage.session.get('rl-theme:${tabBId}', (value) => resolve(value['rl-theme:${tabBId}'] || '')))`);
+    check("theme toggle on Tab B stays in Tab B",
+      themeBAfter !== themeBBefore && tabBThemeStored === themeBAfter &&
+      await evaluate(cdp, appPanel.flyoutSession,
+        "document.documentElement.getAttribute('data-theme')") === themeA,
+      { themeA, themeBBefore, themeBAfter, tabBThemeStored });
+
+    const pinnedA = await evaluate(cdp, appPanel.dockSession,
+      "document.getElementById('rl-pin').getAttribute('aria-pressed')");
+    await evaluate(cdp, otherPanel.dockSession, "document.getElementById('rl-pin').click()");
+    const pinnedB = await evaluate(cdp, otherPanel.dockSession,
+      "document.getElementById('rl-pin').getAttribute('aria-pressed')");
+    const tabBPinStored = await evaluate(cdp, otherPanel.flyoutSession,
+      `new Promise((resolve) => chrome.storage.session.get('rl-pinned:${tabBId}', (value) => resolve(value['rl-pinned:${tabBId}'])))`);
+    check("pin toggled on Tab B stays in Tab B",
+      pinnedB === "true" && tabBPinStored === true &&
+      await evaluate(cdp, appPanel.dockSession,
+        "document.getElementById('rl-pin').getAttribute('aria-pressed')") === pinnedA,
+      { pinnedA, pinnedB, tabBPinStored });
+
+    /* A fresh tab starts with defaults and its keys vanish when it closes. */
+    const thirdTarget = await cdp.send("Target.createTarget", { url: base + "/" + TARGET_PATH });
+    const thirdSession = await attach(cdp, thirdTarget.targetId);
+    await waitFor(() => evaluate(cdp, thirdSession,
+      "!!document.getElementById('rl-host')"), "Tab C host", 25000);
+    const thirdPanel = await openPanel(cdp, thirdSession);
+    const tabCId = await evaluate(cdp, thirdPanel.flyoutSession,
+      "window.__rlBridgePanel.tabId()");
+    const thirdState = await evaluate(cdp, thirdPanel.flyoutSession, `(() => ({
+      theme: document.documentElement.getAttribute('data-theme'),
+      system: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }))()`);
+    const thirdKeys = await evaluate(cdp, thirdPanel.flyoutSession,
+      `new Promise((resolve) => chrome.storage.session.get(['rl-theme:${tabCId}', 'rl-pinned:${tabCId}'], (value) => resolve({ theme: value['rl-theme:${tabCId}'], pinned: value['rl-pinned:${tabCId}'] })))`);
+    check("a new tab starts with the default pin and theme",
+      tabCId > 0 && thirdState.theme === thirdState.system &&
+      thirdKeys.theme === undefined && thirdKeys.pinned === undefined,
+      { tabCId, thirdState, thirdKeys });
+    await cdp.send("Target.closeTarget", { targetId: thirdTarget.targetId });
+    await sleep(1200);
+    const thirdKeysAfterClose = await evaluate(cdp, otherPanel.flyoutSession,
+      `new Promise((resolve) => chrome.storage.session.get(['rl-theme:${tabCId}', 'rl-pinned:${tabCId}'], (value) => resolve({ theme: value['rl-theme:${tabCId}'], pinned: value['rl-pinned:${tabCId}'] })))`);
+    check("closing a tab clears its pin and theme keys",
+      thirdKeysAfterClose.theme === undefined && thirdKeysAfterClose.pinned === undefined,
+      thirdKeysAfterClose);
 
     await createRequestInPanel(cdp, otherPanel.dockSession, otherPanel.flyoutSession,
       "Request from Tab B", "Created from the plain template tab.");

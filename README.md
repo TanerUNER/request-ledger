@@ -126,6 +126,11 @@ project list/records read this folder metadata. In `file://` mode there is no se
 Save/Export show a clear “server mode required for folder saves” message and fall back to browser
 downloads.
 
+While the server is alive, Settings offers **Restart server**. It asks the live server to spawn its
+replacement on the same port, then reloads the page once the new process answers; the old process
+exits. After a hard stop the page cannot spawn a process, so the blocked screen only says **run
+`start.cmd`** to start the server again and reconnects automatically when it returns.
+
 ## Chrome companion
 
 The `extension/` folder is an unpacked **Manifest V3** extension for Chrome and Edge 114+. It is a
@@ -136,11 +141,12 @@ bottom-right of pages and a 360 px flyout; it does not reflow the page.
 |---|---|
 | **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** — no rail, launcher, iframe or lock card. It returns automatically when the app starts. |
 | **App-owned projects** | Projects are created, renamed, switched and deleted only in the app. The extension always follows the app’s active project; it has no project list, picker or creation UI. |
-| **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. |
+| **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. A thumbnail whose blob is still in transit shows a neutral “Loading image…” state instead of “Image not found”. |
 | **Element picker** | Pick an element on the current page or on a tab chosen from the app. Repeated picks append selectors with `" | "` on both surfaces (deduped, 200-character cap). |
 | **Screenshot** | Choose a tab, crop the region you need, and attach the image to the active request. The page path fills automatically. |
 | **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. Ready/locked requests still allow image preview, never editing. |
-| **Panel theme** | A light/dark toggle in the rail replaces the removed Settings section and is stored as `rl-theme`; it never changes the host page theme. |
+| **Per-tab pin and theme** | Pin state and the light/dark panel theme are stored per browser tab in session storage, so changing them on one page never affects another. A new tab starts from the defaults; closing it clears its keys. |
+| **Toolbar popup** | Clicking the browser action opens a small About card with the name, version, repository, support link and MIT license; it states that the app must be open. The in-page dock is unchanged. |
 | **Backup and transfer** | Download a ZIP or JSON backup, restore one, or move data between the extension and the web app. |
 
 The extension cannot enable or disable itself from `chrome://extensions`. If you disable it there, it
@@ -248,6 +254,8 @@ extension page is an iframe on an untrusted page; treat screenshots on untrusted
   (1024 px).
 - The single HTML file cannot start the local server. The extension bridge can still connect when the
   extension is allowed to access file URLs, but there are no server project-folder writes.
+- A web page cannot spawn a process. Restart works only while the server is alive; after a hard stop,
+  run `start.cmd` (the app reconnects on its own when it returns).
 - Live media sync is capped at **8 MB per item**. Larger images/attachments and all media in a
   portable archive still travel with a backup ZIP.
 - The extension is a companion: with no app running, it shows no UI on any page. It cannot re-enable

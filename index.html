@@ -588,6 +588,7 @@
   .thumb__del{position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(26,22,16,.68);color:#fff;font-size:13px;line-height:1;backdrop-filter:blur(2px)}
   .thumb__del:hover{background:var(--danger)}
   .thumb.is-missing{display:grid;place-items:center;padding:6px;text-align:center;font-size:8.5px;color:var(--muted-2)}
+  .thumb.is-loading{display:grid;place-items:center;padding:6px;text-align:center;font-size:8.5px;color:var(--muted-2)}
   .dz-add{width:116px;height:76px;flex:0 0 auto;border:1.5px dashed var(--line-2);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted);font-size:9px;background:transparent}
   .dz-add:hover{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft)}
   .dz-hint{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted-2);margin-top:7px}
@@ -1418,7 +1419,7 @@
   </div>
 </div>
 
-<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle">
+<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle" tabindex="-1">
   <div class="serverblocked__card">
     <div class="serverblocked__icon" aria-hidden="true">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
@@ -1426,11 +1427,8 @@
     <div class="eyebrow">Server</div>
     <h2 id="serverBlockedTitle">Sunucu durduruldu</h2>
     <p>Bu pencere sunucuya bağlıydı. Düzenleme ve uzantı köprüsü durduruldu; defter tarayıcıda korunuyor.</p>
-    <p>Yeniden başlatmak için <code>start.cmd</code> çalıştır.</p>
+    <p id="serverBlockedText">Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.</p>
     <p class="serverblocked__hint" id="serverBlockedHint">Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.</p>
-    <div class="serverblocked__actions">
-      <button class="btn btn--primary" type="button" id="serverBlockedRetry">Yeniden bağlan</button>
-    </div>
   </div>
 </div>
 
@@ -1781,6 +1779,7 @@
                 <div class="systemrow__control portcontrol">
                   <input class="input portcontrol__input" id="settingsPort" type="number" inputmode="numeric" min="0" max="65535" step="1" value="0" autocomplete="off" aria-label="Port">
                   <button class="btn btn--ghost btn--small" type="button" id="applyPortBtn">Portu uygula</button>
+                  <button class="btn btn--ghost btn--small" type="button" id="restartServerBtn" hidden>Sunucuyu yeniden başlat</button>
                   <span class="portcontrol__status" id="portStatus" role="status" aria-live="polite"></span>
                 </div>
               </div>
@@ -2920,6 +2919,7 @@ const SEO_TITLE = document.title;
     "_Açıklama girilmedi._": "_No description provided._",
     "Console Hatası veya Sayfa Hatası": "Console Error or Page Error",
     "Görsel bulunamadı": "Image not found",
+    "Görsel yükleniyor…": "Loading image…",
     "dosya bulunamadı": "file not found",
     "dosya eki; ZIP çıktısında taşınır": "attachment; included in ZIP output",
     "Belirtilmedi": "Not specified",
@@ -3325,6 +3325,11 @@ const SEO_TITLE = document.title;
     "Port uygulanamadı.": "The port could not be applied.",
     "Port kaydedildi.": "Port saved.",
     "Sunucu yeniden başlatılıyor.": "Restarting the server.",
+    "Sunucu yeniden başladı; bağlanılıyor": "The server is back; connecting",
+    "Sunucu yeniden başlatılamadı.": "The server could not be restarted.",
+    "Sunucu yeniden başlamadı. start.cmd çalıştır.": "The server did not come back. Run start.cmd.",
+    "Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.": "The server is off. Run start.cmd to start it again.",
+    "Sunucuyu yeniden başlat": "Restart server",
     "Portu uygulamadan önce bu projede kaydedilmemiş değişiklikler var. Kaydetmek ister misin?": "This project has unsaved changes. Do you want to save before applying the port?",
     "Kaydet ve uygula": "Save and apply",
     "Kaydetmeden uygula": "Apply without saving",
@@ -5858,6 +5863,7 @@ const SEO_TITLE = document.title;
     req.images.forEach(function(img, index){
       const thumb = document.createElement("div");
       thumb.className = "thumb";
+      thumb.dataset.imageId = img.id;
       const open = document.createElement("button");
       open.type = "button";
       open.className = "thumb__open";
@@ -5879,6 +5885,22 @@ const SEO_TITLE = document.title;
       thumbs.appendChild(thumb);
       loadImageURL(img.id).then(function(url){
         if(!url){
+          if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+            thumb.classList.add("is-loading");
+            open.remove();
+            const loading = document.createElement("span");
+            loading.textContent = translateString("Görsel yükleniyor…");
+            thumb.prepend(loading);
+            const wait = typeof bridgeMediaPendingRemaining === "function"
+              ? bridgeMediaPendingRemaining("image", img.id)
+              : 1000;
+            setTimeout(function(){
+              if(!document.body.contains(thumb)) return;
+              if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)) return;
+              renderImages(row, req);
+            }, Math.max(600, wait + 100));
+            return;
+          }
           thumb.classList.add("is-missing");
           open.remove();
           const missing = document.createElement("span");
@@ -7662,6 +7684,10 @@ const SEO_TITLE = document.title;
     if(!img) return;
     const url = await loadImageURL(imageId);
     if(!url){
+      if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", imageId)){
+        showToast(translateString("Görsel yükleniyor…"));
+        return;
+      }
       showToast("Görsel bulunamadı. Yedekten geri yüklemeyi deneyebilirsin.", "error");
       return;
     }
@@ -11107,7 +11133,7 @@ const SEO_TITLE = document.title;
      it cannot detect a ledger conflict on its own. These flags make the page
      re-announce itself once per empty-panel state and once per conflict. */
   let bridgePeerEmptyAsked = false;
-  const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0 };
+  const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0, media:0 };
   /* Rejected envelopes and the exact conflict evidence are kept in memory so
      the UI/E2E can explain a prompt instead of silently diverging. */
   const BRIDGE_DIAGNOSTIC_MAX = 50;
@@ -11303,6 +11329,35 @@ const SEO_TITLE = document.title;
   const bridgePeerMedia = {};
   let bridgeMediaSending = false;
 
+  /* Media metadata can arrive before its blob. While a transfer is expected
+     the UI shows a neutral loading state instead of "Image not found"; a
+     missing blob becomes "not found" only after this window. */
+  const BRIDGE_MEDIA_PENDING_MS = 15000;
+  const bridgeMediaPending = {};
+
+  function bridgeMediaMarkPending(kind, id){
+    if(!id) return;
+    const key = bridgeMediaKey(kind, id);
+    if(!(key in bridgeMediaPending)) bridgeMediaPending[key] = Date.now();
+  }
+
+  function bridgeMediaPendingRemaining(kind, id){
+    if(!id) return 0;
+    const at = bridgeMediaPending[bridgeMediaKey(kind, id)];
+    if(!at) return 0;
+    const left = BRIDGE_MEDIA_PENDING_MS - (Date.now() - at);
+    return left > 0 ? left : 0;
+  }
+
+  function bridgeMediaIsPending(kind, id){
+    return bridgeMediaPendingRemaining(kind, id) > 0;
+  }
+
+  function bridgeMediaClearPending(kind, id){
+    if(!id) return;
+    delete bridgeMediaPending[bridgeMediaKey(kind, id)];
+  }
+
   function bridgeMediaOut(item, kind){
     if(!item || typeof item.id !== "string" || !item.id) return null;
     const out = {
@@ -11443,6 +11498,11 @@ const SEO_TITLE = document.title;
       (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
     });
     if(!ids.length) return;
+    ids.forEach(function(value){
+      const parts = String(value).split(":");
+      const kind = parts.shift();
+      if(kind === "image" || kind === "file") bridgeMediaMarkPending(kind, parts.join(":"));
+    });
     window.postMessage({
       source:"request-ledger-web",
       type:"RL_APP_MEDIA_REQUEST",
@@ -11473,6 +11533,7 @@ const SEO_TITLE = document.title;
         const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
         if(kind === "image"){
           await idbPut({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" });
+          changed = true;
           const list = Array.isArray(req.images) ? req.images : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -11485,6 +11546,7 @@ const SEO_TITLE = document.title;
           }
         }else{
           await idbFilePut({ id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream" });
+          changed = true;
           const list = Array.isArray(req.attachments) ? req.attachments : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -11497,11 +11559,21 @@ const SEO_TITLE = document.title;
           }
         }
         bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+        bridgeMediaClearPending(kind, item.id);
+        bridgeStats.media++;
       }catch(err){ /* skip a broken media record */ }
     }
     if(changed){
       req.updatedAt = nowISO();
       saveNow();
+      /* The image/attachment ids did not change, only their blobs arrived.
+         Clear the render signatures so syncRow rebuilds the media blocks and
+         swaps the loading placeholder for the real image. */
+      const row = typeof getRowEl === "function" ? getRowEl(req.id) : null;
+      if(row){
+        row.__imageSig = "";
+        row.__attachmentSig = "";
+      }
       renderList();
       refreshGlobal();
     }
@@ -11755,6 +11827,18 @@ const SEO_TITLE = document.title;
       bridgeSuppress--;
     }
 
+    /* Metadata that just arrived through the bridge is expected to be
+       followed by its blob. Mark it before the first render so the loading
+       state wins the race with the async IndexedDB read. */
+    incoming.forEach(function(raw){
+      if(!raw || typeof raw !== "object") return;
+      (Array.isArray(raw.images) ? raw.images : []).forEach(function(img){
+        if(img && img.id) bridgeMediaMarkPending("image", img.id);
+      });
+      (Array.isArray(raw.attachments) ? raw.attachments : []).forEach(function(att){
+        if(att && att.id) bridgeMediaMarkPending("file", att.id);
+      });
+    });
     renderProjectGate();
     applyLanguage(state.language);
     renderList();
@@ -12189,7 +12273,7 @@ const SEO_TITLE = document.title;
         projectId:function(){ return activeProjectId || ""; },
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
-        stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
+        stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes, media:bridgeStats.media }; },
         conflict:function(){ return bridgeConflictOpen; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },
@@ -12827,6 +12911,7 @@ const SEO_TITLE = document.title;
   let onboardingOpen = false;
   let serverStopNotice = false;
   let serverReconnectTimer = null;
+  let serverRestartTimer = null;
   const serverPageId = "pg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
 
   function serverLifecycleUrl(path){
@@ -12931,6 +13016,8 @@ const SEO_TITLE = document.title;
       input.value = String(readStoredPort());
       input.classList.remove("is-invalid");
     }
+    const restart = $("#restartServerBtn");
+    if(restart) restart.hidden = !onboardingServerDetected();
     if(onboardingServerDetected()){
       setPortStatus(translateString("Yerel sunucu") + " · :" + onboardingServer.port);
     }else{
@@ -13217,6 +13304,78 @@ const SEO_TITLE = document.title;
     serverReconnectTimer = null;
   }
 
+  function stopServerRestartWatch(){
+    if(!serverRestartTimer) return;
+    clearInterval(serverRestartTimer);
+    serverRestartTimer = null;
+  }
+
+  /* In-place restart: the live server spawns its replacement on the same
+     port and exits. The current page must not navigate until the
+     replacement answers, so poll for a new pid and reload once it is live. */
+  function startServerRestartWatch(oldPid){
+    stopServerRestartWatch();
+    const previousPid = Number(oldPid) || 0;
+    const startedAt = Date.now();
+    const hint = $("#portStatus");
+    if(hint) hint.textContent = translateString("Sunucu yeniden başlatılıyor.");
+    serverRestartTimer = setInterval(function(){
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(!data || data.app !== "request-ledger" || data.server !== true) return;
+        if(previousPid && Number(data.pid) === previousPid) return;
+        stopServerRestartWatch();
+        if(hint) hint.textContent = translateString("Sunucu yeniden başladı; bağlanılıyor");
+        try{ window.location.reload(); }catch(err){ /* ignore */ }
+      }).catch(function(){ /* the replacement is not listening yet */ });
+      if(Date.now() - startedAt > 20000){
+        stopServerRestartWatch();
+        const reason = translateString("Sunucu yeniden başlamadı. start.cmd çalıştır.");
+        if(hint) hint.textContent = reason;
+        showToast(reason, "error");
+      }
+    }, 500);
+  }
+
+  async function restartServer(){
+    if(!onboardingServerDetected()){
+      showToast(translateString("Yerel sunucu bulunamadı."), "error");
+      return;
+    }
+    const oldPid = Number(onboardingServer.pid) || 0;
+    cancelScheduledSave();
+    saveNow();
+    setPortStatus(translateString("Sunucu yeniden başlatılıyor."));
+    try{
+      const response = await fetch("/__rl/rebind?restart=1", {
+        method:"POST",
+        cache:"no-store",
+        keepalive:true
+      });
+      let data = null;
+      try{ data = await response.json(); }catch(err){ data = null; }
+      if(!response.ok || !data || data.ok !== true || data.restarting !== true){
+        const reason = translateString("Sunucu yeniden başlatılamadı.");
+        setPortStatus(reason, true);
+        showToast(reason, "error");
+        return;
+      }
+      stopServerHeartbeat();
+      onboardingServer = null;
+      serverStopNotice = false;
+      const restartBtn = $("#restartServerBtn");
+      if(restartBtn) restartBtn.hidden = true;
+      showToast(translateString("Sunucu yeniden başlatılıyor."));
+      startServerRestartWatch(oldPid);
+    }catch(err){
+      const reason = translateString("Sunucu yeniden başlatılamadı.");
+      setPortStatus(reason, true);
+      showToast(reason, "error");
+    }
+  }
+
   /* The page is still in the browser's cache after the server stops. Poll the
      same origin and reload as soon as start.cmd brings the same port back, so
      the pair reconnects automatically instead of asking the user to refresh. */
@@ -13263,8 +13422,9 @@ const SEO_TITLE = document.title;
     if(overlay){
       overlay.hidden = !serverBlocked;
       if(serverBlocked){
-        const retry = $("#serverBlockedRetry");
-        try{ (retry || overlay).focus(); }catch(err){ /* ignore */ }
+        const text = $("#serverBlockedText");
+        if(text) text.textContent = translateString("Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.");
+        try{ overlay.focus(); }catch(err){ /* ignore */ }
       }
     }
     if(!serverBlocked){
@@ -13610,27 +13770,11 @@ const SEO_TITLE = document.title;
     });
     const settingsOpen = $("#openOnboardingBtn");
     if(settingsOpen) settingsOpen.addEventListener("click", openOnboarding);
-    const blockedRetry = $("#serverBlockedRetry");
-    if(blockedRetry) blockedRetry.addEventListener("click", function(){
-      const hint = $("#serverBlockedHint");
-      if(hint) hint.textContent = translateString("Sunucu kontrol ediliyor…");
-      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
-        if(!response.ok) return null;
-        return response.json();
-      }).then(function(data){
-        if(data && data.app === "request-ledger" && data.server === true){
-          stopServerReconnectWatch();
-          window.location.reload();
-          return;
-        }
-        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
-      }).catch(function(){
-        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
-      });
-    });
 
     const railStop = $("#railStopBtn");
     if(railStop) railStop.addEventListener("click", stopLocalServer);
+    const restartServerBtn = $("#restartServerBtn");
+    if(restartServerBtn) restartServerBtn.addEventListener("click", restartServer);
     const applyPort = $("#applyPortBtn");
     if(applyPort) applyPort.addEventListener("click", applyPortSetting);
     const portInput = $("#settingsPort");

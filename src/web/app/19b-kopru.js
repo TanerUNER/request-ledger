@@ -46,7 +46,7 @@
      it cannot detect a ledger conflict on its own. These flags make the page
      re-announce itself once per empty-panel state and once per conflict. */
   let bridgePeerEmptyAsked = false;
-  const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0 };
+  const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0, media:0 };
   /* Rejected envelopes and the exact conflict evidence are kept in memory so
      the UI/E2E can explain a prompt instead of silently diverging. */
   const BRIDGE_DIAGNOSTIC_MAX = 50;
@@ -242,6 +242,35 @@
   const bridgePeerMedia = {};
   let bridgeMediaSending = false;
 
+  /* Media metadata can arrive before its blob. While a transfer is expected
+     the UI shows a neutral loading state instead of "Image not found"; a
+     missing blob becomes "not found" only after this window. */
+  const BRIDGE_MEDIA_PENDING_MS = 15000;
+  const bridgeMediaPending = {};
+
+  function bridgeMediaMarkPending(kind, id){
+    if(!id) return;
+    const key = bridgeMediaKey(kind, id);
+    if(!(key in bridgeMediaPending)) bridgeMediaPending[key] = Date.now();
+  }
+
+  function bridgeMediaPendingRemaining(kind, id){
+    if(!id) return 0;
+    const at = bridgeMediaPending[bridgeMediaKey(kind, id)];
+    if(!at) return 0;
+    const left = BRIDGE_MEDIA_PENDING_MS - (Date.now() - at);
+    return left > 0 ? left : 0;
+  }
+
+  function bridgeMediaIsPending(kind, id){
+    return bridgeMediaPendingRemaining(kind, id) > 0;
+  }
+
+  function bridgeMediaClearPending(kind, id){
+    if(!id) return;
+    delete bridgeMediaPending[bridgeMediaKey(kind, id)];
+  }
+
   function bridgeMediaOut(item, kind){
     if(!item || typeof item.id !== "string" || !item.id) return null;
     const out = {
@@ -382,6 +411,11 @@
       (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
     });
     if(!ids.length) return;
+    ids.forEach(function(value){
+      const parts = String(value).split(":");
+      const kind = parts.shift();
+      if(kind === "image" || kind === "file") bridgeMediaMarkPending(kind, parts.join(":"));
+    });
     window.postMessage({
       source:"request-ledger-web",
       type:"RL_APP_MEDIA_REQUEST",
@@ -412,6 +446,7 @@
         const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
         if(kind === "image"){
           await idbPut({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" });
+          changed = true;
           const list = Array.isArray(req.images) ? req.images : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -424,6 +459,7 @@
           }
         }else{
           await idbFilePut({ id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream" });
+          changed = true;
           const list = Array.isArray(req.attachments) ? req.attachments : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -436,11 +472,21 @@
           }
         }
         bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+        bridgeMediaClearPending(kind, item.id);
+        bridgeStats.media++;
       }catch(err){ /* skip a broken media record */ }
     }
     if(changed){
       req.updatedAt = nowISO();
       saveNow();
+      /* The image/attachment ids did not change, only their blobs arrived.
+         Clear the render signatures so syncRow rebuilds the media blocks and
+         swaps the loading placeholder for the real image. */
+      const row = typeof getRowEl === "function" ? getRowEl(req.id) : null;
+      if(row){
+        row.__imageSig = "";
+        row.__attachmentSig = "";
+      }
       renderList();
       refreshGlobal();
     }
@@ -694,6 +740,18 @@
       bridgeSuppress--;
     }
 
+    /* Metadata that just arrived through the bridge is expected to be
+       followed by its blob. Mark it before the first render so the loading
+       state wins the race with the async IndexedDB read. */
+    incoming.forEach(function(raw){
+      if(!raw || typeof raw !== "object") return;
+      (Array.isArray(raw.images) ? raw.images : []).forEach(function(img){
+        if(img && img.id) bridgeMediaMarkPending("image", img.id);
+      });
+      (Array.isArray(raw.attachments) ? raw.attachments : []).forEach(function(att){
+        if(att && att.id) bridgeMediaMarkPending("file", att.id);
+      });
+    });
     renderProjectGate();
     applyLanguage(state.language);
     renderList();
@@ -1128,7 +1186,7 @@
         projectId:function(){ return activeProjectId || ""; },
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
-        stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
+        stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes, media:bridgeStats.media }; },
         conflict:function(){ return bridgeConflictOpen; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },

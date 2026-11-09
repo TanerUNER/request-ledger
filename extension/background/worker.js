@@ -751,6 +751,12 @@ function handleContentMessage(message, sender, sendResponse) {
       if (pick && pick.tabId === tabId) { abortPick(pick); }
       return false;
     }
+    case "RL_TAB_ID": {
+      /* The content script cannot call chrome.tabs; the worker supplies the
+         sender tab id so the panel can key pin/theme per tab. */
+      sendResponse({ ok: true, tabId: typeof tabId === "number" ? tabId : 0 });
+      return false;
+    }
     default:
       return false;
   }
@@ -898,6 +904,12 @@ if (chrome.tabs.onRemoved) {
     if (pendingPick && pendingPick.tabId === tabId) {
       abortPick(pendingPick, "closed");
     }
+    /* Per-tab pin/theme keys must not outlive their tab. */
+    try {
+      if (chrome.storage && chrome.storage.session) {
+        chrome.storage.session.remove(["rl-pinned:" + tabId, "rl-theme:" + tabId]);
+      }
+    } catch (error) { /* session storage unavailable */ }
   });
 }
 

@@ -310,6 +310,10 @@
     if(!img || !core || !core.storage || typeof core.storage.getImage !== "function") return;
     core.storage.getImage(img.id).then(function(record){
       if(!record || !record.blob){
+        if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+          toast(lx("imageLoading"));
+          return;
+        }
         toast(lx("imageModalFailed"), "error");
         return;
       }
@@ -443,7 +447,23 @@
   function loadThumb(img, image, cell){
     if(!core || !core.storage || !core.storage.getImage) return;
     core.storage.getImage(img.id).then(function(record){
-      if(!record || !record.blob){ cell.classList.add("is-missing"); return; }
+      if(!record || !record.blob){
+        if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+          cell.classList.add("is-loading");
+          cell.appendChild(h("span", "thumb-loading", lx("imageLoading")));
+          var wait = typeof bridgeMediaPendingRemaining === "function"
+            ? bridgeMediaPendingRemaining("image", img.id)
+            : 1000;
+          setTimeout(function(){
+            if(!document.body.contains(cell)) return;
+            if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)) return;
+            if(state.section === "detail") renderFlyout("detail");
+          }, Math.max(600, wait + 100));
+          return;
+        }
+        cell.classList.add("is-missing");
+        return;
+      }
       /* the grid may have been re-rendered while IDB resolved: never create an
          object URL for a detached cell (that is the leak the revision fixes). */
       if(!document.body.contains(cell)) return;

@@ -465,6 +465,7 @@
   .thumb__del{position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(26,22,16,.68);color:#fff;font-size:13px;line-height:1;backdrop-filter:blur(2px)}
   .thumb__del:hover{background:var(--danger)}
   .thumb.is-missing{display:grid;place-items:center;padding:6px;text-align:center;font-size:8.5px;color:var(--muted-2)}
+  .thumb.is-loading{display:grid;place-items:center;padding:6px;text-align:center;font-size:8.5px;color:var(--muted-2)}
   .dz-add{width:116px;height:76px;flex:0 0 auto;border:1.5px dashed var(--line-2);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted);font-size:9px;background:transparent}
   .dz-add:hover{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft)}
   .dz-hint{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted-2);margin-top:7px}
@@ -1295,7 +1296,7 @@
   </div>
 </div>
 
-<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle">
+<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle" tabindex="-1">
   <div class="serverblocked__card">
     <div class="serverblocked__icon" aria-hidden="true">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
@@ -1303,11 +1304,8 @@
     <div class="eyebrow">Server</div>
     <h2 id="serverBlockedTitle">Sunucu durduruldu</h2>
     <p>Bu pencere sunucuya bağlıydı. Düzenleme ve uzantı köprüsü durduruldu; defter tarayıcıda korunuyor.</p>
-    <p>Yeniden başlatmak için <code>start.cmd</code> çalıştır.</p>
+    <p id="serverBlockedText">Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.</p>
     <p class="serverblocked__hint" id="serverBlockedHint">Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.</p>
-    <div class="serverblocked__actions">
-      <button class="btn btn--primary" type="button" id="serverBlockedRetry">Yeniden bağlan</button>
-    </div>
   </div>
 </div>
 
@@ -1658,6 +1656,7 @@
                 <div class="systemrow__control portcontrol">
                   <input class="input portcontrol__input" id="settingsPort" type="number" inputmode="numeric" min="0" max="65535" step="1" value="0" autocomplete="off" aria-label="Port">
                   <button class="btn btn--ghost btn--small" type="button" id="applyPortBtn">Portu uygula</button>
+                  <button class="btn btn--ghost btn--small" type="button" id="restartServerBtn" hidden>Sunucuyu yeniden başlat</button>
                   <span class="portcontrol__status" id="portStatus" role="status" aria-live="polite"></span>
                 </div>
               </div>

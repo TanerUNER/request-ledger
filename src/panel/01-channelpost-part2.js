@@ -127,6 +127,37 @@
         done = true;
         resolve(values || {});
       }
+      function withSessionPrefs(localValues){
+        if(panelTabScope <= 0){
+          finish(localValues);
+          return;
+        }
+        try{
+          if(typeof chrome === "undefined" || !chrome.storage || !chrome.storage.session){
+            finish(localValues);
+            return;
+          }
+          chrome.storage.session.get([prefKey("rl-theme"), prefKey("rl-pinned")], function(sessionValues){
+            try{ if(chrome.runtime && chrome.runtime.lastError){ /* consumed */ } }catch(err){ /* ignore */ }
+            var merged = {};
+            for(var key in localValues){
+              if(Object.prototype.hasOwnProperty.call(localValues, key)) merged[key] = localValues[key];
+            }
+            /* A new tab starts from the defaults, never from a legacy global. */
+            delete merged["rl-theme"];
+            delete merged["rl-pinned"];
+            if(sessionValues){
+              var theme = sessionValues[prefKey("rl-theme")];
+              var pinned = sessionValues[prefKey("rl-pinned")];
+              if(theme != null) merged["rl-theme"] = theme;
+              if(pinned != null) merged["rl-pinned"] = pinned;
+            }
+            finish(merged);
+          });
+          return;
+        }catch(err){ /* fall back to local */ }
+        finish(localValues);
+      }
       try{
         if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
           chrome.storage.local.get(["rl-theme", "rl-lang", "rl-pinned", "rl-root-dir", "rl-export-dir", "rl-side"], function(values){
@@ -135,9 +166,9 @@
               if(values["rl-root-dir"]) folderDirs.root = String(values["rl-root-dir"]);
               if(values["rl-export-dir"]) folderDirs.export = String(values["rl-export-dir"]);
             }
-            finish(values);
+            withSessionPrefs(values || {});
           });
-          setTimeout(function(){ finish({}); }, 400);
+          setTimeout(function(){ finish({}); }, 500);
           return;
         }
       }catch(err){ /* standalone / no storage */ }
@@ -159,6 +190,13 @@
 
   function saveThemePref(pref){
     try{
+      var key = prefKey("rl-theme");
+      if(panelTabScope > 0 && typeof chrome !== "undefined" && chrome.storage && chrome.storage.session){
+        var patch = {};
+        patch[key] = pref;
+        chrome.storage.session.set(patch);
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-theme": pref });
       }

@@ -935,6 +935,12 @@ html[data-theme="dark"] .pr.on[data-priority="critical"]{
 .thumb:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .thumb img{display:block;width:100%;height:100%;object-fit:cover}
 .thumb.is-missing img{display:none}
+.thumb.is-loading{cursor:default}
+.thumb.is-loading img{display:none}
+.thumb.is-loading .thumb-loading{
+  position:absolute;inset:0;display:grid;place-items:center;padding:4px;
+  text-align:center;font-size:8.5px;line-height:1.3;color:var(--muted-2);
+}
 .thumb.is-missing::before{
   content:"×";position:absolute;inset:0;display:grid;place-items:center;
   color:var(--muted-2);font-size:15px;

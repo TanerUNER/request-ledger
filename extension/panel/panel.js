@@ -21,6 +21,13 @@
   var role = params.get("role") === "flyout" ? "flyout" : "dock";
   var demo = params.get("demo") === "1";
   var hasHost = window.parent !== window;
+  /* The dock host appends the real tab id. Pin and panel theme are stored per
+     tab in chrome.storage.session; a standalone panel page (no tab) keeps the
+     historical global keys. */
+  var panelTabScope = Number(params.get("tab")) || 0;
+  function prefKey(name){
+    return panelTabScope > 0 ? name + ":" + panelTabScope : name;
+  }
   var core = window.IstekCore || null;
 
   var state = {
@@ -310,6 +317,7 @@
     areaWeb:     { tr:"web uygulaması", en:"web app" },
     openImage:   { tr:"Görseli aç", en:"Open image" },
     imageModalFailed:{ tr:"Görsel açılamadı.", en:"Could not open the image." },
+    imageLoading:{ tr:"Görsel yükleniyor…", en:"Loading image…" },
     imagesAdded: { tr:"{n} görsel eklendi.", en:"{n} image(s) added." },
     filesAdded:  { tr:"{n} dosya eklendi.", en:"{n} file(s) added." },
     saveAsDraft: { tr:"Taslağa kaydet", en:"Save as draft" },
@@ -1596,6 +1604,37 @@
         done = true;
         resolve(values || {});
       }
+      function withSessionPrefs(localValues){
+        if(panelTabScope <= 0){
+          finish(localValues);
+          return;
+        }
+        try{
+          if(typeof chrome === "undefined" || !chrome.storage || !chrome.storage.session){
+            finish(localValues);
+            return;
+          }
+          chrome.storage.session.get([prefKey("rl-theme"), prefKey("rl-pinned")], function(sessionValues){
+            try{ if(chrome.runtime && chrome.runtime.lastError){ /* consumed */ } }catch(err){ /* ignore */ }
+            var merged = {};
+            for(var key in localValues){
+              if(Object.prototype.hasOwnProperty.call(localValues, key)) merged[key] = localValues[key];
+            }
+            /* A new tab starts from the defaults, never from a legacy global. */
+            delete merged["rl-theme"];
+            delete merged["rl-pinned"];
+            if(sessionValues){
+              var theme = sessionValues[prefKey("rl-theme")];
+              var pinned = sessionValues[prefKey("rl-pinned")];
+              if(theme != null) merged["rl-theme"] = theme;
+              if(pinned != null) merged["rl-pinned"] = pinned;
+            }
+            finish(merged);
+          });
+          return;
+        }catch(err){ /* fall back to local */ }
+        finish(localValues);
+      }
       try{
         if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
           chrome.storage.local.get(["rl-theme", "rl-lang", "rl-pinned", "rl-root-dir", "rl-export-dir", "rl-side"], function(values){
@@ -1604,9 +1643,9 @@
               if(values["rl-root-dir"]) folderDirs.root = String(values["rl-root-dir"]);
               if(values["rl-export-dir"]) folderDirs.export = String(values["rl-export-dir"]);
             }
-            finish(values);
+            withSessionPrefs(values || {});
           });
-          setTimeout(function(){ finish({}); }, 400);
+          setTimeout(function(){ finish({}); }, 500);
           return;
         }
       }catch(err){ /* standalone / no storage */ }
@@ -1628,6 +1667,13 @@
 
   function saveThemePref(pref){
     try{
+      var key = prefKey("rl-theme");
+      if(panelTabScope > 0 && typeof chrome !== "undefined" && chrome.storage && chrome.storage.session){
+        var patch = {};
+        patch[key] = pref;
+        chrome.storage.session.set(patch);
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-theme": pref });
       }
@@ -2432,22 +2478,35 @@
 
   /* shell v10 §19: every tab mirrors rl-pinned / rl-side written by any other
      tab. Applying only on an actual change keeps the host echo (which persists
-     the same value again) from looping. */
+     the same value again) from looping. Pin is per tab in the companion
+     (session key rl-pinned:<tab>); rl-side and folder prefs stay global. */
+  function applyPinnedPreference(nextPinned){
+    if(nextPinned === state.pinned) return;
+    state.pinned = nextPinned;
+    syncPinUI();
+    sendLauncherUI();
+    if(nextPinned) clearAutoHide();
+    else if(role === "dock" && state.dock === "open" && !state.active) scheduleAutoHide();
+  }
+
   function watchStoragePrefs(){
     try{
       if(typeof chrome === "undefined" || !chrome.storage || !chrome.storage.onChanged) return;
       chrome.storage.onChanged.addListener(function(changes, area){
-        if(area && area !== "local") return;
         if(!changes) return;
-
-        if(changes["rl-pinned"]){
-          var nextPinned = !!changes["rl-pinned"].newValue;
-          if(nextPinned !== state.pinned){
-            state.pinned = nextPinned;
-            syncPinUI();
-            sendLauncherUI();
-            if(nextPinned) clearAutoHide();
-            else if(role === "dock" && state.dock === "open" && !state.active) scheduleAutoHide();
+        var perTab = panelTabScope > 0;
+        if(perTab){
+          var pinKey = prefKey("rl-pinned");
+          if(area === "session" && changes[pinKey]){
+            applyPinnedPreference(!!changes[pinKey].newValue);
+          }
+          /* Local pin values are shared by older surfaces; a per-tab panel
+             must not adopt them. */
+          if(area !== "local") return;
+        }else{
+          if(area && area !== "local") return;
+          if(changes["rl-pinned"]){
+            applyPinnedPreference(!!changes["rl-pinned"].newValue);
           }
         }
 
@@ -2633,6 +2692,14 @@
       }
     };
     try{
+      if(typeof chrome !== "undefined" && chrome.storage && panelTabScope > 0 && chrome.storage.session){
+        chrome.storage.session.get([prefKey("rl-pinned")], function(values){
+          try{ if(chrome.runtime && chrome.runtime.lastError){ apply(state.pinned); return; } }
+          catch(err){ /* ignore */ }
+          apply(values && values[prefKey("rl-pinned")]);
+        });
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.get(["rl-pinned"], function(values){
           try{ if(chrome.runtime && chrome.runtime.lastError){ apply(state.pinned); return; } }
@@ -2832,6 +2899,12 @@
 
   function persistPin(){
     try{
+      if(panelTabScope > 0 && typeof chrome !== "undefined" && chrome.storage && chrome.storage.session){
+        var patch = {};
+        patch[prefKey("rl-pinned")] = !!state.pinned;
+        chrome.storage.session.set(patch);
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-pinned": !!state.pinned });
       }
@@ -5650,6 +5723,10 @@
     if(!img || !core || !core.storage || typeof core.storage.getImage !== "function") return;
     core.storage.getImage(img.id).then(function(record){
       if(!record || !record.blob){
+        if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+          toast(lx("imageLoading"));
+          return;
+        }
         toast(lx("imageModalFailed"), "error");
         return;
       }
@@ -5783,7 +5860,23 @@
   function loadThumb(img, image, cell){
     if(!core || !core.storage || !core.storage.getImage) return;
     core.storage.getImage(img.id).then(function(record){
-      if(!record || !record.blob){ cell.classList.add("is-missing"); return; }
+      if(!record || !record.blob){
+        if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)){
+          cell.classList.add("is-loading");
+          cell.appendChild(h("span", "thumb-loading", lx("imageLoading")));
+          var wait = typeof bridgeMediaPendingRemaining === "function"
+            ? bridgeMediaPendingRemaining("image", img.id)
+            : 1000;
+          setTimeout(function(){
+            if(!document.body.contains(cell)) return;
+            if(typeof bridgeMediaIsPending === "function" && bridgeMediaIsPending("image", img.id)) return;
+            if(state.section === "detail") renderFlyout("detail");
+          }, Math.max(600, wait + 100));
+          return;
+        }
+        cell.classList.add("is-missing");
+        return;
+      }
       /* the grid may have been re-rendered while IDB resolved: never create an
          object URL for a detached cell (that is the leak the revision fixes). */
       if(!document.body.contains(cell)) return;
@@ -11713,6 +11806,35 @@
   var bridgePeerMedia = {};
   var bridgeMediaSending = false;
 
+  /* Metadata can arrive before the blob. Keep a short pending window so the
+     detail view can show "Loading image…" instead of a premature missing
+     placeholder; a real failure turns into "not found" after the timeout. */
+  var BRIDGE_MEDIA_PENDING_MS = 15000;
+  var bridgeMediaPending = {};
+
+  function bridgeMediaMarkPending(kind, id){
+    if(!id) return;
+    var key = bridgeMediaKey(kind, id);
+    if(!(key in bridgeMediaPending)) bridgeMediaPending[key] = Date.now();
+  }
+
+  function bridgeMediaPendingRemaining(kind, id){
+    if(!id) return 0;
+    var at = bridgeMediaPending[bridgeMediaKey(kind, id)];
+    if(!at) return 0;
+    var left = BRIDGE_MEDIA_PENDING_MS - (Date.now() - at);
+    return left > 0 ? left : 0;
+  }
+
+  function bridgeMediaIsPending(kind, id){
+    return bridgeMediaPendingRemaining(kind, id) > 0;
+  }
+
+  function bridgeMediaClearPending(kind, id){
+    if(!id) return;
+    delete bridgeMediaPending[bridgeMediaKey(kind, id)];
+  }
+
   function bridgeMediaOut(item, kind){
     if(!item || typeof item.id !== "string" || !item.id) return null;
     var out = {
@@ -11788,6 +11910,11 @@
       (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
     });
     if(!ids.length) return;
+    ids.forEach(function(value){
+      var parts = String(value).split(":");
+      var kind = parts.shift();
+      if(kind === "image" || kind === "file") bridgeMediaMarkPending(kind, parts.join(":"));
+    });
     bridgePost("RL_APP_MEDIA_REQUEST", { ids:ids.slice(0, 100) });
   }
 
@@ -11813,6 +11940,7 @@
         if(blob.size > BRIDGE_MEDIA_MAX_BYTES) return;
         if(kind === "image"){
           return core.storage.putImage({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" }).then(function(){
+            changed = true;
             var list = Array.isArray(req.images) ? req.images : [];
             if(!list.some(function(entry){ return entry.id === item.id; })){
               list.push({
@@ -11828,6 +11956,7 @@
         return core.storage.putFile({
           id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream"
         }).then(function(){
+          changed = true;
           var list = Array.isArray(req.attachments) ? req.attachments : [];
           if(!list.some(function(entry){ return entry.id === item.id; })){
             list.push({
@@ -11841,6 +11970,7 @@
         });
       }).then(function(){
         bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+        bridgeMediaClearPending(kind, item.id);
       }).catch(function(){ /* skip broken media */ });
     });
     Promise.all(jobs).then(function(){
@@ -12551,6 +12681,18 @@
       bridgeSuppress--;
     }
 
+    /* Metadata that just arrived through the bridge is expected to be
+       followed by its blob. Mark it before the first render so the loading
+       state wins the race with the async storage read. */
+    incoming.forEach(function(raw){
+      if(!raw || typeof raw !== "object") return;
+      (Array.isArray(raw.images) ? raw.images : []).forEach(function(img){
+        if(img && img.id) bridgeMediaMarkPending("image", img.id);
+      });
+      (Array.isArray(raw.attachments) ? raw.attachments : []).forEach(function(att){
+        if(att && att.id) bridgeMediaMarkPending("file", att.id);
+      });
+    });
     reloadSharedState(incomingProjectId || activeProjectId);
     updateBridgeUI();
     bridgeStats.applied++;
@@ -13098,6 +13240,7 @@
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
         pageToken:function(){ return panelPageToken; },
         pageOrigin:function(){ return bridgePageOrigin; },
+        tabId:function(){ return panelTabScope; },
         requests:function(){
           return app && Array.isArray(app.requests) ? app.requests.map(function(req){
             return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length };

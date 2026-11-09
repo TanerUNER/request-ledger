@@ -51,6 +51,12 @@
 
   function persistPin(){
     try{
+      if(panelTabScope > 0 && typeof chrome !== "undefined" && chrome.storage && chrome.storage.session){
+        var patch = {};
+        patch[prefKey("rl-pinned")] = !!state.pinned;
+        chrome.storage.session.set(patch);
+        return;
+      }
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-pinned": !!state.pinned });
       }

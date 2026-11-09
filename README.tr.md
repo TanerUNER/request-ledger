@@ -129,6 +129,11 @@ seçili değilse proje klasöründeki `exports/` dizinine yazar. Arşiv proje li
 bilgisini okur. `file://` modunda sunucu klasörü yazımı yoktur: Kaydet/Dışa Aktar açık bir “klasör
 kaydı için sunucu modu gerekli” mesajı gösterir ve tarayıcı indirmesine düşer.
 
+Sunucu açıkken Ayarlar bir **Sunucuyu yeniden başlat** düğmesi sunar. Açık sunucudan aynı portta yerine
+geçecek yeni bir süreç başlatmasını ister ve yeni süreç yanıt verince sayfayı yeniler; eski süreç çıkar.
+Sert bir durdurmadan sonra sayfa süreç başlatamaz; bu yüzden engellenmiş ekran yalnızca sunucuyu yeniden
+başlatmak için **`start.cmd` çalıştır** der ve sunucu geri gelince kendiliğinden bağlanır.
+
 <a id="chrome-yardimcisi"></a>
 ## Chrome yardımcısı
 
@@ -140,11 +145,12 @@ bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
 |---|---|
 | **Canlı yardımcı** | Uygulama gerekir. Açıkken istekler, medya ve etkin proje iki yönde eşitlenir. Uygulama kapalıyken **hiçbir uzantı arayüzü görünmez** — ray, açıcı, iframe veya kilit kartı yoktur. Uygulama açılınca kendiliğinden geri gelir. |
 | **Uygulama sahipli projeler** | Projeler yalnızca uygulamada oluşturulur, yeniden adlandırılır, değiştirilir ve silinir. Uzantı her zaman uygulamanın etkin projesini izler; proje listesi, seçici veya oluşturma arayüzü yoktur. |
-| **Medya eşitleme** | Yapıştırma, dosya yükleme, ekran görüntüsü ve öğe+ekran görüntüsü görselleri köprüden geçer. Öğe başına sınır 8 MB'tır; daha büyük öğeler yalnızca yedek ZIP ile taşınır. |
+| **Medya eşitleme** | Yapıştırma, dosya yükleme, ekran görüntüsü ve öğe+ekran görüntüsü görselleri köprüden geçer. Öğe başına sınır 8 MB'tır; daha büyük öğeler yalnızca yedek ZIP ile taşınır. Blob'u henüz gelmeyen küçük resim “Görsel bulunamadı” yerine “Görsel yükleniyor…” durumu gösterir. |
 | **Öğe seçici** | Geçerli sayfada veya uygulamadan seçilen başka bir sekmede öğe seçin. Tekrarlanan seçimler iki yüzeyde de `" | "` ile eklenir (yinelenenler ayıklanır, 200 karakter sınırı). |
 | **Ekran görüntüsü** | Bir sekme seçin, bölgeyi kırpın ve görseli etkin isteğe ekleyin. Sayfa yolu otomatik dolar. |
 | **Panelde istek masası** | Sayfadan ayrılmadan istek oluşturun, düzenleyin, arayın, sıralayın ve onaylayın. Hazır/kilitli isteklerde görsel önizleme açılır; düzenleme açılmaz. |
-| **Panel teması** | Kaldırılan Ayarlar bölümünün yerine rayda açık/koyu tema düğmesi vardır; `rl-theme` olarak saklanır ve ana sayfa temasını değiştirmez. |
+| **Sekme başına sabitleme ve tema** | Sabitleme durumu ve açık/koyu panel teması tarayıcı sekmesi başına oturum depolamasında tutulur; bir sayfadaki değişiklik diğerini etkilemez. Yeni sekme varsayılanlarla başlar, kapanınca anahtarları silinir. |
+| **Araç çubuğu penceresi** | Tarayıcı eylem düğmesi ad, sürüm, depo, destek bağlantısı ve MIT lisansını gösteren küçük bir Hakkında kartı açar; uygulamanın açık olması gerektiğini belirtir. Sayfa içi panel değişmez. |
 | **Yedek ve aktarım** | ZIP veya JSON yedeği indirin, geri yükleyin ya da veriyi uzantı ile web uygulaması arasında taşıyın. |
 
 Uzantı `chrome://extensions` üzerinden kendini etkinleştirip devre dışı bırakamaz. Orada devre dışı
@@ -255,6 +261,8 @@ sayfalardaki ekran görüntülerini herkese açık kabul edin.
   genişliklerini hedefler.
 - Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL'lerine erişim izni varsa köprü yine
   bağlanabilir; ancak sunucu proje klasörüne yazım yoktur.
+- Bir web sayfası süreç başlatamaz. Yeniden başlatma yalnızca sunucu açıkken çalışır; sert bir
+  durdurmadan sonra `start.cmd` çalıştırın (sunucu dönünce uygulama kendiliğinden bağlanır).
 - Canlı medya eşitleme **öğe başına 8 MB** ile sınırlıdır. Daha büyük görseller/ekler ve taşınabilir
   arşivdeki tüm medya yedek ZIP ile taşınır.
 - Uzantı bir yardımcıdır: uygulama çalışmıyorken hiçbir sayfada arayüz göstermez. `chrome://extensions`

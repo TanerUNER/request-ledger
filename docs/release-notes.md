@@ -51,6 +51,21 @@ New capabilities and fixes:
 - The local server stops **~5 s after the last app tab closes**, survives reload, releases the port,
   removes the lock file, and restarts/reconnects with `start.cmd`. `stop.cmd` still works.
 
+### Final pass
+
+- **Restart server** in Settings asks the live server to spawn its replacement on the same port, then
+  reloads once the new pid answers. The fake “Reconnect” button after a hard stop is gone; the blocked
+  screen only says to run `start.cmd`, and the page reconnects automatically when the server returns.
+- **Per-tab pin and theme**: the dock passes its tab id to the panel (`?tab=<id>`), which stores
+  `rl-pinned:<tab>` and `rl-theme:<tab>` in `chrome.storage.session`. New tabs start with defaults;
+  closing a tab removes its keys.
+- The toolbar action opens a static **About popup** (`panel/about.html`) with name, manifest version,
+  description, repository, support link, MIT license and the app-open requirement. The in-page dock is
+  unchanged.
+- **Loading media state**: metadata that arrives before its blob renders “Loading image…” on both
+  surfaces and swaps to the image when `RL_APP_MEDIA` lands, with no reload. “Image not found” appears
+  only after the transfer window expires.
+
 ## Previous release — 1.9.1 / 1.9.4 — workspace, capture tools and a calmer setup
 
 New capabilities:
@@ -93,21 +108,21 @@ Updates and fixes:
 Executed on 2026-11-09:
 
 ```
-node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 19 files, zip 963 KB
-                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1685 KB)
+node scripts/build.cjs                         -> Built dist/: web 1.9.2, extension 1.9.5, 22 files, zip 976 KB
+                                                   Test bundle: dist/request-ledger-test-2026-11-09.zip (1708 KB)
 node scripts/check-inline.cjs                  -> Inline scripts OK: 2 block(s) in index.html
-node scripts/build.cjs --check                 -> Release check OK: web 1.9.2, extension 1.9.5, 19 files
-node tests/e2e/extension.e2e.cjs               -> 28/28 checks passed
+node scripts/build.cjs --check                 -> Release check OK: web 1.9.2, extension 1.9.5, 22 files
+node tests/e2e/extension.e2e.cjs               -> 29/29 checks passed
 node tests/e2e/bridge.e2e.cjs                  -> 34/34 checks passed
 node tests/e2e/picker.e2e.cjs                  -> 29/29 checks passed
 node tests/e2e/capture-tools.e2e.cjs           -> 20/20 checks passed
 node tests/e2e/file-bridge.e2e.cjs             -> 32/32 checks passed
 node tests/e2e/project-consistency.e2e.cjs     -> 39/39 checks passed
-node tests/e2e/real-tabs.e2e.cjs               -> 37/37 checks passed
+node tests/e2e/real-tabs.e2e.cjs               -> 48/48 checks passed
 node tests/e2e/real-tabs-conflict.e2e.cjs      -> 6/6 checks passed
-node tests/e2e/server-lifecycle.e2e.cjs        -> 25/25 checks passed
+node tests/e2e/server-lifecycle.e2e.cjs        -> 30/30 checks passed
 README image verification                      -> 12 images, 9 local links per README resolved
-test bundle                                    -> README.md and README.tr.md included
+test bundle                                    -> README.md, README.tr.md and panel/about.* included
 ```
 
 ## Previous release verification — 1.9.1 / 1.9.4
@@ -147,6 +162,9 @@ node .opencode/workspace/tmp/release-readme/verify-readme-images.cjs
 
 - Live media sync is capped at **8 MB per item**. Larger images/attachments travel only with a backup
   ZIP.
+- A web page cannot spawn a process: restart works only while the server is alive. After a hard stop,
+  run `start.cmd`; the app reconnects automatically when it returns.
+- Pin state and the panel theme are per browser tab and reset for a new tab.
 - The extension is a companion: with no app running it shows no UI at all, and it cannot re-enable
   itself after being disabled in `chrome://extensions`.
 - Projects are app-owned; the extension cannot create, list or switch projects on its own.

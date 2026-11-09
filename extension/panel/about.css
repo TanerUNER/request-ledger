@@ -1,0 +1,114 @@
+/* Request Ledger - toolbar popup styles.
+   Mirrors the panel's warm-paper surface and radii with the shared palette
+   values. The popup is a small standalone extension page, so it does not
+   load panel.css (that file is scoped to the iframe shell). */
+:root {
+  color-scheme: light;
+  --paper: #f7f5f2;
+  --card: #fffdf9;
+  --ink: #1a1a1a;
+  --ink-2: #3b3833;
+  --muted: #6d6961;
+  --muted-2: #6b665e;
+  --line: #e6e1d8;
+  --accent: #d13e27;
+  --accent-dark: #b93520;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #141310;
+    --card: #1c1a16;
+    --ink: #f5f1e8;
+    --ink-2: #e6e0d5;
+    --muted: #b3ada1;
+    --muted-2: #a39d91;
+    --line: #322f28;
+    --accent: #e05a3f;
+    --accent-dark: #f0775f;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  width: 300px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+.about {
+  margin: 10px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(32, 28, 20, 0.14);
+}
+.about__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.about__logo {
+  border-radius: 9px;
+  flex: 0 0 auto;
+}
+.about__title h1 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.about__version {
+  margin: 1px 0 0;
+  font-size: 10.5px;
+  color: var(--muted-2);
+}
+.about__desc {
+  margin: 12px 0 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.about__note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.about__links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.about__links a {
+  display: inline-block;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.about__links a:hover {
+  border-color: var(--accent);
+  background: rgba(209, 62, 39, 0.08);
+  color: var(--accent);
+}
+.about__links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.about__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted-2);
+}
+.about__sep { color: var(--line); }

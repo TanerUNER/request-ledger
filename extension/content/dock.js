@@ -3224,7 +3224,7 @@
     frame.setAttribute("allow", "clipboard-write");
     frame.setAttribute("frameborder", "0");
     frame.style.cssText = css;
-    frame.src = extBase + "panel/panel.html?role=" + role;
+    frame.src = extBase + "panel/panel.html?role=" + role + (tabId ? "&tab=" + tabId : "");
     return frame;
   }
 
@@ -3295,6 +3295,7 @@
       window.__rlBridgeHost = Object.freeze({
         companion: function () { return isCompanionOrigin(); },
         pageOrigin: function () { return companionPageOrigin(); },
+        tab: function () { return tabId; },
         toPanel: function () { return bridgeRelayedToPanel; },
         toPage: function () { return bridgeRelayedToPage; }
       });
@@ -3386,6 +3387,30 @@
   var appAliveNow = false;
   var appAliveListenerOn = false;
   var appPresenceTimer = null;
+  var tabId = 0;
+
+  /* The content script cannot call chrome.tabs. Ask the worker for the sender
+     tab id once, then mount the panel iframes with it so pin/theme preferences
+     stay scoped to this tab. */
+  function requestTabId(done) {
+    var settled = false;
+    var finish = function () {
+      if (settled) return;
+      settled = true;
+      if (typeof done === "function") done();
+    };
+    try {
+      if (!chrome.runtime || !chrome.runtime.sendMessage) { finish(); return; }
+      chrome.runtime.sendMessage({ type: "RL_TAB_ID" }, function (response) {
+        var error = chrome.runtime && chrome.runtime.lastError;
+        if (!error && response && Number(response.tabId) > 0) {
+          tabId = Number(response.tabId);
+        }
+        finish();
+      });
+      setTimeout(finish, 500);
+    } catch (error) { finish(); }
+  }
 
   function applyAppAlive(alive) {
     appAliveNow = alive === true;
@@ -3480,7 +3505,10 @@
     }
     markAppPageAlive();
     watchAppStopMarker();
-    watchAppAlive();
+    requestTabId(function () {
+      if (teardown || hostSuspended) { return; }
+      watchAppAlive();
+    });
   }
 
   /* ---- runtime control (picker-only flow) ---------------------------- */

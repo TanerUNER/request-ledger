@@ -18,6 +18,7 @@
   let onboardingOpen = false;
   let serverStopNotice = false;
   let serverReconnectTimer = null;
+  let serverRestartTimer = null;
   const serverPageId = "pg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
 
   function serverLifecycleUrl(path){
@@ -122,6 +123,8 @@
       input.value = String(readStoredPort());
       input.classList.remove("is-invalid");
     }
+    const restart = $("#restartServerBtn");
+    if(restart) restart.hidden = !onboardingServerDetected();
     if(onboardingServerDetected()){
       setPortStatus(translateString("Yerel sunucu") + " · :" + onboardingServer.port);
     }else{
@@ -408,6 +411,78 @@
     serverReconnectTimer = null;
   }
 
+  function stopServerRestartWatch(){
+    if(!serverRestartTimer) return;
+    clearInterval(serverRestartTimer);
+    serverRestartTimer = null;
+  }
+
+  /* In-place restart: the live server spawns its replacement on the same
+     port and exits. The current page must not navigate until the
+     replacement answers, so poll for a new pid and reload once it is live. */
+  function startServerRestartWatch(oldPid){
+    stopServerRestartWatch();
+    const previousPid = Number(oldPid) || 0;
+    const startedAt = Date.now();
+    const hint = $("#portStatus");
+    if(hint) hint.textContent = translateString("Sunucu yeniden başlatılıyor.");
+    serverRestartTimer = setInterval(function(){
+      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
+        if(!response.ok) return null;
+        return response.json();
+      }).then(function(data){
+        if(!data || data.app !== "request-ledger" || data.server !== true) return;
+        if(previousPid && Number(data.pid) === previousPid) return;
+        stopServerRestartWatch();
+        if(hint) hint.textContent = translateString("Sunucu yeniden başladı; bağlanılıyor");
+        try{ window.location.reload(); }catch(err){ /* ignore */ }
+      }).catch(function(){ /* the replacement is not listening yet */ });
+      if(Date.now() - startedAt > 20000){
+        stopServerRestartWatch();
+        const reason = translateString("Sunucu yeniden başlamadı. start.cmd çalıştır.");
+        if(hint) hint.textContent = reason;
+        showToast(reason, "error");
+      }
+    }, 500);
+  }
+
+  async function restartServer(){
+    if(!onboardingServerDetected()){
+      showToast(translateString("Yerel sunucu bulunamadı."), "error");
+      return;
+    }
+    const oldPid = Number(onboardingServer.pid) || 0;
+    cancelScheduledSave();
+    saveNow();
+    setPortStatus(translateString("Sunucu yeniden başlatılıyor."));
+    try{
+      const response = await fetch("/__rl/rebind?restart=1", {
+        method:"POST",
+        cache:"no-store",
+        keepalive:true
+      });
+      let data = null;
+      try{ data = await response.json(); }catch(err){ data = null; }
+      if(!response.ok || !data || data.ok !== true || data.restarting !== true){
+        const reason = translateString("Sunucu yeniden başlatılamadı.");
+        setPortStatus(reason, true);
+        showToast(reason, "error");
+        return;
+      }
+      stopServerHeartbeat();
+      onboardingServer = null;
+      serverStopNotice = false;
+      const restartBtn = $("#restartServerBtn");
+      if(restartBtn) restartBtn.hidden = true;
+      showToast(translateString("Sunucu yeniden başlatılıyor."));
+      startServerRestartWatch(oldPid);
+    }catch(err){
+      const reason = translateString("Sunucu yeniden başlatılamadı.");
+      setPortStatus(reason, true);
+      showToast(reason, "error");
+    }
+  }
+
   /* The page is still in the browser's cache after the server stops. Poll the
      same origin and reload as soon as start.cmd brings the same port back, so
      the pair reconnects automatically instead of asking the user to refresh. */
@@ -454,8 +529,9 @@
     if(overlay){
       overlay.hidden = !serverBlocked;
       if(serverBlocked){
-        const retry = $("#serverBlockedRetry");
-        try{ (retry || overlay).focus(); }catch(err){ /* ignore */ }
+        const text = $("#serverBlockedText");
+        if(text) text.textContent = translateString("Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.");
+        try{ overlay.focus(); }catch(err){ /* ignore */ }
       }
     }
     if(!serverBlocked){
@@ -801,27 +877,11 @@
     });
     const settingsOpen = $("#openOnboardingBtn");
     if(settingsOpen) settingsOpen.addEventListener("click", openOnboarding);
-    const blockedRetry = $("#serverBlockedRetry");
-    if(blockedRetry) blockedRetry.addEventListener("click", function(){
-      const hint = $("#serverBlockedHint");
-      if(hint) hint.textContent = translateString("Sunucu kontrol ediliyor…");
-      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
-        if(!response.ok) return null;
-        return response.json();
-      }).then(function(data){
-        if(data && data.app === "request-ledger" && data.server === true){
-          stopServerReconnectWatch();
-          window.location.reload();
-          return;
-        }
-        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
-      }).catch(function(){
-        if(hint) hint.textContent = translateString("Sunucu hâlâ kapalı. start.cmd çalıştır.");
-      });
-    });
 
     const railStop = $("#railStopBtn");
     if(railStop) railStop.addEventListener("click", stopLocalServer);
+    const restartServerBtn = $("#restartServerBtn");
+    if(restartServerBtn) restartServerBtn.addEventListener("click", restartServer);
     const applyPort = $("#applyPortBtn");
     if(applyPort) applyPort.addEventListener("click", applyPortSetting);
     const portInput = $("#settingsPort");

@@ -21,6 +21,13 @@
   var role = params.get("role") === "flyout" ? "flyout" : "dock";
   var demo = params.get("demo") === "1";
   var hasHost = window.parent !== window;
+  /* The dock host appends the real tab id. Pin and panel theme are stored per
+     tab in chrome.storage.session; a standalone panel page (no tab) keeps the
+     historical global keys. */
+  var panelTabScope = Number(params.get("tab")) || 0;
+  function prefKey(name){
+    return panelTabScope > 0 ? name + ":" + panelTabScope : name;
+  }
   var core = window.IstekCore || null;
 
   var state = {
@@ -310,6 +317,7 @@
     areaWeb:     { tr:"web uygulaması", en:"web app" },
     openImage:   { tr:"Görseli aç", en:"Open image" },
     imageModalFailed:{ tr:"Görsel açılamadı.", en:"Could not open the image." },
+    imageLoading:{ tr:"Görsel yükleniyor…", en:"Loading image…" },
     imagesAdded: { tr:"{n} görsel eklendi.", en:"{n} image(s) added." },
     filesAdded:  { tr:"{n} dosya eklendi.", en:"{n} file(s) added." },
     saveAsDraft: { tr:"Taslağa kaydet", en:"Save as draft" },
