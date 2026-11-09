@@ -1,208 +1,184 @@
 <p align="center">
-  <img src="README-assets/en/logo.svg" width="86" alt="Request Ledger logo">
+  <img src="assets/logo-wordmark.svg" width="360" alt="Request Ledger">
 </p>
-
-<h1 align="center">Request Ledger</h1>
 
 <p align="center">
   <b>From idea to Markdown, in one calm flow.</b><br>
-  A local-first request management desk that runs in your browser.
+  A local-first request desk for product teams, freelancers and AI-assisted developers.
 </p>
 
 <p align="center">
-  <a href="index.html"><img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge"></a>
-  <a href="https://taneruner.github.io/request-ledger/"><img alt="Request Ledger - GitHub Pages" src="https://img.shields.io/badge/GitHub%20Pages-Visit-orange?style=for-the-badge"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.1-1d2328?style=for-the-badge">
-  <img alt="Languages" src="https://img.shields.io/badge/EN%20/%20TR-bilingual-6f816a?style=for-the-badge">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
+  <a href="README.tr.md">Türkçe</a> · English
 </p>
 
 <p align="center">
-  <img src="README-assets/en/hero.png" width="1180" alt="Request Ledger shown on desktop, laptop and tablet">
+  <img alt="Web app 1.9.1" src="https://img.shields.io/badge/web%20app-1.9.1-d13e27?style=for-the-badge">
+  <img alt="Extension 1.9.4" src="https://img.shields.io/badge/extension-1.9.4-4f614b?style=for-the-badge">
+  <img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge">
+  <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-bilingual-1d2328?style=for-the-badge">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
 </p>
 
 <p align="center">
-  <a href="#-what-is-request-ledger">What is it?</a> ·
-  <a href="#-quick-start">Quick start</a> ·
-  <a href="#-features">Features</a> ·
-  <a href="#-who-is-it-for">Who is it for?</a> ·
-  <a href="#-responsive-layout">Responsive</a> ·
-  <a href="#-screens">Screens</a> ·
-  <a href="#-technical-architecture">Architecture</a>
+  <a href="#what-it-is">What it is</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#workspace-and-projects">Projects</a> ·
+  <a href="#two-run-modes">Run modes</a> ·
+  <a href="#chrome-companion">Extension</a> ·
+  <a href="#backups">Backups</a> ·
+  <a href="#privacy">Privacy</a> ·
+  <a href="#limitations">Limitations</a>
 </p>
-
----
-
-## 🧭 What is Request Ledger?
-
-**Request Ledger** is a single-file web app for collecting product and project requests in one place, planning them, approving them, and turning them into **AI-ready Markdown**.
-
-No server. No installation. No account. Your data stays in your browser.
-
-> Scattered notes, messages and screenshots → one organized ledger → a clear plan → a handoff-ready Markdown file.
-
-### What it solves
-
-- Product ideas getting lost across chats, notes and screenshots.
-- The same request being described differently by different people.
-- Developers receiving incomplete, ambiguous or context-free tasks.
-- Items marked “ready” that are not actually ready.
-- The same list being saved as multiple confusing records.
-
----
-
-## ⚡ Quick start
-
-All you need is a modern browser.
-
-```text
-index.html
-```
-
-Double-click the file or drag it into your browser. That is it.
-
-You can also serve it locally:
-
-```bash
-python -m http.server 8080
-```
-
-Then open `http://localhost:8080/index.html`.
-
-> **Recommended:** Chrome, Edge or another current Chromium-based browser for image attachments, local records and backup features.
-
----
-
-## ✨ Features
-
-| | Feature | What it does |
-|---|---|---|
-| 🧩 | **6 request types** | Dedicated fields for new features, updates, removals, design, questions and bugs. |
-| 🖼️ | **Images and attachments** | Paste screenshots with `Ctrl+V`; attach `.html`, `.css`, `.js`, PDF and other example files. |
-| ✅ | **Ready approval and lock** | A request locks when marked ready; editing opens again only after the approval is revoked. |
-| 📊 | **Live progress** | Ready / missing counts, percentage and missing-field hints in one card. |
-| 🤖 | **Planning and agents** | Full run, light run or custom plan; tests, runtime and optional agent selection. |
-| 📝 | **Markdown + ZIP** | Single `.md`, ZIP + `.md`, or base64-embedded output. Attachments travel in the ZIP. |
-| 🚀 | **Instant export** | Save the current choices; later exports can run with the same selections without reopening the modal. |
-| 🗂️ | **Records and ledger identity** | Records, drafts and exports with `ledgerId` duplicate protection. |
-| 💾 | **Backup** | ZIP or JSON backup including settings, agents and history. |
-| 🌗 | **Theme + language** | Dark/light theme, TR/EN interface and bilingual Markdown system output. |
-| 🔒 | **Local and private** | No server, no telemetry; data is stored in `localStorage` + `IndexedDB`. |
-
----
-
-## 🔄 How it works
 
 <p align="center">
-  <img src="README-assets/en/workflow.png" width="1180" alt="Collect, plan, approve, export and archive workflow">
+  <img src="README-assets/en/hero.png" alt="Request Ledger dashboard on desktop, laptop and tablet">
 </p>
-
-1. **Collect** — Add each request as its own row; enrich it with screenshots and files.
-2. **Plan** — Choose a full, light or custom run; define agents and the test approach.
-3. **Approve** — When required fields are complete, click the row’s checkmark. The row locks.
-4. **Export** — Get a Markdown/ZIP output or use **Instant export** to save the current preferences.
-5. **Archive** — Keep records, drafts and exports; take a ZIP/JSON backup regularly.
 
 ---
 
-## 👥 Who is it for?
+## What it is
 
-| User | Typical use |
+Request Ledger is a **local-first request desk** that runs in your browser. It collects product
+requests, bugs, questions and design notes, checks whether they are complete, plans the delivery,
+requires an explicit approval, and exports **AI-ready Markdown**.
+
+No account. No telemetry. No remote code. Your data stays in your browser profile. A local server is
+optional and only adds the server mode and convenience around the Chrome companion.
+
+> Scattered notes, chat messages and screenshots → one organised ledger → one clear plan → one
+> handoff-ready Markdown file.
+
+### The problem it solves
+
+| Without Request Ledger | With Request Ledger |
 |---|---|
-| **Product managers** | Collect customer feedback, roadmap ideas and bug reports in one ledger. |
-| **Indie developers** | Turn personal “fix this / add that” notes into a structured delivery list. |
-| **Software teams** | Create a shared request language across product, design, engineering and QA. |
-| **QA engineers** | Capture bug reproductions, screenshots and expected behavior without missing context. |
-| **AI-assisted developers** | Hand Claude, Codex, Gemini or similar agents a clean Markdown brief. |
-| **Freelancers and agencies** | Separate client requests per project and maintain a clear delivery/archive flow. |
-| **Students and makers** | Break project ideas into small, plannable requests. |
+| Requests live in chat, e-mail, notes and screenshots. | One ledger with one row per request. |
+| Nobody knows which request is complete. | Live ready/missing counts and a missing-field list. |
+| The handoff to a developer or an AI agent is improvised. | A consistent Markdown plan with agents, tests and runtime options. |
+| Old versions of a request get mixed together. | Records, drafts and export history per project. |
+| Moving to another browser loses the context. | A versioned ZIP backup with media, or a text-only JSON backup. |
 
----
+### Who it is for
 
-## 📐 Responsive layout
-
-<p align="center">
-  <img src="README-assets/en/responsive-devices.png" width="1180" alt="Request Ledger on desktop, laptop and tablet">
-</p>
-
-The interface is not just a shrunken desktop page; the layout adapts at each breakpoint.
-
-| Device | Approx. width | Behavior |
-|---|---:|---|
-| Tablet | 1024 px | Content expands; the archive panel opens only when needed. |
-| Laptop | 1280 px | Left rail + main workspace + optional archive panel. |
-| Desktop | 1440 px+ | Full layout, wide request rows and side panel. |
-
-- Content reflows instead of overflowing.
-- Forms, modals and export steps remain usable across breakpoints.
-- Long text wraps or truncates cleanly.
-- Dark and light themes are preserved throughout.
-
----
-
-## 🖥️ Screens
-
-### Main workspace
+- Product managers and founders who collect requests from many people.
+- Indie developers and small teams who want a structured delivery list.
+- QA engineers who need reproducible bug reports with page, location and console context.
+- AI-assisted developers who hand work to coding agents and need a clean Markdown brief.
+- Freelancers who want a portable, private workspace without another SaaS account.
 
 <p align="center">
-  <img src="README-assets/en/screens/01-dashboard-desktop.png" width="1100" alt="Request Ledger main workspace with request list, progress card and archive panel">
+  <img src="README-assets/en/workflow.png" alt="Collect, plan, approve, export workflow">
 </p>
 
-### Export and planning
+## How it works
+
+1. **Collect** — add each request as its own row. Choose one of six types; each type shows the fields
+   that matter. Attach screenshots with `Ctrl+V`, drag and drop, or the file picker.
+2. **Plan** — choose a full, light or custom run, select agents and tests, and decide how the runtime
+   package travels.
+3. **Approve** — when the required fields are complete, click the row's checkmark. The row locks;
+   editing resumes only after the approval is revoked.
+4. **Export** — get a ZIP with Markdown and media, a single `.md` with embedded images, or a plain
+   Markdown file. Save your choices once and later exports reuse them with **Instant export**.
+5. **Archive** — keep records, drafts and export history, then take a backup regularly.
+
+## Workspace and projects
+
+The workspace is a registry of projects. Every project keeps its own:
+
+- request ledger and export target;
+- images and file attachments;
+- Records, Drafts and export history;
+- archive state and project name.
+
+Switching projects is guarded by the unsaved-changes confirmation. Project ids are never merged, so
+two projects with similar names stay separate. A port change is a new browser origin: the app warns
+you, offers a ZIP backup first, and prompts for a restore on the new origin.
+
+## Two run modes
+
+| | Single HTML file | Local server |
+|---|---|---|
+| **How to start** | Open `request-ledger.html` or `index.html` directly, or host it statically. | Run `start.cmd` on Windows, or `node scripts/serve.cjs 8080` anywhere. |
+| **Best at** | A portable file you can copy, archive or open offline. | A stable local URL, the visible server status, a stop button and a remembered port. |
+| **Extension bridge** | Works when the extension is installed and allowed to access file URLs. | Works on `localhost` or `127.0.0.1` while the app tab is open. |
+| **Local server** | Not available; the file cannot start one. | Started by the launcher, stopped explicitly or 15 seconds after the last heartbeat. |
+| **Requires** | A modern browser. | Node.js 18 or newer on `PATH`. |
+
+`start.cmd` starts the server without a console window, opens the browser and writes
+`.rl-server.lock` with the process id and port. It remembers the last port in `.rl-port`; if that
+port is busy it starts on a free port and tells you. `stop.cmd` reads the lock and shuts the server
+down.
+
+## Chrome companion
+
+The `extension/` folder is an unpacked **Manifest V3** extension for Chrome and Edge 114+. It adds a
+44 px opener at the bottom-right of any page and a 360 px flyout; it does not reflow the page.
+
+| Capability | What it does |
+|---|---|
+| **Live bridge** | While the app is open on `file://`, `http://localhost:<port>` or `http://127.0.0.1:<port>`, requests and the project name sync both ways. The bridge follows project ids and never merges different projects. |
+| **Element picker** | Pick an element on the current page or on a tab chosen from the app. The CSS selector and a readable location fill the request. |
+| **Screenshot** | Choose a tab, crop the region you need, and attach the image to the active request. The page path fills automatically. |
+| **Element + screenshot** | Pick an element and capture the same region in one step. Page, location and image arrive together. |
+| **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. |
+| **Backup and transfer** | Download a ZIP or JSON backup, restore one, or move data between the extension and the web app. |
+
+The bridge is **text only**. Images and attachments move with a backup ZIP, never through the live
+bridge. The extension keeps its own storage; it is not a remote service.
+
+Install it from `chrome://extensions` → **Developer mode** → **Load unpacked** → select `extension/`
+(or the unzipped `request-ledger-extension.zip`). The pinned extension id is
+`hapajcbgcfllhkiohhkechekajencdod`; changing the `key` in `manifest.json` creates a new origin with
+empty storage.
+
+## Backups
+
+Both products use the same backup family. The web app writes **v4**, the extension writes **v3** and
+reads **v4**.
+
+| Format | Contains | Use it when |
+|---|---|---|
+| **ZIP (v4)** | Every project, requests, Records, Drafts, agents, images and attachments. | You want a complete, movable archive. |
+| **JSON** | Project and request text, Records, Drafts and agents. No media blobs. | You only need the text or a quick review. |
+
+Restore validates the bundle before touching your data and never deletes media up front. A v4 backup
+restores every project; a v3 backup restores into one project. Backups are plaintext files — treat
+them as sensitive documents.
+
+## Screenshots
+
+The interface is built for desktop, laptop and tablet widths. Mobile is intentionally out of scope
+for this release.
+
+| Desktop · 1440 px | Laptop · 1280 px | Tablet · 1024 px |
+|---|---|---|
+| ![Desktop dashboard](README-assets/en/screens/01-dashboard-desktop.png) | ![Laptop dashboard](README-assets/en/screens/02-dashboard-laptop.png) | ![Tablet dashboard](README-assets/en/screens/03-dashboard-tablet.png) |
 
 <p align="center">
-  <img src="README-assets/en/screens/03-export-planning.png" width="1100" alt="Export planning step with run type, questions, runtime package, agents and tests">
+  <img src="README-assets/en/responsive-devices.png" alt="Request Ledger at 1440, 1280 and 1024 pixels">
 </p>
 
-### System settings
+| Planning | Settings | Dark theme | First-run setup |
+|---|---|---|---|
+| ![Export planning](README-assets/en/screens/04-export-planning.png) | ![System settings](README-assets/en/screens/05-settings-system.png) | ![Dark dashboard](README-assets/en/screens/06-dashboard-dark.png) | ![Onboarding](README-assets/en/screens/07-onboarding.png) |
 
-<p align="center">
-  <img src="README-assets/en/screens/04-settings-system.png" width="1100" alt="System settings with language, theme, export behavior, root folder and export directory">
-</p>
-
-### Dark theme
-
-<p align="center">
-  <img src="README-assets/en/screens/05-dashboard-dark.png" width="1100" alt="Request Ledger in dark theme">
-</p>
-
-### Tablet
-
-<p align="center">
-  <img src="README-assets/en/screens/02-dashboard-tablet.png" width="860" alt="Request Ledger on tablet">
-</p>
-
-> Screenshots use a sample project called **Nova Dashboard** with demo data.
-
----
-
-## 📝 Markdown output
-
-Exports include a title, date, summary table, planning, agents, test decision, runtime package and a dedicated section for every request.
+## Markdown output
 
 ```md
 # Nova Dashboard — Development Requests
 
-> Friday, November 06, 2026 · 6 requests · 3 images · 1 file
+> Sunday, November 08, 2026 · 6 requests · 4 images · 1 file
 
 ## Summary
 
 | # | Type | Title | Priority |
 |---|---|---|---|
 | IST-001 | New Feature | Add bulk actions toolbar to the orders table | High |
-| IST-002 | Bug | Long user names overflow in the header menu | High |
 
 ## Planning
 
 **Run type:** Full run
-
-**Agents to Invoke:**
-
-| Role | MD File Path |
-|---|---|
-| Team Leader | agents/team-leader.md |
-| Frontend | agents/frontend.md |
-| QA Tester | agents/qa.md |
 
 ## IST-001 — Add bulk actions toolbar to the orders table
 
@@ -212,94 +188,113 @@ Exports include a title, date, summary table, planning, agents, test decision, r
 
 ### Request
 
-Let users change status, export CSV and apply tags to selected orders
-from a single toolbar.
+Let users change status, export CSV and apply tags to selected orders.
 ```
 
-- **ZIP + .md**: Markdown in a separate file; images and attachments inside the ZIP.
-- **Single .md**: Images embedded as base64; attachments require ZIP.
-- **TR/EN**: System labels follow the selected interface language.
-- **User content is never translated**: titles, descriptions and notes stay exactly as written.
+- **ZIP + `.md`** — Markdown in a separate file; media in `gorseller/` and `dosyalar/`.
+- **Single `.md`** — images embedded as base64; attachments require ZIP.
+- **TR / EN** — system labels follow the interface language. User content is never translated.
 
----
+## Privacy
 
-## 🧱 Technical architecture
+- **No account, no telemetry, no analytics.** Nothing is uploaded.
+- **No remote code.** The app loads no external scripts, styles or fonts. The support link is a plain
+  link and loads nothing.
+- **Local server, loopback only.** `scripts/serve.cjs` binds to `127.0.0.1` and serves files from the
+  project folder.
+- **Extension stays local.** It makes no outbound requests; captures and downloads stay on your
+  machine.
+- **User-controlled exports.** Files are written only where you choose; browsers without File System
+  Access fall back to Downloads.
+- **Clearing browser data deletes the ledger.** Keep ZIP backups.
 
-| Layer | Technology | Notes |
-|---|---|---|
-| UI | HTML + CSS + vanilla JavaScript | No framework, no build step. |
-| Distribution | One `.html` file | Runs from `file://` or any static host. |
-| Text state | `localStorage` | Language, theme, agents and last export preferences. |
-| Media + archive | `IndexedDB` | Images, attachments, records, drafts and export history. |
-| File writing | File System Access API | Direct writes to a selected folder where supported. |
-| Backup | JSON + ZIP | Settings, agents, records and ledger identity included. |
-| Translation | TR/EN dictionary + DOM observer | Static and dynamic UI text, plus Markdown output. |
+The bridge accepts `file://`, `localhost` and `127.0.0.1` only. A local process or a page on one of
+those origins could still talk to it, so run only trusted local servers while the app is open. The
+extension page is an iframe on an untrusted page; treat screenshots on untrusted pages as public.
 
----
+## Requirements
 
-## 🔐 Privacy and data
-
-- **No server.** No request, image or file is sent to a remote server.
-- **No account.** No sign-up, login or email verification.
-- **No telemetry.** Usage data is not collected.
-- **Local storage.** Data stays in the browser’s `localStorage` and `IndexedDB`.
-- **User-controlled exports.** Files are written only to the folder you select.
-- **Backup responsibility.** Clearing browser data deletes local records; take regular ZIP/JSON backups.
-
----
-
-## ⌨️ Small details that matter
-
-| Shortcut / behavior | Result |
+| Requirement | Details |
 |---|---|
-| `Ctrl+V` | Adds a screenshot to the open request row. |
-| `Esc` | Closes the open menu or top modal. |
-| `Enter` | Triggers save in some modals. |
-| Drag and drop | Drops an image or file into the relevant area. |
-| Ready tick | Locks the row; editing resumes when approval is revoked. |
-| Duplicate ledger | Shows “This list is already saved” using `ledgerId`. |
-| Rename record | Changes the display name only; the exported `.md` filename is unaffected. |
+| Browser | Any current Chromium, Firefox or Safari for the web app. Chrome or Edge **114+** for the extension. |
+| Node.js | **18 or newer**, only for the local server. The single HTML file needs no runtime. |
+| Windows launchers | `start.cmd` / `stop.cmd` are Windows batch files. `scripts/serve.cjs` also runs on macOS and Linux. |
+| Folder export | File System Access API (Chromium). Other browsers download files instead. |
+| File URLs | `file://` was measured in Chrome 157. Other browsers may isolate or restrict storage. |
 
----
+## Limitations
 
-## ⚠️ Limitations
+- **Mobile is out of scope.** The layout targets desktop (1440 px), laptop (1280 px) and tablet
+  (1024 px).
+- The single HTML file cannot start the local server. The extension bridge can still connect when the
+  extension is allowed to access file URLs.
+- The live bridge is **text only**. Images and attachments travel only with a backup ZIP.
+- Backups are plaintext. Theme and export history are not part of backups.
+- Restore expects the app's stored ZIP entries; a re-zipped archive may be rejected.
+- Very large images or files consume browser storage. Take backups and clean up old media.
+- Firefox and Safari can run the web app, but the Manifest V3 extension is Chromium-only.
+- User-written content is never translated.
 
-- The File System Access API is not available in every browser; without it, exports go to the downloads folder.
-- Browsers may block writing to system locations such as `C:\` or the desktop root. Choose a writable subfolder.
-- Data is stored in the browser profile; there is no automatic cross-device sync.
-- Very large images or files can consume browser storage; regular backups and cleanup are recommended.
-- User-written content in Markdown output is not translated.
+## Project layout and build
 
----
+The tracked application lives in `_source/`.
 
-## 🤝 Contributing
+```text
+_source/
+├── index.html                  single-file web app (generated)
+├── extension/                  unpacked Manifest V3 extension
+├── src/                        web, panel and core sources
+├── scripts/                    build, server and README asset tools
+├── tests/                      golden, parity and browser e2e
+├── assets/                     logo.svg, logo-wordmark.svg
+├── README-assets/              reproducible README templates and images
+└── dist/                       release packages (generated)
+    └── request-ledger.html     single-file build for offline use
+```
 
-This project is currently developed for personal use and product delivery workflows.
+`index.html` and `extension/panel/panel.js` are generated from `src/`. Edit the fragments, then run:
 
-- Open an **Issue** for a bug report or suggestion.
-- For code contributions, share your intent in a short **Discussion** or Issue first.
-- When changing Markdown output, include a sample of the new output.
+```powershell
+cd _source
+node scripts/build.cjs                 # dist/, request-ledger.html, extension ZIPs
+node scripts/build.cjs --check         # generated files and hashes are current
+node scripts/check-inline.cjs          # inline script syntax
+$env:TZ='UTC'; node scripts/generate-golden.cjs --check
+node tests/parity/model.parity.mjs
+node tests/parity/drift.parity.mjs
+node scripts/render-readme-assets.cjs  # real screenshots + HTML marketing images
+```
 
----
+Browser end-to-end tests need a local server and Chrome/Edge:
 
-## 📬 Contact
+```powershell
+node scripts/serve.cjs 8080
+node tests/e2e/extension.e2e.cjs
+node tests/e2e/bridge.e2e.cjs
+node tests/e2e/picker.e2e.cjs
+node tests/e2e/capture-tools.e2e.cjs
+node tests/e2e/file-bridge.e2e.cjs
+```
 
-- **Developer:** Taner ÜNER (He has AI agents 😂)
+## Contributing
+
+- Open an issue for a bug or a suggestion.
+- For code changes, describe the intent first.
+- When changing Markdown output, include a sample and update the golden files intentionally.
+
+## Contact
+
+- **Developer:** Taner ÜNER
 - **GitHub:** [github.com/TanerUNER](https://github.com/TanerUNER)
 - **Email:** [mail.taneruner@gmail.com](mailto:mail.taneruner@gmail.com)
 - **Support:** [Buy Me a Coffee](https://www.buymeacoffee.com/tnruner)
 
----
+## License
 
-## 📄 License
-
-This project is released under the **MIT License**.
-
-You are free to use, copy, modify, merge, publish, distribute, sublicense and sell copies of the software, provided the copyright notice and permission notice are included. The software is provided “as is”, without warranty of any kind.
-
-See [`LICENSE`](LICENSE) for the full text.
+MIT. See [`LICENSE`](LICENSE).
 
 <p align="center">
+  <img src="assets/logo.svg" width="42" alt="Request Ledger mark"><br>
   <sub>Request Ledger · From idea to Markdown, in one calm flow.</sub><br>
   <sub>Runs locally. Your data stays yours.</sub>
 </p>

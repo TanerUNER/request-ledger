@@ -1,0 +1,40 @@
+/* ---------- base ---------- */
+*{box-sizing:border-box}
+/* shell v3: the iframe canvas is transparent in BOTH themes. `color-scheme`
+   lives on `body` so only native form controls are recoloured; the root
+   (html) keeps a light scheme so the canvas is never painted dark. */
+html,body{height:100%;margin:0;overflow:hidden;background:transparent}
+html{font-size:13px;color-scheme:light;background-color:transparent}
+html[data-theme="dark"] body{color-scheme:dark}
+body{
+  position:relative;color:var(--ink);
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+/* shell v9 · the dock canvas matches the card so open/close never flashes white */
+body.role-dock{background:var(--card)}
+/* avoid a light flash before storage preferences are applied */
+html:not(.is-ready) body{visibility:hidden}
+[hidden]{display:none !important}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+*{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line-2);border:2px solid transparent;background-clip:content-box;border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted-2);border:2px solid transparent;background-clip:content-box}
+
+/* standalone preview: emulate the iframe width the host gives us */
+html.standalone body{width:360px}
+html.standalone body.role-dock{width:100px}
+
+/* ---------- shared card ---------- */
+/* shell v2: cards are flat — 1px --line border, never a shadow/glow */
+.card{
+  position:absolute;background:var(--card);color:var(--ink);
+  border:1px solid var(--line);
+  box-shadow:none;
+}
+

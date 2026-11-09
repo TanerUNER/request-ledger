@@ -1,0 +1,125 @@
+/* ---------- cancel mini-confirm ---------- */
+.mini-confirm{
+  margin:4px 0 6px;padding:9px;
+  border:1px solid var(--accent);border-radius:9px;
+  background:var(--accent-soft);
+}
+.mc-text{margin:0;font-size:11px;font-weight:700;color:var(--accent-dark)}
+.mc-sub{margin:2px 0 8px;font-size:9.5px;line-height:1.4;color:var(--ink-2)}
+.mc-actions{display:flex;flex-wrap:wrap;gap:5px}
+.btn--danger{color:var(--danger);border-color:var(--danger)}
+.btn--danger:hover{background:var(--accent-soft);border-color:var(--danger);color:var(--danger)}
+/* shell v11 §8: delete sits at the far left of the detail footer */
+.btn--foot-delete{order:-1}
+/* shell v11 §12: previous planning step also anchors the footer's left edge */
+.btn--stage-back{
+  order:-1;display:inline-flex;align-items:center;gap:5px;
+  color:var(--accent);border-color:var(--accent);background:var(--accent-soft);
+}
+.btn--stage-back:hover{border-color:var(--accent-dark);color:var(--accent-dark);background:var(--accent-soft)}
+
+/* phase-8 stubs */
+.stub{
+  display:inline-flex;align-items:center;justify-content:center;
+  margin-top:5px;height:24px;padding:0 8px;
+  border:1px dashed var(--line-2);border-radius:7px;
+  background:transparent;color:var(--muted-2);
+  font-size:9px;font-weight:600;white-space:nowrap;
+  opacity:.75;cursor:not-allowed;
+}
+
+/* ---------- phase 8: screenshot + element picker ---------- */
+.img-actions{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  margin-top:5px;
+}
+.img-actions .btn{height:24px;padding:0 8px;font-size:9px;margin-top:0}
+.pick-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
+.pick-row .btn{height:26px;padding:0 9px;font-size:9.5px}
+.console-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
+.console-actions .btn{height:26px;padding:0 9px;font-size:9.5px}
+.capture-status{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:9px;font-weight:600;color:var(--muted-2);
+}
+.capture-status:not([hidden])::before{
+  content:"";width:5px;height:5px;border-radius:50%;
+  background:var(--accent);flex:0 0 5px;
+}
+
+/* shared tab picker popover, anchored over the flyout card */
+.tab-picker{
+  position:absolute;inset:0;z-index:20;
+  display:flex;flex-direction:column;
+  border-radius:15px;overflow:hidden;
+  background:var(--card);
+  animation:tabpicker-in .16s ease-out;
+}
+@keyframes tabpicker-in{
+  from{opacity:0;transform:translateY(4px)}
+  to{opacity:1;transform:none}
+}
+.tab-picker-head{
+  display:flex;align-items:flex-start;gap:8px;
+  padding:13px 13px 8px;flex:0 0 auto;
+}
+.tab-picker-title{
+  min-width:0;font-size:11.5px;font-weight:600;line-height:1.35;color:var(--ink);
+}
+.tab-picker-x{
+  margin-left:auto;width:22px;height:22px;flex:0 0 22px;
+  border-radius:6px;display:grid;place-items:center;
+  color:var(--muted-2);font-size:14px;line-height:1;
+}
+.tab-picker-x:hover{background:var(--paper);color:var(--ink)}
+.tab-picker-status{
+  padding:0 13px 8px;font-size:9.5px;line-height:1.4;color:var(--muted-2);
+}
+.tab-picker-list{
+  flex:1 1 auto;min-height:0;overflow:auto;
+  padding:0 8px 8px;display:flex;flex-direction:column;gap:3px;
+  overscroll-behavior:contain;
+}
+.tab-row{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:7px 8px;border:1px solid transparent;border-radius:8px;
+  text-align:left;color:var(--ink-2);background:transparent;
+  transition:background-color .14s,border-color .14s;
+}
+.tab-row:hover,.tab-row:focus-visible{background:var(--surface-2);border-color:var(--line)}
+.tab-row.is-active{background:var(--accent-soft)}
+.tab-fav{
+  width:16px;height:16px;flex:0 0 16px;border-radius:4px;
+  display:grid;place-items:center;overflow:hidden;
+  background:var(--paper);border:1px solid var(--line);
+}
+.tab-fav img{display:block;width:14px;height:14px;object-fit:contain}
+.tab-dot{width:6px;height:6px;border-radius:50%;background:var(--muted-2)}
+.tab-text{
+  flex:1 1 auto;min-width:0;
+  display:flex;flex-direction:column;gap:1px;
+}
+.tab-title{
+  font-size:10.5px;font-weight:600;color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tab-url{
+  font-size:8.5px;color:var(--muted-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tab-here{
+  flex:0 0 auto;padding:2px 6px;border-radius:99px;
+  background:var(--accent-soft);color:var(--accent-dark);
+  font-size:7.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  white-space:nowrap;
+}
+.tab-picker-empty{
+  padding:14px 13px;font-size:10.5px;line-height:1.45;
+  color:var(--muted-2);text-align:center;
+}
+.tab-picker-foot{
+  flex:0 0 auto;display:flex;justify-content:flex-end;
+  padding:10px 13px;border-top:1px solid var(--line);
+  background:var(--surface-2);
+}
+

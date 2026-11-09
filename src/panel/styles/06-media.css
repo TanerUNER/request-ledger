@@ -1,0 +1,117 @@
+/* ---------- images ---------- */
+.thumbs{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:5px;
+  padding:2px;border:1px dashed transparent;border-radius:8px;
+  transition:border-color .14s,background-color .14s;
+}
+.thumbs.is-over{border-color:var(--accent);background:var(--accent-soft)}
+.thumb{
+  position:relative;aspect-ratio:1/1;border-radius:7px;overflow:hidden;
+  border:1px solid var(--line);background:var(--surface-4);
+  cursor:zoom-in;
+}
+.thumb:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.thumb.is-missing img{display:none}
+.thumb.is-missing::before{
+  content:"×";position:absolute;inset:0;display:grid;place-items:center;
+  color:var(--muted-2);font-size:15px;
+}
+.thumb-del{
+  position:absolute;top:2px;right:2px;
+  width:16px;height:16px;border-radius:50%;
+  display:grid;place-items:center;
+  background:rgba(20,19,18,.72);color:#fff;
+  font-size:11px;line-height:1;cursor:pointer;
+}
+.thumb-del:hover{background:var(--accent)}
+.thumb-del:disabled{opacity:.4;cursor:not-allowed}
+.thumb-add{
+  display:grid;place-items:center;
+  aspect-ratio:1/1;border-radius:7px;
+  border:1px dashed var(--line-2);background:var(--surface-2);
+  color:var(--muted-2);font-size:16px;font-weight:700;
+}
+.thumb-add:hover{border-color:var(--muted-2);color:var(--ink-2)}
+.thumb-add:disabled{opacity:.4;cursor:not-allowed}
+/* empty state: the dropzone itself is the only affordance */
+.img-drop{
+  grid-column:1/-1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:13px 8px;text-align:center;
+  border-radius:8px;border:1px dashed var(--line-2);background:var(--surface-2);
+  color:var(--ink-2);
+  transition:border-color .14s,background-color .14s,color .14s;
+}
+.img-drop:hover{border-color:var(--muted-2);background:var(--paper)}
+.img-drop.is-over{border-color:var(--accent);background:var(--accent-soft)}
+.img-drop-ic{display:flex;color:var(--muted-2)}
+.img-drop b{font-size:10.5px;font-weight:600;color:var(--ink-2)}
+.img-drop-hint{font-size:8.5px;color:var(--muted-2)}
+.img-drop:disabled{opacity:.5;cursor:not-allowed}
+.img-drop:disabled:hover{border-color:var(--line-2);background:var(--surface-2)}
+.dz-hint{
+  margin-top:5px;font-size:8.5px;line-height:1.3;color:var(--muted-2);
+}
+.block .btn--small{margin-top:6px}
+.hidden-input{display:none !important}
+
+/* ---------- in-panel image preview (shell v14) ----------
+   The image is rendered here and never leaves the extension origin. The
+   backdrop/close-button language is the former host modal's, rebuilt with
+   the panel tokens; the host only enlarges this document to a centred
+   rectangle (RL_FLYOUT_PREVIEW). */
+html.is-image-preview .flyout-card{visibility:hidden}
+.image-preview{
+  position:fixed;inset:0;z-index:40;
+  display:flex;align-items:center;justify-content:center;
+  padding:16px;
+  background:rgba(12,10,9,.72);
+  animation:image-preview-in .16s ease-out;
+}
+.image-preview__stage{
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  max-width:100%;max-height:100%;
+  line-height:0;
+}
+.image-preview__img{
+  display:block;width:auto;height:auto;
+  max-width:100%;max-height:100%;
+  border-radius:8px;background:var(--card);
+  box-shadow:var(--shadow-lg);
+  pointer-events:none;
+}
+.image-preview__x{
+  position:absolute;top:8px;right:8px;
+  width:30px;height:30px;border-radius:50%;
+  display:grid;place-items:center;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);
+  font-size:17px;font-weight:600;line-height:1;
+  box-shadow:var(--shadow);
+}
+.image-preview__x:hover{background:var(--paper);color:var(--ink)}
+@keyframes image-preview-in{
+  from{opacity:0}
+  to{opacity:1}
+}
+
+/* ---------- attachments ---------- */
+.file-thumbs{margin-top:4px}
+.file-drop{padding:13px 8px}
+.file-drop .btn{margin-top:6px}
+.file-drop .img-drop-hint{max-width:100%;line-height:1.35}
+.attachlist{display:flex;flex-direction:column;gap:4px}
+.attachitem{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;border:1px solid var(--line);border-radius:7px;
+  background:var(--surface-2);
+}
+.attachitem__body{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
+.attachitem__body b{
+  font-size:9.5px;font-weight:600;color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.attachitem__body small{font-size:8.5px;color:var(--muted-2)}
+.attachitem .thumb-del{position:static;flex:0 0 16px}
+

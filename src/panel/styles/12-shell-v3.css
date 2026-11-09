@@ -1,0 +1,135 @@
+/* ============================================================
+   SHELL V3 — width + typography scale
+   Flyout 330 → 360 (iframe 392); body 12, labels 9.5, hints 10,
+   inputs 12.5, titles 13.5, buttons 11.5; control/row height +2px;
+   rail labels 9.5px. Later rules intentionally win over the base sizes.
+   ============================================================ */
+.flyout-card{width:360px}
+.fo-top{padding:12px 14px 10px}
+.fo-top b{font-size:13.5px}
+.fo-top .id{font-size:9.5px}
+.fo-top .x{width:24px;height:24px;flex:0 0 24px;font-size:15px}
+.fo-body{padding:0 14px 12px}
+.fo-foot{padding:10px 14px;min-height:52px}
+.fo-foot .savestate{font-size:9.5px}
+.hint{font-size:10px}
+.item{font-size:9.5px;letter-spacing:0}
+.item .n{font-size:8px}
+.btn{height:32px;padding:0 12px;font-size:11.5px}
+.lbl{font-size:9.5px;margin:11px 0 5px}
+.ty{height:32px;font-size:10.5px}
+.pr{height:30px;font-size:11px}
+.tp-summary{font-size:10.5px;padding:6px 9px}
+.tp-pop-title{font-size:9px}
+.tp-pop .ty{height:28px;font-size:9.5px}
+.tp-pop .pr{height:27px;font-size:10px}
+.fld{height:36px;font-size:12.5px}
+.textarea{font-size:12px;min-height:46px}
+.soon{font-size:9.5px}
+.ph-text{font-size:12px}
+.notice{font-size:11.5px}
+.notice-sub{font-size:10px}
+.block-title{font-size:9.5px}
+.counter{font-size:9px}
+.field-hint{font-size:10px}
+.mc-text{font-size:12px}
+.mc-sub{font-size:10px}
+.empty b{font-size:13px}
+.empty-sub{font-size:11px}
+.stub{font-size:9.5px}
+.storage-banner{font-size:11px}
+.img-actions .btn{height:26px;font-size:10px}
+.pick-row .btn{height:28px;font-size:10.5px}
+.console-actions .btn{height:28px;font-size:10.5px}
+.capture-status{font-size:10px}
+.tab-picker-title{font-size:12.5px}
+.tab-picker-status{font-size:10px}
+.tab-row{padding:8px 9px}
+.tab-title{font-size:11.5px}
+.tab-url{font-size:9px}
+.tab-here{font-size:8px}
+.tab-picker-empty{font-size:11.5px}
+.img-drop b{font-size:11.5px}
+.img-drop-hint{font-size:9.5px}
+.dz-hint{font-size:9.5px}
+.attachitem__body b{font-size:10.5px}
+.attachitem__body small{font-size:9.5px}
+.lp-text{font-size:11px}
+.lp-missing{font-size:9.5px}
+.searchbox .fld{height:32px;font-size:11.5px}
+.lfchip{height:24px;font-size:9.5px}
+.lfchip .n{font-size:8px}
+.fld--select{height:28px;font-size:10.5px}
+.list-count{font-size:9.5px}
+.tgroup-head h4{font-size:9.5px}
+.tgroup-count{font-size:9px}
+.rrow{padding:7px}
+.rrow-id{font-size:9px}
+.rtag{font-size:8.5px}
+.rrow-title{font-size:11.5px}
+.rrow-meta{font-size:9.5px}
+.rowmenu button{font-size:10.5px}
+.atab{min-height:36px;font-size:9px}
+.atab-n{font-size:8px}
+.archive-hint{font-size:9.5px}
+.archive-clear{font-size:9.5px}
+.arow{padding:7px}
+.arow-name{font-size:11px}
+.arow-meta{font-size:9.5px}
+.arow-sub{font-size:9px}
+.arow-act{height:23px;font-size:9.5px}
+.arename .fld{height:27px;font-size:10.5px}
+.arename .btn{height:27px;font-size:9.5px}
+.draft-badge{font-size:8px}
+.archive-empty b{font-size:11px}
+.adetail-title{font-size:12px}
+.adetail-meta{font-size:9px}
+.archive-preview{font-size:10px}
+.exp-step{font-size:9.5px}
+.exp-step b{font-size:8.5px}
+.exp-summary dt{font-size:8.5px}
+.exp-summary dd{font-size:11px}
+.exp-summary dd.mono{font-size:9.5px}
+.exp-warn{font-size:9.5px}
+.exp-miss-title{font-size:10.5px}
+.exp-miss-reason{font-size:8.5px}
+.exp-lbl{font-size:9px}
+.exp-opt-text b{font-size:10.5px}
+.exp-opt-text small{font-size:9.5px}
+.exp-hint{font-size:9.5px}
+.exp-check{font-size:10.5px}
+.exp-intro{font-size:9.5px}
+.exp-seg-btn{height:29px;font-size:10px}
+.exp-opt-btn{height:28px;font-size:10px}
+.exp-validation{font-size:10px}
+.bk-opt-text b{font-size:11px}
+.bk-opt-text small{font-size:9.5px}
+.bk-warn{font-size:9.5px}
+.bk-status{font-size:9.5px}
+.bk-confirm .mc-text,.archive-confirm .mc-text{font-size:11.5px}
+.archive-confirm .mc-sub,.exp-cleanup .mc-sub,.row-confirm .mc-sub{font-size:9.5px}
+.settings-tab{min-height:34px;font-size:9.5px}
+.set-hint{font-size:9.5px}
+.set-lbl{font-size:9.5px}
+.set-select,.set-readonly{height:32px;font-size:11px}
+.agent-role{font-size:9.5px;height:30px;flex-basis:110px}
+.agent-name{font-size:11px;height:30px}
+.agent-path{font-size:10px;height:30px}
+.agentempty b{font-size:10.5px}
+.agentempty span{font-size:9.5px}
+.aboutbrand h3{font-size:12.5px}
+.aboutbrand p{font-size:9.5px}
+.aboutmeta dt{font-size:9px}
+.aboutmeta dd{font-size:10.5px}
+.about-version{font-size:10.5px}
+.changelog-version{font-size:10.5px}
+.changelog-date{font-size:9px}
+.changelog-group{font-size:9px}
+.changelog-list li{font-size:9.5px}
+.helpstep{padding:8px}
+.helpstep b{font-size:10.5px}
+.helpstep span{font-size:9.5px}
+.helpnote{font-size:9.5px}
+.seg{height:30px;font-size:11px}
+.toast{font-size:11.5px}
+

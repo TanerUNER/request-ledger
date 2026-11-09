@@ -1,0 +1,100 @@
+  /* ============================================================
+     Kayıt / yükleme
+     ============================================================ */
+  function ledgerPayload(){
+    return {
+      version: 2,
+      project: state.project,
+      projectCreated: state.projectCreated === true,
+      ledgerId: state.ledgerId,
+      requests: state.requests.map(function(req){ return serializeRequest(req); }),
+      agents: state.agents.map(function(agent){ return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath }; }),
+      language: state.language,
+      exportBehavior: state.exportBehavior,
+      lastExport: state.lastExport
+    };
+  }
+  /* Dirty tracking compares ledger content, not the timestamp written by an
+     automatic save. `updatedAt` is therefore excluded here. */
+  function serializedLedger(){
+    return JSON.stringify(ledgerPayload());
+  }
+  function resetLedgerState(projectName, fallbackLanguage){
+    state = {
+      version: 1,
+      project: projectName || "",
+      projectCreated: true,
+      ledgerId: newLedgerId(),
+      requests: [],
+      agents: [],
+      language: fallbackLanguage === "tr" ? "tr" : "en",
+      exportBehavior: "default",
+      lastExport: null,
+      updatedAt: null
+    };
+  }
+  function loadStateForProject(projectId, projectName){
+    const fallbackLanguage = state.language === "tr" ? "tr" : "en";
+    resetLedgerState(projectName, fallbackLanguage);
+    let raw = null;
+    try{ raw = localStorage.getItem(projectLedgerKey(projectId)); }catch(err){ raw = null; }
+    if(!raw) return;
+    try{
+      const parsed = JSON.parse(raw);
+      if(!parsed || !Array.isArray(parsed.requests)) return;
+      /* The registry owns the project name. The ledger may still carry an
+         older name until the next save overwrites it. */
+      state.ledgerId = typeof parsed.ledgerId === "string" && parsed.ledgerId ? parsed.ledgerId : newLedgerId();
+      state.requests = parsed.requests.map(function(req, index){ return normalizeRequest(req, index); });
+      state.agents = Array.isArray(parsed.agents) ? parsed.agents.map(normalizeAgent) : [];
+      state.language = parsed.language === "tr" ? "tr" : "en";
+      state.exportBehavior = ["last","instant"].indexOf(parsed.exportBehavior) >= 0 ? parsed.exportBehavior : "default";
+      state.lastExport = parsed.lastExport && typeof parsed.lastExport === "object" ? parsed.lastExport : null;
+      let hasOpen = false;
+      state.requests.forEach(function(req){
+        if(!req.collapsed){
+          if(hasOpen) req.collapsed = true;
+          else hasOpen = true;
+        }
+      });
+      state.updatedAt = parsed.updatedAt || null;
+    }catch(err){
+      console.warn("Kayıt okunamadı", err);
+      showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");
+    }
+  }
+  function saveNow(){
+    if(!activeProjectId){
+      setSaveStatus("saved");
+      return;
+    }
+    try{
+      const payload = ledgerPayload();
+      payload.updatedAt = nowISO();
+      localStorage.setItem(projectLedgerKey(activeProjectId), JSON.stringify(payload));
+      state.updatedAt = payload.updatedAt;
+      syncActiveProjectRecord(payload.updatedAt);
+      setSaveStatus("saved");
+      bridgeNotifyChange();
+    }catch(err){
+      console.error("Kayıt yapılamadı", err);
+      setSaveStatus("error");
+      showToast("Kayıt yapılamadı. Tarayıcı depolamasını kontrol et veya yedek al.", "error");
+    }
+  }
+  function cancelScheduledSave(){
+    if(saveTimer){
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+  }
+  function scheduleSave(){
+    if(!activeProjectId) return;
+    stateDirtySinceExport = true;
+    setSaveStatus("saving");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      saveTimer = null;
+      saveNow();
+    }, 380);
+  }

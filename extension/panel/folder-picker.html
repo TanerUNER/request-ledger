@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Request Ledger — Klasör seç</title>
+<style>
+  html,body{margin:0;height:100%;background:#f7f5f2;color:#1a1a1a;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+  body{display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box}
+  .box{width:100%;max-width:360px}
+  h1{margin:0 0 6px;font-size:15px;letter-spacing:-.01em}
+  p{margin:0 0 14px;color:#6d6961;font-size:12px}
+  button{width:100%;height:38px;border:1px solid #d13e27;border-radius:9px;background:#d13e27;color:#fff;font:600 12px/1 inherit;cursor:pointer}
+  button:disabled{opacity:.55;cursor:wait}
+  #status{margin-top:10px;font-size:11px;color:#b33324;min-height:16px}
+  @media (prefers-color-scheme:dark){
+    html,body{background:#1b1917;color:#ede8df}
+    p{color:#b8b0a4}
+    button{border-color:#ff5f43;background:#ff5f43;color:#1b1917}
+    #status{color:#ff8b7a}
+  }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1 id="title">Klasör seç</h1>
+    <p id="hint">Dışa aktarım hedefi için bir klasör seçin. Seçim yalnızca hedef adını kaydeder; dosyalar tarayıcı indirmelerine gider.</p>
+    <button id="pick" type="button">Klasör seç</button>
+    <div id="status" role="status"></div>
+  </div>
+  <script src="folder-picker.js"></script>
+</body>
+</html>

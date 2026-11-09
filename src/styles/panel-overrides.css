@@ -1,0 +1,23 @@
+/* ============================================================
+   Request Ledger · panel-only token overrides
+
+   The extension panel floats above arbitrary host pages. Its card
+   and surface tone intentionally use the warm paper colour
+   (#f7f5f2) instead of the web app's white (#ffffff), so the panel
+   reads as a distinct floating layer even over a white page.
+
+   These are the only shared token names whose values differ
+   between the two surfaces. Every other name and value comes from
+   src/styles/tokens.css. Keep this file minimal: add a value here
+   only when it cannot be unified without changing a surface.
+
+   Ordering: scripts/build-panel.cjs prepends tokens.css and then
+   this file, so these :root declarations win over the canonical
+   light values. The canonical dark block still wins in dark mode
+   because html[data-theme="dark"] has higher specificity.
+   ============================================================ */
+
+:root{
+  --card:#f7f5f2;
+  --surface:#f7f5f2;
+}

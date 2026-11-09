@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:1200px;height:630px;overflow:hidden}
+  body{
+    position:relative;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:
+      radial-gradient(760px 460px at 88% 10%,rgba(255,95,67,.20),transparent 64%),
+      radial-gradient(680px 420px at 4% 98%,rgba(111,129,106,.20),transparent 62%),
+      linear-gradient(135deg,#0c1116 0%,#111820 50%,#0a0e12 100%);
+    color:#f5f1ea;
+  }
+  .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:40px 40px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.75),transparent 90%)}
+  .glow{position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none}
+  .g1{width:400px;height:400px;background:rgba(255,95,67,.30);right:20px;top:-140px}
+  .g2{width:340px;height:340px;background:rgba(111,129,106,.26);left:-120px;bottom:-140px}
+  .content{position:absolute;left:68px;top:62px;width:610px}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:42px}
+  .mark{width:44px;height:44px;display:block;filter:drop-shadow(0 12px 28px rgba(209,62,39,.34))}
+  .brand b{font-size:11px;letter-spacing:.24em;color:#cbc4b9;font-weight:700}
+  h1{margin:0;font-size:50px;line-height:1.02;letter-spacing:-.05em;font-weight:760}
+  h1 em{font-style:normal;color:#ff7052;text-shadow:0 0 46px rgba(255,95,67,.30)}
+  .lead{margin:22px 0 0;font-size:16.5px;line-height:1.6;color:#b3bbc2;max-width:530px}
+  .lead b{color:#f4eee6;font-weight:650}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;max-width:530px}
+  .chip{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:999px;padding:7px 13px;font-size:11.5px;color:#c8d0d7}
+  .chip.hot{border-color:rgba(255,110,80,.36);background:rgba(255,95,67,.12);color:#ffa08c}
+  .foot{position:absolute;left:68px;bottom:38px;display:flex;align-items:center;gap:12px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#77828b}
+  .foot i{display:block;width:40px;height:1px;background:linear-gradient(90deg,#ff6e50,transparent)}
+  .stage{position:absolute;right:56px;top:150px;width:478px}
+  .frame{border-radius:14px;background:#1a2228;border:1px solid #2e3941;padding:8px;box-shadow:0 34px 60px rgba(0,0,0,.52),inset 0 0 0 1px rgba(255,255,255,.03)}
+  .bar{display:flex;gap:6px;padding:2px 2px 9px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#39444d}
+  .dot:first-child{background:#ff6e50}
+  .shot{border-radius:7px;overflow:hidden;background:#f7f5f2;height:300px}
+  .shot img{width:100%;height:100%;object-fit:cover;object-position:top left;display:block}
+  .caption{margin-top:13px;text-align:right;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6d7780}
+</style>
+</head>
+<body>
+<div class="grid"></div><div class="glow g1"></div><div class="glow g2"></div>
+
+<div class="content">
+  <div class="brand"><img class="mark" src="../../assets/logo.svg" alt=""><b>REQUEST LEDGER</b></div>
+  <h1>From idea<br>to <em>Markdown.</em></h1>
+  <p class="lead">A local-first request ledger for product teams. <b>Collect, plan, approve and hand off AI-ready Markdown</b> — from one HTML file or a local server.</p>
+  <div class="chips">
+    <span class="chip hot">Single file · no setup</span>
+    <span class="chip">Workspace + projects</span>
+    <span class="chip">Chrome companion</span>
+    <span class="chip">Local &amp; private</span>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="frame">
+    <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="shot"><img src="screens/01-dashboard-desktop.png" alt=""></div>
+  </div>
+  <div class="caption">No account · No telemetry · No remote code</div>
+</div>
+
+<div class="foot"><i></i><span>Collect · Plan · Approve · Export</span></div>
+</body>
+</html>

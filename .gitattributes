@@ -1,0 +1,6 @@
+# Generated regression artifacts must stay byte-stable on checkout.
+tests/golden/** -text
+tests/fixtures/** -text
+
+# Source code keeps normal text handling.
+* text=auto

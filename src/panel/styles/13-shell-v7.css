@@ -1,0 +1,103 @@
+/* ============================================================
+   SHELL V7 — host launcher, full-bleed flyout, stats ring,
+   editable folder rows, custom dropdown, md picker
+   ============================================================ */
+
+/* 14 · all four corners 12px (less pixelation in dark mode) */
+.dock-card{border-radius:12px}
+
+/* 2 · the flyout iframe is exactly the card: no transparent canvas/arrow */
+.flyout-card{left:0;top:0;width:360px;box-sizing:border-box;border-radius:12px}
+.flyout-card::after{display:none}
+.fo-foot{border-radius:0 0 12px 12px}
+
+/* 3 · natural height, capped by the viewport; the body alone scrolls */
+.fo-body-wrap{max-height:760px}
+
+/* 12 · separator between the folder toolbar and the rail items */
+.rail-divider--top{width:100%;margin:0 0 6px}
+.rail-divider--stats{width:32px;margin:5px 0 4px}
+
+/* 6 · icon-only ready-ratio ring above the utility group */
+.rail-stats{
+  position:relative;width:48px;height:48px;flex:0 0 48px;
+  display:grid;place-items:center;border-radius:10px;margin:2px 0 0;
+  color:var(--muted-2);cursor:default;outline:none;
+  transition:color .16s ease;
+}
+/* shell v9: the ring never paints a hover/focus background */
+.rail-stats:hover,
+.rail-stats:focus-visible{
+  color:var(--ink-2);
+}
+.rail-stats:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+.rail-stats svg{position:absolute;inset:0;display:block}
+.rail-stats .rs-track{stroke:var(--line);stroke-width:3.5}
+.rail-stats .rs-ring{
+  stroke:var(--accent);stroke-width:3.5;stroke-linecap:round;
+  transition:stroke-dasharray .2s ease;
+}
+/* 0% = zero-length dash: a round cap would paint a stray dot, so butt it */
+#rl-stats[data-pct="0"] .rs-ring{stroke-linecap:butt}
+.rail-stats .rs-pct{
+  position:relative;font-family:var(--mono);font-size:10px;font-weight:700;
+  color:var(--ink-2);font-variant-numeric:tabular-nums;
+}
+
+/* 7 · page name from the active tab */
+.field-row{display:flex;align-items:center;gap:6px}
+.page-row{margin:0}
+.page-row .fld{flex:1 1 auto;min-width:0}
+.page-from-tab{flex:0 0 auto;height:36px;font-size:10px;padding:0 9px}
+
+/* 4 · editable folder rows + picker button */
+.set-dir-row{display:flex;align-items:center;gap:6px}
+.set-dir-row .set-dir{flex:1 1 auto;min-width:0;height:34px;font-size:11px;line-height:34px}
+.set-dir-row .folder-pick{flex:0 0 auto;height:34px;margin-top:0;padding:0 9px;font-size:10px}
+
+/* 11 · agent .md picker */
+.agent-path-row{display:flex;align-items:center;gap:4px}
+.agent-path-row .agent-path{flex:1 1 auto;min-width:0;height:30px}
+.agent-md-pick{flex:0 0 auto;height:30px;padding:0 8px;font-size:9.5px}
+.agent-path-row .agent-md-pick{margin-top:0}
+
+/* 10 · custom dropdown; the native select stays for value/change hooks */
+.sel{position:relative;width:100%}
+.sel-native{
+  position:absolute !important;left:0;top:0;
+  width:1px !important;height:1px !important;min-height:0;
+  padding:0;margin:0;border:0;opacity:0;pointer-events:none;
+}
+.sel-btn{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  width:100%;height:32px;padding:0 8px;
+  border:1px solid var(--line-2);border-radius:8px;
+  background:var(--surface-2);color:var(--ink);
+  font-size:11px;text-align:left;cursor:pointer;
+  transition:background-color .14s,border-color .14s,color .14s;
+}
+.sel-btn:hover{border-color:var(--line);background:var(--paper)}
+.sel-btn:focus-visible{outline:none;border-color:var(--accent)}
+.sel.is-open .sel-btn{border-color:var(--accent);background:var(--card)}
+.sel-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-chev{
+  display:grid;place-items:center;flex:0 0 auto;color:var(--muted-2);
+  transition:transform .14s ease;
+}
+.sel.is-open .sel-chev{transform:rotate(180deg)}
+.sel-pop{
+  position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;
+  background:var(--card);border:1px solid var(--line-2);border-radius:10px;
+  box-shadow:none;padding:3px;max-height:168px;overflow:auto;
+}
+.sel-pop[hidden]{display:none}
+.sel-opt{
+  display:block;width:100%;padding:6px 8px;border-radius:7px;
+  font-size:10.5px;line-height:1.25;text-align:left;color:var(--ink-2);
+}
+.sel-opt:hover{background:var(--paper);color:var(--ink)}
+.sel-opt:focus-visible{outline:none;background:var(--paper)}
+.sel-opt.is-selected{color:var(--accent);background:var(--accent-soft)}
+.agent-role-sel{flex:0 0 110px;min-width:0}
+.agent-role-sel .sel-btn{height:30px;padding:0 5px;font-size:9.5px}
+

@@ -1,0 +1,123 @@
+/* ============================================================
+   Request Ledger · canonical design tokens
+
+   Single source of truth for the custom properties shared by the
+   single-file web app (src/web/index.template.html) and the
+   extension panel (src/panel/styles/*).
+
+   Build integration:
+     scripts/build-web.cjs    injects this file where the token marker sits
+     scripts/build-panel.cjs  prepends this file to panel.css
+
+   Surface-specific values must not be added here. The panel's few
+   intentional differences live in src/styles/panel-overrides.css.
+
+   The dark block is wrapped in @media screen because the web app
+   must keep light tokens when printed (the pre-unification dark
+   block lived inside the same @media screen block). The panel is
+   only ever rendered on screen, so the wrapper is inert there.
+
+   Note: the light --card / --surface values are the web app's
+   white; the panel overrides them to its warm paper tone.
+   ============================================================ */
+
+:root{
+  color-scheme: light;
+  --paper:#f7f5f2;
+  --paper-2:#f2efe9;
+  --card:#ffffff;
+  --surface:#ffffff;
+  --surface-2:#fbfaf8;
+  --surface-3:#fcfbf9;
+  --surface-4:#f2efe9;
+  --ink:#1a1a1a;
+  --ink-2:#3b3833;
+  --muted:#6d6961;
+  --muted-2:#6b665e;
+  --line:#e6e1d8;
+  --line-2:#dcd6cb;
+  --accent:#d13e27;
+  --accent-dark:#b93520;
+  --accent-soft:#fbeae5;
+  --sage:#6f816a;
+  --sage-soft:#edf1e9;
+  --sage-deep:#4f614b;
+  --amber:#a97618;
+  --amber-text:#8a5d0d;
+  --amber-soft:#faf1dd;
+  --blue:#386b9c;
+  --blue-soft:#eaf1f8;
+  --violet:#72549f;
+  --violet-soft:#f1ecf8;
+  --green:#3e7a55;
+  --green-soft:#e9f3ec;
+  --danger:#b33324;
+  --agent-team:#8a5d0d;
+  --agent-team-soft:#fbf1d9;
+  --agent-backend:#4f7d5b;
+  --agent-backend-soft:#e9f2ea;
+  --agent-frontend:#1f8f8a;
+  --agent-frontend-soft:#e3f5f2;
+  --agent-qa:#b23f73;
+  --agent-qa-soft:#fbe8f0;
+  --agent-security:#b33324;
+  --agent-security-soft:#fbe9e6;
+  --agent-explorer:#2f6f9a;
+  --agent-explorer-soft:#e7f1f8;
+  --agent-general:#72549f;
+  --agent-general-soft:#f1ecf8;
+  --shadow:0 1px 2px rgba(26,26,26,.035),0 10px 30px rgba(32,28,20,.045);
+  --shadow-lg:0 18px 50px rgba(32,28,20,.14);
+  --radius:16px;
+  --mono:"Cascadia Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+
+@media screen{
+  html[data-theme="dark"]{
+    --paper:#141312;
+    --paper-2:#171513;
+    --card:#1b1917;
+    --surface:#1b1917;
+    --surface-2:#191715;
+    --surface-3:#1d1b18;
+    --surface-4:#201e1b;
+    --ink:#ede8df;
+    --ink-2:#d6cfc4;
+    --muted:#b8b0a4;
+    --muted-2:#9a9287;
+    --line:#35312c;
+    --line-2:#454039;
+    --accent:#ff5f43;
+    --accent-dark:#ff8a72;
+    --accent-soft:rgba(255,95,67,.14);
+    --sage:#5f7d68;
+    --sage-soft:rgba(95,125,104,.18);
+    --sage-deep:#9dbfa8;
+    --amber:#e0ae5b;
+    --amber-text:#e0ae5b;
+    --amber-soft:rgba(224,174,91,.14);
+    --blue:#86b7e8;
+    --blue-soft:rgba(134,183,232,.14);
+    --violet:#c0a6ea;
+    --violet-soft:rgba(192,166,234,.14);
+    --green:#82c49b;
+    --green-soft:rgba(130,196,155,.14);
+    --danger:#ff8b7a;
+    --agent-team:#e0ae5b;
+    --agent-team-soft:rgba(224,174,91,.16);
+    --agent-backend:#8fbfa6;
+    --agent-backend-soft:rgba(143,191,166,.15);
+    --agent-frontend:#5fc7c0;
+    --agent-frontend-soft:rgba(95,199,192,.15);
+    --agent-qa:#e78bb5;
+    --agent-qa-soft:rgba(231,139,181,.15);
+    --agent-security:#ff8b7a;
+    --agent-security-soft:rgba(255,139,122,.15);
+    --agent-explorer:#86b7e8;
+    --agent-explorer-soft:rgba(134,183,232,.15);
+    --agent-general:#c0a6ea;
+    --agent-general-soft:rgba(192,166,234,.15);
+    --shadow:0 1px 2px rgba(0,0,0,.32),0 12px 32px rgba(0,0,0,.26);
+    --shadow-lg:0 18px 50px rgba(0,0,0,.5);
+  }
+}

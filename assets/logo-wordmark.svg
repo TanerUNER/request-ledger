@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 120" width="500" height="120" role="img" aria-label="Request Ledger">
+  <g transform="translate(4 14) scale(1.45)">
+    <rect x="2" y="2" width="60" height="60" rx="18" fill="#d13e27"/>
+    <rect x="14" y="17" width="24" height="5" rx="2.5" fill="#f7f5f2"/>
+    <rect x="14" y="26.5" width="30" height="5" rx="2.5" fill="#f7f5f2"/>
+    <rect x="14" y="36" width="15" height="5" rx="2.5" fill="#f7f5f2"/>
+    <rect x="38" y="37" width="20" height="20" rx="6.5" fill="#f7f5f2"/>
+    <path d="M42.4 47.1l3.5 3.5 7.1-7.5" fill="none" stroke="#4f614b" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="112" y="65" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-size="44" font-weight="700" letter-spacing="-1" fill="#1a1a1a">Request Ledger</text>
+</svg>

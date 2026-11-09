@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Request Ledger",
+  "version": "1.9.4",
+  "minimum_chrome_version": "114",
+  "description": "Local-first request ledger for collecting, prioritizing, and exporting development requests.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtKUthaz/BqURblF5b1HSIENZ43oC8Zq73zAiLmIzwv2KKsm1RZEavFO0sl7J68YEE9qnUvTX6xwvChiLcLqLKkLGPzwm9JZZYTlHalRhAESCtqkcvpuNoL1Q2Kawcc22PRLYYl0dtYE/FcSn/0EkLZtWdSxK0nU94UAVzIHSN8osLzVSWj+f9d+Bhg4kupzcbh3qEgXjghUieqJk1PlT0xpqoxdViIJVOyvo+AqKTMRH7IMfjokeoKMXwS/IYRdzWiDiDQyfb5H92FbHuYbsYYmdEu4oH27GGQIbgLZyjC8FJGB2+UCRYOSZ92snsGOwrlumiRfUMBROIdco5Yb58wIDAQAB",
+  "permissions": ["storage", "downloads", "tabs", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background/worker.js"
+  },
+  "action": {
+    "default_title": "Request Ledger",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/console-capture.js"],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/dock.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel/*", "src/core.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

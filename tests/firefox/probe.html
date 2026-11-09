@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firefox capability probe</title>
+<style>
+  body{font:16px/1.5 system-ui,sans-serif;margin:24px;background:#f7f5f2;color:#1a1a1a}
+  h1{font-size:22px;margin:0 0 4px}
+  #ua{color:#6d6961;font-size:12px;margin-bottom:18px}
+  ul{list-style:none;padding:0;margin:0;font-size:18px}
+  li{padding:6px 0;border-bottom:1px solid #e6e1d8}
+  b{display:inline-block;width:60px}
+  .ok{color:#3e7a55}.bad{color:#b33324}.wait{color:#a97618}
+</style>
+</head>
+<body>
+<h1 id="title">Running…</h1>
+<div id="ua"></div>
+<ul id="out"></ul>
+<script>
+(function(){
+  "use strict";
+  var out = document.getElementById("out");
+  function row(label, value, state){
+    var li = document.createElement("li");
+    var b = document.createElement("b");
+    b.textContent = state === "ok" ? "PASS" : state === "bad" ? "FAIL" : "WAIT";
+    b.className = state;
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(label + ": " + value));
+    out.appendChild(li);
+  }
+  function sync(label, fn){
+    try{ var v = fn(); row(label, String(v), v ? "ok" : "bad"); }
+    catch(e){ row(label, e.name + ": " + e.message, "bad"); }
+  }
+  document.getElementById("ua").textContent = navigator.userAgent;
+  row("protocol", location.protocol, "ok");
+  row("secure context", String(window.isSecureContext), window.isSecureContext ? "ok" : "bad");
+  sync("localStorage", function(){ localStorage.setItem("__p","1"); var v = localStorage.getItem("__p") === "1"; localStorage.removeItem("__p"); return v; });
+  sync("indexedDB API", function(){ return typeof indexedDB === "object"; });
+  sync("showDirectoryPicker", function(){ return typeof window.showDirectoryPicker === "function"; });
+  sync("clipboard.write", function(){ return !!(navigator.clipboard && navigator.clipboard.write); });
+  sync("BroadcastChannel", function(){ return typeof BroadcastChannel === "function"; });
+  sync("fetch", function(){ return typeof fetch === "function"; });
+
+  var li = document.createElement("li");
+  var b = document.createElement("b"); b.textContent = "WAIT"; b.className = "wait";
+  li.appendChild(b); li.appendChild(document.createTextNode("IndexedDB open: …"));
+  out.appendChild(li);
+  try{
+    var req = indexedDB.open("__probe_ff", 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore("s"); };
+    req.onsuccess = function(){ req.result.close(); try{ indexedDB.deleteDatabase("__probe_ff"); }catch(e){} try{ localStorage.setItem("__idb_result","ok"); }catch(e){} li.innerHTML = '<b class="ok">PASS</b>IndexedDB open: ok'; document.getElementById("title").textContent = "DONE"; };
+    req.onerror = function(){ try{ localStorage.setItem("__idb_result","fail"); }catch(e){} li.innerHTML = '<b class="bad">FAIL</b>IndexedDB open: error'; document.getElementById("title").textContent = "DONE"; };
+    setTimeout(function(){ if(li.textContent.indexOf("WAIT") === 0){ try{ localStorage.setItem("__idb_result","timeout"); }catch(e){} li.innerHTML = '<b class="bad">FAIL</b>IndexedDB open: timeout'; document.getElementById("title").textContent = "DONE"; } }, 2500);
+  }catch(e){
+    li.innerHTML = '<b class="bad">FAIL</b>IndexedDB open: ' + e.name;
+    document.getElementById("title").textContent = "DONE";
+  }
+})();
+</script>
+<iframe src="http://localhost:8081/slow.html" hidden></iframe>
+</body>
+</html>

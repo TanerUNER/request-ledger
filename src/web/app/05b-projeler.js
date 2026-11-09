@@ -1,0 +1,228 @@
+  /* ============================================================
+     Proje kayıt defteri (workspace)
+     ============================================================ */
+  /* One registry lists every project; each project keeps its own ledger
+     payload under PROJECT_LEDGER_PREFIX + id. The legacy key stays untouched
+     so the extension bridge and the one-time migration keep working. */
+
+  function newProjectId(){
+    return "prj_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+  }
+  function projectLedgerKey(projectId){
+    return PROJECT_LEDGER_PREFIX + projectId;
+  }
+  function emptyProjectRegistry(){
+    return { version: 1, activeId: null, projects: [] };
+  }
+  /* A legacy install has no project name of its own. The neutral label is
+     translated with the current interface language; a stored name always wins. */
+  function importedProjectName(lang){
+    if(lang === "tr") return "İçe aktarılan proje";
+    if(lang === "en") return "Imported project";
+    return translateString("İçe aktarılan proje");
+  }
+  function normalizeProjectRecord(record){
+    if(!record || typeof record !== "object") return null;
+    const id = typeof record.id === "string" && /^prj_[A-Za-z0-9_]+$/.test(record.id) ? record.id : "";
+    if(!id) return null;
+    const name = normalizeProjectName(record.name) || importedProjectName();
+    const createdAt = typeof record.createdAt === "string" && record.createdAt ? record.createdAt : nowISO();
+    const updatedAt = typeof record.updatedAt === "string" && record.updatedAt ? record.updatedAt : createdAt;
+    return {
+      id: id,
+      name: name,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      exportTarget: typeof record.exportTarget === "string" ? record.exportTarget.slice(0, 120) : "",
+      archiveCollapsed: record.archiveCollapsed === true
+    };
+  }
+  function readRegistry(){
+    try{
+      const raw = localStorage.getItem(PROJECTS_KEY);
+      if(!raw) return null;
+      const parsed = JSON.parse(raw);
+      if(!parsed || !Array.isArray(parsed.projects)) return null;
+      const projects = parsed.projects.map(normalizeProjectRecord).filter(Boolean);
+      const activeId = typeof parsed.activeId === "string" && projects.some(function(project){ return project.id === parsed.activeId; })
+        ? parsed.activeId
+        : null;
+      return { version: 1, activeId: activeId, projects: projects };
+    }catch(err){
+      console.warn("Proje listesi okunamadı", err);
+      return null;
+    }
+  }
+  function writeRegistry(registry){
+    try{
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(registry));
+      return true;
+    }catch(err){
+      console.warn("Proje listesi yazılamadı", err);
+      return false;
+    }
+  }
+  function findProjectRecord(projectId){
+    const registry = readRegistry();
+    if(!registry) return null;
+    for(const project of registry.projects){
+      if(project.id === projectId) return project;
+    }
+    return null;
+  }
+  /* One-time migration: a legacy single-ledger install becomes one project.
+     The legacy payload keeps its own project name when present; otherwise the
+     neutral translated "Imported project" label is used. */
+  function initProjectRegistry(){
+    let registry = readRegistry();
+    if(registry) return registry;
+    let legacyRaw = null;
+    try{ legacyRaw = localStorage.getItem(STORAGE_KEY); }catch(err){ legacyRaw = null; }
+    if(legacyRaw){
+      let legacy = null;
+      try{ legacy = JSON.parse(legacyRaw); }catch(err){ legacy = null; }
+      if(legacy && Array.isArray(legacy.requests)){
+        const id = newProjectId();
+        const stamp = typeof legacy.updatedAt === "string" && legacy.updatedAt ? legacy.updatedAt : nowISO();
+        const project = {
+          id: id,
+          name: normalizeProjectName(legacy.project) || importedProjectName(legacy.language),
+          createdAt: stamp,
+          updatedAt: stamp,
+          exportTarget: "",
+          archiveCollapsed: false
+        };
+        registry = { version: 1, activeId: id, projects: [project] };
+        try{ localStorage.setItem(projectLedgerKey(id), legacyRaw); }catch(err){ /* quota: keep legacy */ }
+        writeRegistry(registry);
+        migratedProjectId = id;
+        return registry;
+      }
+    }
+    return emptyProjectRegistry();
+  }
+  function syncActiveProjectRecord(updatedAt){
+    if(!activeProjectId) return;
+    const registry = readRegistry();
+    if(!registry) return;
+    for(const project of registry.projects){
+      if(project.id !== activeProjectId) continue;
+      project.name = normalizeProjectName(state.project) || project.name;
+      project.updatedAt = updatedAt || project.updatedAt;
+      if(targetFolderHandle && targetFolderHandle.name){
+        project.exportTarget = String(targetFolderHandle.name).slice(0, 120);
+      }
+      registry.activeId = activeProjectId;
+      writeRegistry(registry);
+      return;
+    }
+  }
+  function setProjectExportTarget(value){
+    if(!activeProjectId) return;
+    setProjectExportTargetFor(activeProjectId, value);
+  }
+  function setProjectExportTargetFor(projectId, value){
+    if(!projectId) return;
+    const registry = readRegistry();
+    if(!registry) return;
+    for(const project of registry.projects){
+      if(project.id !== projectId) continue;
+      project.exportTarget = String(value == null ? "" : value).slice(0, 120);
+      writeRegistry(registry);
+      return;
+    }
+  }
+  function updateProjectRecord(projectId, patch){
+    if(!projectId) return null;
+    const registry = readRegistry();
+    if(!registry) return null;
+    for(const project of registry.projects){
+      if(project.id !== projectId) continue;
+      if(patch && typeof patch === "object"){
+        if(typeof patch.name === "string") project.name = normalizeProjectName(patch.name) || project.name;
+        if(typeof patch.updatedAt === "string" && patch.updatedAt) project.updatedAt = patch.updatedAt;
+        if(typeof patch.exportTarget === "string") project.exportTarget = patch.exportTarget.slice(0, 120);
+        if(typeof patch.archiveCollapsed === "boolean") project.archiveCollapsed = patch.archiveCollapsed;
+      }
+      writeRegistry(registry);
+      return project;
+    }
+    return null;
+  }
+  function setProjectArchiveCollapsed(projectId, collapsed){
+    return updateProjectRecord(projectId, { archiveCollapsed: Boolean(collapsed) });
+  }
+  function renameProjectRecord(projectId, name){
+    const value = normalizeProjectName(name);
+    if(!value) return null;
+    return updateProjectRecord(projectId, { name: value });
+  }
+  function removeProjectRecord(projectId){
+    const registry = readRegistry();
+    if(!registry) return null;
+    const index = registry.projects.findIndex(function(project){ return project.id === projectId; });
+    if(index < 0) return null;
+    registry.projects.splice(index, 1);
+    if(registry.activeId === projectId){
+      const next = registry.projects.slice().sort(function(a, b){
+        return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+      })[0];
+      registry.activeId = next ? next.id : null;
+    }
+    if(!writeRegistry(registry)) return null;
+    return registry;
+  }
+  function readProjectLedgerPayload(projectId){
+    try{
+      const raw = localStorage.getItem(projectLedgerKey(projectId));
+      if(!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && Array.isArray(parsed.requests) ? parsed : null;
+    }catch(err){
+      return null;
+    }
+  }
+  /* Phase 1 stored media and snapshots globally. The one-time scope migration
+     stamps every record without a projectId into the migrated project, or the
+     last active project when no legacy ledger was migrated. */
+  function legacyScopeTarget(registry){
+    if(migratedProjectId) return migratedProjectId;
+    if(!registry) return null;
+    if(registry.activeId) return registry.activeId;
+    const sorted = registry.projects.slice().sort(function(a, b){
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    });
+    return sorted.length ? sorted[0].id : null;
+  }
+  function legacyScopeMigrated(){
+    try{ return localStorage.getItem(PROJECT_SCOPE_KEY) === "1"; }catch(err){ return false; }
+  }
+  function markLegacyScopeMigrated(){
+    try{ localStorage.setItem(PROJECT_SCOPE_KEY, "1"); }catch(err){ /* quota */ }
+  }
+  /* The full scan runs once per install; every row written afterwards is
+     stamped by withProjectScope, so repeating it would only cost startup time. */
+  async function migrateLegacyScope(target){
+    if(!target || legacyScopeMigrated()) return 0;
+    const stamped = await stampLegacyProjectScope(target);
+    markLegacyScopeMigrated();
+    return stamped;
+  }
+  function targetFolderSettingId(){
+    return "targetFolder:" + activeProjectId;
+  }
+  function projectRequestCount(projectId){
+    if(projectId === activeProjectId) return state.requests.length;
+    const parsed = readProjectLedgerPayload(projectId);
+    return parsed ? parsed.requests.length : 0;
+  }
+  function formatProjectDate(value){
+    if(!value) return "";
+    const date = new Date(value);
+    if(isNaN(date.getTime())) return "";
+    try{
+      return new Intl.DateTimeFormat(state.language === "en" ? "en-US" : "tr-TR", { day:"2-digit", month:"short", year:"numeric" }).format(date);
+    }catch(err){
+      return date.toLocaleDateString(state.language === "en" ? "en-US" : "tr-TR");
+    }
+  }

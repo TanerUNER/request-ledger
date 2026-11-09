@@ -1,0 +1,291 @@
+/* ============================================================
+   DOCK
+   ============================================================ */
+.dock-card{
+  inset:0;
+  border-radius:16px;
+  display:flex;flex-direction:column;align-items:center;
+  padding:9px 0 8px;
+  overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+  /* collapsed: parked offscreen to the right; closing uses 180ms */
+  transform:translateX(100%);
+  opacity:0;pointer-events:none;
+  transition:
+    transform .18s cubic-bezier(.22,.61,.36,1),
+    opacity .18s ease;
+}
+.dock-card.is-open{
+  transform:none;opacity:1;pointer-events:auto;
+  /* opening uses 220ms (destination state owns the duration) */
+  transition:
+    transform .22s cubic-bezier(.22,.61,.36,1),
+    opacity .22s ease;
+}
+
+/* shell v8: active request title marquee, full-width above the folder tools.
+   Negative side margins cancel the card padding so the strip reaches both
+   edges; overflow:hidden keeps the looping title inside the rail. */
+#rl-active-marquee{
+  width:100%;height:24px;flex:0 0 24px;
+  margin:-9px 0 6px;
+  display:flex;align-items:center;
+  position:relative;overflow:hidden;
+  /* soft edge fades: clipped text dissolves instead of being cut mid-word */
+  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  mask-image:linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  background:var(--accent-soft);
+  background:color-mix(in srgb, var(--accent) 10%, var(--card));
+  color:var(--accent-dark);
+  border-bottom:1px solid var(--line);
+  cursor:grab;touch-action:none;
+  user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+html[data-theme="dark"] #rl-active-marquee{
+  background:var(--accent-soft);
+}
+#rl-active-marquee.is-dragging{cursor:grabbing}
+.rl-marquee-track{
+  display:block;flex:0 0 auto;
+  white-space:nowrap;
+  padding:0 2px;
+  font-size:9.5px;font-weight:600;line-height:24px;letter-spacing:.01em;
+  will-change:transform;
+  pointer-events:none;
+}
+
+/* rail icon buttons (pin + collapse) now live at the bottom */
+.rail-btn{
+  width:28px;height:28px;flex:0 0 28px;border-radius:9px;
+  display:grid;place-items:center;
+  color:var(--muted);
+  transition:background-color .16s ease,color .16s ease;
+}
+.rail-btn:hover{
+  color:var(--ink-2);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  backdrop-filter:blur(6px);
+}
+.rail-btn.is-on{
+  color:var(--accent);
+}
+.rail-btn.is-on:hover{color:var(--accent)}
+
+/* shell v6: two folder shortcuts pinned to the very top of the rail */
+.rail-tools{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;flex:0 0 auto;margin:0 0 4px;
+}
+.rail-folder{color:var(--muted-2)}
+.rail-folder:hover{color:var(--ink-2)}
+
+/* shell v6: pin + collapse share one 30px pill, each half is 50% wide */
+.rail-pair{
+  display:flex;align-items:stretch;
+  width:100%;height:30px;flex:0 0 30px;
+  margin:3px 0 2px;
+  border:1px solid var(--line);border-radius:10px;
+  background:var(--surface-2);
+  overflow:hidden;
+}
+.rail-pair .rail-btn{
+  flex:1 1 50%;width:50%;height:100%;
+  border-radius:0;background:transparent;backdrop-filter:none;
+}
+.rail-pair .rail-btn:hover{
+  color:var(--ink-2);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  backdrop-filter:none;
+}
+/* the active pin is shown by the icon only (no background) */
+.rail-pin{color:var(--muted)}
+.rail-pin.is-on{
+  color:var(--accent);
+  background:transparent;
+}
+.rail-pin.is-on:hover{
+  color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.rail-pin svg{
+  display:block;
+  transition:transform .18s ease,color .18s ease;
+}
+.rail-pin.is-on svg{transform:rotate(30deg)}
+/* 1px divider between the utility group and the pin/collapse pair */
+.rail-divider{
+  width:32px;height:1px;flex:0 0 1px;
+  background:var(--line);margin:6px 0 5px;
+}
+
+/* ---------- shell v4/v6: full-bleed bottom drag handle ---------- */
+/* Negating the card's side and bottom padding makes the hover/active
+   background reach the card edges; overflow:hidden clips it to the
+   16px rounded corners, so no empty strip is left below the handle. */
+#rl-drag{
+  width:100%;
+  margin:0 0 -8px;
+  border-radius:0;
+}
+
+/* bottom-most row: horizontal drag handle (host slides the frames) */
+#rl-drag{
+  height:28px;flex:0 0 28px;
+  display:grid;place-items:center;
+  color:var(--muted-2);
+  cursor:grab;
+  touch-action:none;
+  user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:background-color .16s ease,color .16s ease;
+}
+#rl-drag:hover,
+#rl-drag:focus-visible,
+.dock-card.is-dragging #rl-drag{
+  color:var(--ink-2);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.dock-card.is-dragging #rl-drag{cursor:grabbing}
+#rl-drag svg{display:block;pointer-events:none}
+
+/* 44×44 launcher, same dock iframe, bottom-right (v3: 80px above the fold) */
+.launcher{
+  position:absolute;right:20px;bottom:80px;
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+  display:grid;place-items:center;
+  opacity:0;transform:scale(.9);pointer-events:none;
+  transition:opacity .14s ease,transform .14s ease,background-color .16s ease;
+}
+.launcher.is-visible{opacity:1;transform:none;pointer-events:auto}
+.launcher:hover{
+  background:color-mix(in srgb, var(--accent) 7%, var(--card));
+  color:var(--ink);
+}
+.launcher svg{display:block;width:28px;height:28px}
+.launcher:active{transform:scale(.97)}
+
+/* shell v3: one-shot hint above the launcher. The dock iframe is 100px
+   wide, so the bubble uses the full 88px strip left of/above the launcher. */
+.callout{
+  position:fixed;right:20px;bottom:136px;width:88px;
+  padding:7px 7px 8px;
+  display:flex;flex-direction:column;gap:2px;
+  border:1px solid var(--line);border-radius:10px;
+  background:var(--card);color:var(--ink-2);
+  box-shadow:none;cursor:pointer;z-index:2;
+  opacity:0;transform:translateY(6px);
+  transition:opacity .2s ease,transform .2s ease;
+}
+.callout.is-visible{opacity:1;transform:none}
+.callout-title{
+  font-size:9.5px;font-weight:700;line-height:1.2;
+  letter-spacing:-.01em;color:var(--ink);
+}
+.callout-sub{font-size:9px;line-height:1.35;color:var(--muted-2)}
+/* tail toward the launcher below */
+.callout::after{
+  content:"";position:absolute;right:18px;bottom:-5px;
+  width:9px;height:9px;background:var(--card);
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  transform:rotate(45deg);
+}
+
+/* persistent storage-failure banner (Phase 9) */
+.storage-banner{
+  margin:0 13px 8px;padding:6px 9px;
+  border:1px solid var(--danger);border-radius:8px;
+  background:var(--accent-soft);color:var(--danger);
+  font-size:10px;font-weight:700;line-height:1.3;text-align:center;
+}
+.dock-card .storage-banner{
+  width:100%;margin:0 0 6px;padding:3px 4px;border-radius:6px;
+  font-size:6.5px;line-height:1.15;letter-spacing:0;
+  max-height:36px;overflow:hidden;
+}
+
+.g{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%}
+.grow{flex:1 0 0;min-height:0}
+.sep{width:24px;height:1px;flex:0 0 1px;background:var(--line);margin:5px 0}
+
+.item{
+  width:100%;height:30px;max-height:30px;
+  padding:0 8px;border-radius:0;
+  display:flex;flex-direction:row;align-items:center;gap:8px;
+  position:relative;overflow:hidden;
+  color:var(--muted);background:transparent;
+  font-size:9.5px;font-weight:600;line-height:1.1;letter-spacing:.01em;
+  transition:
+    color .14s ease,
+    background-color .16s ease,
+    backdrop-filter .16s ease,
+    opacity .16s ease,
+    transform .2s ease,
+    max-height .2s ease,
+    padding .2s ease,
+    margin .2s ease;
+}
+.item svg{display:block;flex:0 0 auto;width:15px;height:15px;opacity:.9}
+/* hover reveals a soft background; the border never changes */
+.item:hover{
+  color:var(--ink-2);
+  background:rgba(209,62,39,.07);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  backdrop-filter:blur(6px);
+}
+/* the active section is ordered to the top without moving the DOM node */
+.g--main .item.is-current{order:-1}
+.item .item-label{
+  display:block;min-width:0;max-width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.item .n{
+  margin-left:auto;flex:0 0 auto;
+  font-family:var(--mono);font-size:7.5px;font-weight:600;
+  color:var(--muted-2);font-variant-numeric:tabular-nums;
+}
+/* shell v9: counters are only rendered in the host hover card */
+.dock-card .item .n{display:none}
+
+/* primary actions are distinguished by colour only */
+.item--primary{color:var(--accent-dark)}
+.item--primary:hover{color:var(--accent)}
+.item--ready{color:var(--sage-deep)}
+.item--ready:hover{color:var(--sage-deep)}
+.item--quiet{color:var(--muted-2)}
+
+/* shell v10: Hazır + İptal side by side under a divider (compose rail) */
+.rail-divider--compose{width:100%;margin:5px 0 4px}
+.rail-compose-pair{
+  display:flex;align-items:center;gap:4px;
+  width:100%;padding:0 5px;
+}
+.rail-compose-pair .item{
+  flex:1 1 0;min-width:0;height:28px;max-height:28px;
+  padding:0 3px;justify-content:center;
+}
+.rail-compose-pair .item .item-label{text-align:center}
+.dock-card.is-section-open .rail-divider--compose{
+  height:0;flex-basis:0;margin:0;opacity:0;overflow:hidden;
+}
+
+/* shell v10 §21: the active rail item is only tinted; the orange span is gone */
+.item.is-current{
+  overflow:visible;
+  background:var(--accent-soft);
+  color:var(--accent-dark);
+}
+.item.is-current svg{opacity:1}
+
+/* section open: collapse every non-active item in the TOP group only.
+   `is-section-open` is separate from the rail's `is-open` so opening the
+   rail never collapses the idle layout. Nodes stay in flow (no display:none)
+   so max-height/opacity/transform transition in both directions. */
+.dock-card.is-section-open .g--main .item:not(.is-current){
+  opacity:0;transform:translateY(-8px);
+  max-height:0;padding-top:0;padding-bottom:0;margin-top:-2px;
+  pointer-events:none;
+}
+.dock-card.is-section-open .g--main{gap:0}
+

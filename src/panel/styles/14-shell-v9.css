@@ -1,0 +1,119 @@
+/* ============================================================
+   SHELL V9 — collapsible utilities, dockbar, flat items, left side
+   ============================================================ */
+
+/* 14 · utilities are collapsed until the chevron above the dockbar is used */
+.g--util{
+  overflow:hidden;
+  max-height:0;opacity:0;pointer-events:none;
+  transition:max-height .22s ease,opacity .22s ease;
+}
+.dock-card.utils-open .g--util{
+  max-height:120px;opacity:1;pointer-events:auto;
+}
+.rail-divider--util{width:32px;margin:5px 0 4px}
+.dock-card:not(.utils-open) .rail-divider--util{display:none}
+.rail-util-toggle{
+  width:28px;height:24px;flex:0 0 24px;border-radius:8px;
+  color:var(--muted-2);margin:2px 0 0;
+  display:grid;place-items:center;
+  transition:transform .18s ease,color .16s ease,background-color .16s ease;
+}
+.rail-util-toggle:hover{
+  color:var(--ink-2);
+  transform:translateY(-2px);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.rail-util-toggle svg{display:block;transition:transform .2s ease}
+.utils-open .rail-util-toggle svg{transform:rotate(180deg)}
+
+/* 15/16 · narrow bottom card, folders on top, pin | collapse below */
+.rail-dockbar{
+  width:72px;flex:0 0 auto;margin:3px auto 2px;
+  border:1px solid var(--line);border-radius:10px;
+  background:var(--surface-2);
+  overflow:hidden;
+}
+.rail-dockbar-row{
+  display:flex;align-items:center;justify-content:center;
+  width:100%;height:30px;flex:0 0 30px;
+}
+.rail-dockbar-row--folders{gap:0;align-items:stretch;justify-content:stretch}
+.rail-dockbar-row--folders .rail-btn{
+  flex:1 1 0;width:auto;height:100%;border-radius:0;flex-basis:0;
+}
+.rail-dockbar-row--folders .rail-btn:hover{
+  color:var(--ink-2);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  backdrop-filter:none;
+}
+.rail-dockbar-sep{width:100%;height:1px;flex:0 0 1px;background:var(--line)}
+.rail-dockbar-row--actions{align-items:stretch;justify-content:stretch}
+.rail-dockbar-row--actions .rail-btn{
+  flex:1 1 0;width:auto;height:100%;border-radius:0;
+}
+.rail-dockbar-row--actions .rail-btn:hover{
+  color:var(--ink-2);
+  background:color-mix(in srgb, var(--accent) 7%, transparent);
+  backdrop-filter:none;
+}
+.rail-dockbar-vsep{width:1px;flex:0 0 1px;background:var(--line)}
+
+/* 19 · left placement: the card parks to the left, the action row reverses
+   (pin stays nearest the card's outer edge) and the collapse chevron points
+   toward the hiding direction (left) — shell v10 §22. */
+.dock-left .dock-card{transform:translateX(-100%)}
+.dock-left .dock-card.is-open{transform:none}
+.dock-left #rl-collapse svg{transform:scaleX(-1)}
+.dock-left .rail-pair{flex-direction:row-reverse}
+.dock-left .rail-dockbar-row--actions{flex-direction:row-reverse}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:0s !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0s !important;
+    scroll-behavior:auto !important;
+  }
+  .item,.flyout-card{transition:none}
+  .dock-card,.launcher,.rail-btn,.callout{transition:none}
+  .dock-card{transform:none}
+  .flyout-card{transform:none}
+  .flyout-card::after{transition:none}
+  .toast{animation:none;transition:none}
+  .toast.is-leaving{transform:none}
+  .tab-picker{animation:none}
+}
+
+/* v10 - the Hazır/İptal pair stays visible while a section is open */
+.dock-card.is-section-open .g--main #rl-compose-pair .item{
+  opacity:1 !important;
+  transform:none !important;
+  max-height:30px !important;
+  margin-top:0 !important;
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+  pointer-events:auto !important;
+}
+.dock-card.is-section-open .g--main #rl-compose-pair{
+  opacity:1 !important;
+  max-height:30px !important;
+  overflow:visible !important;
+}
+.dock-card,
+.dock-card.is-open,
+.dock-left .dock-card,
+.dock-left .dock-card.is-open{
+  transform:none !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+}
+.dock-card{transition:none !important}
+
+/* a11y: restore visible keyboard focus on form controls */
+.fld:focus-visible,
+.textarea:focus-visible,
+.sel-btn:focus-visible,
+.sel-opt:focus-visible,
+.exp-warn-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}

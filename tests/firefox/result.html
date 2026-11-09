@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Firefox storage result</title>
+<style>body{font:28px/1.4 system-ui,sans-serif;margin:40px;background:#f7f5f2;color:#1a1a1a}.ok{color:#3e7a55}.bad{color:#b33324}</style>
+</head>
+<body>
+<h1>IndexedDB result</h1>
+<p id="v">reading…</p>
+<script>
+(function(){
+  var value = "missing";
+  try{ value = localStorage.getItem("__idb_result") || "missing"; }catch(e){ value = "error:" + e.name; }
+  var p = document.getElementById("v");
+  p.textContent = "open: " + value;
+  p.className = value === "ok" ? "ok" : "bad";
+})();
+</script>
+</body>
+</html>

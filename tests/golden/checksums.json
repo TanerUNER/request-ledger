@@ -1,0 +1,10 @@
+{
+  "tests/fixtures/ledger.reference.json": "ac68b94c316292a9d64da4ce593e6eb901801627c03b75ccde2dc1cc572e979f",
+  "tests/golden/markdown/tr-zip.md": "03325b7af3168a43e15a2bd783c28e25ee25ce465bab4fd83b0ad01847c0ca53",
+  "tests/golden/markdown/tr-embedded.md": "9b211d72520af3a7b50a3ca1182e561b2ae564d66205d80d35ac9c100d916c18",
+  "tests/golden/markdown/tr-none.md": "fc3860b50a78d02655148628fdecec0ecc2520802d1575ea1554917f1b208541",
+  "tests/golden/markdown/en-zip.md": "de632304efd1eb4b5f61da147fb1765472d69e40ae9b4b2586e7cdbb90cdc6fe",
+  "tests/golden/markdown/en-embedded.md": "0ddb730d130ec77ed45c90854cb1550bb95d44aedf4d7a08a0718bf3d77ce058",
+  "tests/golden/markdown/en-none.md": "08b4b1ccd53883158fcfc089c0709222c2ac29b4367d838949b731a55afabf90",
+  "tests/golden/backup/backup.json": "0acbaf2ad59aa5fd99ced740f2242560633c3566ed7217fcb7fc3db60c3d16b6"
+}
