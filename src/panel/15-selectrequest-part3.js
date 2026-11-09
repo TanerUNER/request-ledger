@@ -148,16 +148,24 @@
     requestClose();
   }
 
+  function mediaReferencedElsewhere(mediaId, exceptRequestId){
+    return (app && Array.isArray(app.requests) ? app.requests : []).some(function(item){
+      if(!item || item.id === exceptRequestId) return false;
+      return (item.images || []).some(function(img){ return img.id === mediaId; }) ||
+        (item.attachments || []).some(function(att){ return att.id === mediaId; });
+    });
+  }
+
   function deleteMediaFor(req){
     if(!req || !core || !core.storage) return Promise.resolve();
     var jobs = [];
     (req.images || []).forEach(function(img){
-      if(core.storage.deleteImage){
+      if(core.storage.deleteImage && !mediaReferencedElsewhere(img.id, req.id)){
         jobs.push(Promise.resolve().then(function(){ return core.storage.deleteImage(img.id); }).catch(function(){}));
       }
     });
     (req.attachments || []).forEach(function(att){
-      if(core.storage.deleteFile){
+      if(core.storage.deleteFile && !mediaReferencedElsewhere(att.id, req.id)){
         jobs.push(Promise.resolve().then(function(){ return core.storage.deleteFile(att.id); }).catch(function(){}));
       }
     });

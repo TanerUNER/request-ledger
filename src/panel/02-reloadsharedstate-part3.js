@@ -584,6 +584,7 @@
     if(data.type === "RL_APP_HELLO" || data.type === "RL_APP_SNAPSHOT" ||
        data.type === "RL_APP_PATCH" || data.type === "RL_APP_ACK" ||
        data.type === "RL_APP_BYE" || data.type === "RL_APP_SERVER_STOP" ||
+       data.type === "RL_APP_MEDIA" || data.type === "RL_APP_MEDIA_REQUEST" ||
        data.type === "RL_BRIDGE_CONTEXT" ||
        data.type === "RL_APP_TABS_REQUEST" || data.type === "RL_APP_PICK_REQUEST" ||
        data.type === "RL_APP_PICK_CANCEL" || data.type === "RL_APP_CAPTURE_REQUEST" ||

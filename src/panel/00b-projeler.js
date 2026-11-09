@@ -572,7 +572,36 @@
     refreshProjectViews();
   }
 
+  function queueAppProjectCommand(type, projectId, name, ledgerId){
+    var command = {
+      id:"cmd_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      type:type,
+      projectId:String(projectId || ""),
+      ledgerId:String(ledgerId || ""),
+      name:String(name || ""),
+      at:nowISO()
+    };
+    try{
+      if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
+        chrome.storage.local.set({ "rl-app-command": command });
+      }
+    }catch(err){ /* the page-local bridge still covers same-tab panels */ }
+    try{
+      if(typeof bridgePost === "function" && typeof bridgeConnected !== "undefined" && bridgeConnected){
+        bridgePost("RL_APP_PROJECT_CREATE", {
+          commandId:command.id,
+          commandType:command.type,
+          projectId:command.projectId,
+          ledgerId:command.ledgerId,
+          name:command.name,
+          at:command.at
+        });
+      }
+    }catch(err){ /* cross-tab storage command is the fallback */ }
+  }
+
   function createProjectAndOpen(name){
+    if(typeof companionLocked === "function" && companionLocked()) return false;
     var value = normalizeProjectName(name);
     if(!value) return false;
     var hadProject = !!activeProjectId;
@@ -607,6 +636,9 @@
       lastExport: null
     };
     try{ localStorage.setItem(projectLedgerKey(id), JSON.stringify(ledger)); }catch(err){ /* the first save retries */ }
+    /* Route the create through the app tab's content script; the app is the
+       hub and must own the project list. */
+    queueAppProjectCommand("project-create", id, value, ledgerId);
     projectCreatePending = null;
     projectFormOpen = false;
     openProjectById(id);

@@ -32,8 +32,10 @@
       if(value && merged.indexOf(value) < 0) merged.push(value);
     }
     if(merged.indexOf(selector) < 0) merged.push(selector);
-    return merged.join(" | ");
+    return merged.join(" | ").slice(0, 200);
   }
+
+  try{ window.__rlPanelMergeLocation = mergeLocation; }catch(err){ /* ignore */ }
 
   function handlePickResult(message){
     clearPickPending();
@@ -134,7 +136,7 @@
       backupBusy = false;
     }
 
-    els.title.textContent = section === "project" ? projectSectionTitle() : sectionText(spec, "title");
+    els.title.textContent = (section === "project" || section === "projects") ? projectSectionTitle() : sectionText(spec, "title");
     var req = activeRequest();
     if(req && (section === "detail" || section === "page" || section === "desc" || section === "export")){
       els.chip.hidden = false;
@@ -153,7 +155,7 @@
 
     if(section === "new") renderNew(scroller);
     else if(section === "list") renderList(scroller);
-    else if(section === "project") renderProject(scroller);
+    else if(section === "project" || section === "projects") renderProject(scroller);
     else if(section === "detail") renderDetail(scroller);
     else if(section === "page") renderPage(scroller);
     else if(section === "desc") renderDesc(scroller);

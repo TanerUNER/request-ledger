@@ -236,6 +236,89 @@ function sendToTab(tabId, message) {
   return callApi(chrome.tabs.sendMessage, tabId, message);
 }
 
+/* -------------------------------------------------------------------------
+   Active app presence: never trust a stale "connected" flag.
+   Probe the last known local port and ask every content script whether it is
+   the app page. File pages count as open; a page whose server is stopped does
+   not.
+   ------------------------------------------------------------------------- */
+function probePortStatus(port) {
+  var value = Number(port);
+  if (!Number.isInteger(value) || value <= 0) return Promise.resolve(null);
+  var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  var timer = setTimeout(function () {
+    if (controller) { try { controller.abort(); } catch (error) { /* ignore */ } }
+  }, 900);
+  return fetch("http://127.0.0.1:" + value + "/__rl/status", {
+    method: "GET",
+    cache: "no-store",
+    signal: controller ? controller.signal : undefined,
+  }).then(function (response) {
+    if (!response.ok) return null;
+    return response.json();
+  }).then(function (data) {
+    if (!data || data.app !== "request-ledger" || data.server !== true) return null;
+    return data;
+  }).catch(function () {
+    return null;
+  }).then(function (data) {
+    clearTimeout(timer);
+    return data;
+  });
+}
+
+function pingTabPresence(tab) {
+  return new Promise(function (resolve) {
+    var settled = false;
+    var timer = setTimeout(function () { done(null); }, 700);
+    function done(value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }
+    try {
+      chrome.tabs.sendMessage(tab.id, { type: "RL_APP_PRESENCE_PING" }, function (response) {
+        var error = chrome.runtime && chrome.runtime.lastError;
+        done(error || !response ? null : response);
+      });
+    } catch (error) {
+      done(null);
+    }
+  });
+}
+
+async function probeAppPresence(message) {
+  var tabs = [];
+  try { tabs = await callApi(chrome.tabs.query, {}); } catch (error) { tabs = []; }
+  var sawStoppedApp = false;
+  for (var j = 0; j < (tabs || []).length; j += 1) {
+    var tab = tabs[j];
+    if (!tab || typeof tab.id !== "number") continue;
+    var response = await pingTabPresence(tab);
+    if (!response || response.app !== true) continue;
+    if (response.stopped === true) { sawStoppedApp = true; continue; }
+    var fileMode = response.file === true || /^file:/i.test(String(response.url || tab.url || ""));
+    if (fileMode) {
+      return { open: true, mode: "file", url: response.url || tab.url || "" };
+    }
+    var tabPort = Number(response.port);
+    if (!(tabPort > 0)) {
+      try { tabPort = Number(new URL(response.url || tab.url || "").port); } catch (error) { tabPort = 0; }
+    }
+    if (tabPort > 0) {
+      var tabStatus = await probePortStatus(tabPort);
+      if (tabStatus) {
+        try { await callApi(chrome.storage.local.set, { "rl-app-port": tabPort }); } catch (error) { /* ignore */ }
+        return { open: true, mode: "server", port: tabPort, origin: "http://localhost:" + tabPort };
+      }
+      sawStoppedApp = true;
+    }
+  }
+  if (sawStoppedApp) return { open: false, mode: "", reason: "app-stopped" };
+  return { open: false, mode: "", reason: "no-app" };
+}
+
 /* Message first; if the tab has no content script, inject and retry once. */
 function sendToTabWithInjection(tabId, message, file) {
   return sendToTab(tabId, message).catch(function () {
@@ -688,6 +771,15 @@ function handlePanelMessage(message, sendResponse) {
       });
       sendResponse({ ok: true });
       return false;
+    }
+
+    case "RL_APP_PRESENCE": {
+      probeAppPresence(message).then(function (result) {
+        sendResponse(result || { open: false });
+      }, function () {
+        sendResponse({ open: false });
+      });
+      return true;
     }
 
     case "RL_SERVER_STOP": {

@@ -455,6 +455,22 @@
     return null;
   }
 
+  /* Picks are additive on both surfaces: keep the existing selectors and
+     append the new one with " | ", dropping duplicates and enforcing the
+     200-character location field cap. */
+  function mergePickerLocation(current, selector){
+    const parts = String(current == null ? "" : current).split(/\s+\|\s+/);
+    const merged = [];
+    parts.forEach(function(value){
+      const text = String(value || "").trim();
+      if(text && merged.indexOf(text) < 0) merged.push(text);
+    });
+    if(selector && merged.indexOf(selector) < 0) merged.push(selector);
+    return merged.join(" | ").slice(0, 200);
+  }
+
+  try{ window.__rlMergeLocation = mergePickerLocation; }catch(err){ /* ignore */ }
+
   async function handleBridgePickResult(data){
     if(!pickerFlow || pickerFlow.phase !== "picking") return;
     const copy = pickerModeCopy(pickerFlow.mode);
@@ -481,7 +497,7 @@
       row = getRowEl(req.id);
     }
     const pageValue = (page || flow.pagePath || "").slice(0, 80);
-    const locationValue = selector.slice(0, 200);
+    const locationValue = mergePickerLocation(req.location, selector);
     const pageWritten = pickerSetField(row, req, "page", pageValue);
     const locationWritten = pickerSetField(row, req, "location", locationValue);
     if(!pageWritten && !locationWritten){

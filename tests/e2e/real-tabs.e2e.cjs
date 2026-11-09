@@ -263,10 +263,40 @@ async function readApp(cdp, pageSession, projectId) {
         ledgerId: window.__rlBridge.ledgerId(),
         conflict: window.__rlBridge.conflict(),
         conflictInfo: window.__rlBridge.conflictInfo(),
-        rejects: window.__rlBridge.rejects()
+        rejects: window.__rlBridge.rejects(),
+        projectCommands: window.__rlBridge.projectCommands()
       } : null
     };
   })()`);
+}
+
+async function openAppProject(cdp, pageSession, projectId){
+  await evaluate(cdp, pageSession, `(() => {
+    const picker = document.getElementById('projectPicker');
+    if (picker && picker.hidden) {
+      const sw = document.getElementById('projectsSwitchBtn');
+      if (sw) sw.click();
+    }
+    return true;
+  })()`);
+  await waitFor(() => evaluate(cdp, pageSession,
+    "document.getElementById('projectPicker') && !document.getElementById('projectPicker').hidden"), "app picker", 10000);
+  await evaluate(cdp, pageSession,
+    "document.querySelector('#projectPickerList [data-project-id=\"" + projectId + "\"]').click()");
+  await sleep(900);
+}
+
+async function pasteImage(cdp, sessionId){
+  await evaluate(cdp, sessionId, `(() => {
+    const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4WQAAAAASUVORK5CYII=';
+    const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
+    const file = new File([bytes], 'pasted.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await sleep(1400);
 }
 
 async function readPanel(cdp, flyoutSession) {
@@ -275,6 +305,8 @@ async function readPanel(cdp, flyoutSession) {
     ledgerId: window.__rlBridgePanel ? window.__rlBridgePanel.ledgerId() : '',
     connected: window.__rlBridgePanel ? window.__rlBridgePanel.connected() : false,
     serverStopped: window.__rlBridgePanel ? window.__rlBridgePanel.serverStopped() : false,
+    locked: window.__rlBridgePanel ? window.__rlBridgePanel.locked() : false,
+    presence: window.__rlBridgePanel ? window.__rlBridgePanel.presence() : null,
     conflict: window.__rlBridgePanel ? window.__rlBridgePanel.conflict() : false,
     conflictInfo: window.__rlBridgePanel ? window.__rlBridgePanel.conflictInfo() : null,
     rejects: window.__rlBridgePanel ? window.__rlBridgePanel.rejects() : [],
@@ -336,12 +368,31 @@ async function main() {
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
-    /* Tab A: the real app. */
+    /* Plain page with the server alive but no app page: the active probe must
+       lock the panel. */
+    const earlyTarget = await cdp.send("Target.createTarget", { url: base + "/" + TARGET_PATH });
+    const earlySession = await attach(cdp, earlyTarget.targetId);
+    await waitFor(() => evaluate(cdp, earlySession, "!!document.getElementById('rl-host')"), "early host", 25000);
+    const earlyPanel = await openPanel(cdp, earlySession);
+    const earlyLocked = await waitFor(async () => {
+      const state = await readPanel(cdp, earlyPanel.flyoutSession);
+      return state.presence && state.presence.checked && state.presence.open === false && state.locked ? state : null;
+    }, "panel locks without an app page", 12000);
+    check("no app page locks the extension", earlyLocked.locked === true, earlyLocked);
+
+    /* Tab A: the real app. The existing panel must unlock without reloading. */
     const appTarget = await cdp.send("Target.createTarget", { url: base + "/index.html" });
     let appSession = await attach(cdp, appTarget.targetId);
     await sleep(900);
     await dismissOnboarding(cdp, appSession);
     await waitFor(() => evaluate(cdp, appSession, "!!document.getElementById('projectCreateInput')"), "project creator", 20000);
+    const earlyUnlocked = await waitFor(async () => {
+      const state = await readPanel(cdp, earlyPanel.flyoutSession);
+      return state.presence && state.presence.open && state.locked === false ? state : null;
+    }, "panel unlocks when the app opens", 12000);
+    check("opening the app unlocks the existing panel", earlyUnlocked.presence.open === true, earlyUnlocked);
+    try { await cdp.send("Target.closeTarget", { targetId: earlyTarget.targetId }); } catch (error) { /* ignore */ }
+
     /* The panel exists before the project does: it must adopt the app's id
        when the project is created later in the same session. */
     let appPanel = await openPanel(cdp, appSession);
@@ -413,6 +464,132 @@ async function main() {
       panelAfterTyping.section === null && afterTyping.flyoutDisplay === "none",
       { section: panelAfterTyping.section, flyoutDisplay: afterTyping.flyoutDisplay });
 
+    /* App -> panel media: a real paste event in the app. */
+    await pasteImage(cdp, appSession);
+    const appPasted = await waitFor(async () => {
+      const app = await readApp(cdp, appSession, appProjectId);
+      const request = app.ledger && app.ledger.requests.find((item) => /Typed first request/.test(item.title));
+      return request && request.images && request.images.length === 1 ? app : null;
+    }, "app paste stores an image", 8000);
+    const panelPasted = await waitFor(async () => {
+      const state = await readPanel(cdp, appPanel.flyoutSession);
+      const requests = await evaluate(cdp, appPanel.flyoutSession,
+        "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+      const request = (requests || []).find((item) => item.images === 1);
+      return request ? { state, requests } : null;
+    }, "panel receives the app image", 12000);
+    check("app paste reaches the panel", !!panelPasted, panelPasted);
+    check("app paste keeps the same ledger id",
+      appPasted.record.ledgerId === afterCreate.bridge.ledgerId && panelPasted.state.ledgerId === afterCreate.bridge.ledgerId);
+    await screenshot(cdp, appSession, "15-media-app-paste.png");
+
+    /* Panel -> app media: open the detail and paste there. */
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await sleep(500);
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const row = document.querySelector('.rrow');
+      if (row) row.click();
+      return true;
+    })()`);
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "document.body.getAttribute('data-section') === 'detail'"), "panel detail", 8000);
+    await pasteImage(cdp, appPanel.flyoutSession);
+    const appFromPanel = await waitFor(async () => {
+      const app = await readApp(cdp, appSession, appProjectId);
+      const request = app.ledger && app.ledger.requests.find((item) => /Typed first request/.test(item.title));
+      return request && request.images && request.images.length === 2 ? app : null;
+    }, "panel paste reaches the app", 12000);
+    check("panel paste reaches the app", !!appFromPanel, appFromPanel);
+    const panelMedia = await evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+    check("both surfaces hold both images",
+      (panelMedia || []).some((item) => item.images === 2), panelMedia);
+    await screenshot(cdp, appSession, "16-media-panel-paste.png");
+
+    /* App -> panel attachment upload (the design type exposes attachments). */
+    await evaluate(cdp, appSession, "document.getElementById('addBtn').click()");
+    await waitFor(() => evaluate(cdp, appSession,
+      "document.getElementById('typeModal').classList.contains('is-open')"), "type modal for attachment", 5000);
+    await evaluate(cdp, appSession, `(() => {
+      const choice = Array.from(document.querySelectorAll('#typeChoices .typechoice'))
+        .find((node) => /Design|Tasarım/i.test(node.innerText));
+      if (choice) choice.click();
+      return !!choice;
+    })()`);
+    await sleep(500);
+    await evaluate(cdp, appSession, `(() => {
+      const button = Array.from(document.querySelectorAll('.req [data-action="add-attachment"]'))
+        .find((node) => node.closest('.req') && node.closest('.req').classList.contains('is-open'));
+      if (button) button.click();
+      return !!button;
+    })()`);
+    await evaluate(cdp, appSession, `(() => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(['attachment payload'], 'notes.txt', { type: 'text/plain' }));
+      const input = document.getElementById('globalAttachmentInput');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`);
+    const appUploaded = await waitFor(async () => {
+      const app = await readApp(cdp, appSession, appProjectId);
+      const request = app.ledger && app.ledger.requests.find((item) => (item.attachments || []).length === 1);
+      return request ? app : null;
+    }, "app attachment upload", 10000);
+    const panelUpload = await waitFor(async () => {
+      const requests = await evaluate(cdp, appPanel.flyoutSession,
+        "window.__rlBridgePanel && window.__rlBridgePanel.requests()");
+      return (requests || []).some((item) => item.attachments === 1) ? requests : null;
+    }, "panel receives the app attachment", 14000);
+    check("app attachment upload reaches the panel", !!appUploaded && !!panelUpload, panelUpload);
+    await screenshot(cdp, appSession, "17-media-attachment-upload.png");
+
+    /* Toast inset: the sticky footer must stay above every visible toast. */
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('list')");
+    await sleep(600);
+    await evaluate(cdp, appPanel.flyoutSession,
+      "document.getElementById('rl-fo-body').scrollTop = document.getElementById('rl-fo-body').scrollHeight");
+    await sleep(300);
+    const beforeToast = await evaluate(cdp, appSession, `(() => {
+      const f = document.getElementById('rl-flyout').getBoundingClientRect();
+      const t = document.getElementById('rl-toast-layer').getBoundingClientRect();
+      return { flyout:{ top:f.top, bottom:f.bottom, height:f.height }, toast:{ top:t.top, bottom:t.bottom, height:t.height }, count:document.querySelectorAll('#rl-toast-layer > *').length };
+    })()`);
+    await screenshot(cdp, appSession, "18-toast-footer-before.png");
+    for (let i = 0; i < 3; i += 1) {
+      await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({
+        source:'request-ledger-panel', type:'RL_TOAST',
+        text:${JSON.stringify("This is a deliberately long notification that wraps onto more than one line so the measured inset follows the real toast height. ")},
+        kind:${i === 2 ? "'error'" : "null"}, theme:'light'
+      }, '*')`);
+      await sleep(180);
+    }
+    const afterToast = await waitFor(async () => {
+      const value = await evaluate(cdp, appSession, `(() => {
+        const f = document.getElementById('rl-flyout').getBoundingClientRect();
+        const t = document.getElementById('rl-toast-layer').getBoundingClientRect();
+        return { flyout:{ top:f.top, bottom:f.bottom, height:f.height }, toast:{ top:t.top, bottom:t.bottom, height:t.height }, count:document.querySelectorAll('#rl-toast-layer > *').length };
+      })()`);
+      return value.count >= 2 && value.toast.height > 0 ? value : null;
+    }, "toast stack visible", 5000);
+    const footerButton = await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const node = document.getElementById('rl-save-record');
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { top:r.top, bottom:r.bottom };
+    })()`);
+    const footerBottomInPage = afterToast.flyout.top + (footerButton ? footerButton.bottom : afterToast.flyout.height);
+    check("visible toasts reserve a bottom inset for the flyout",
+      afterToast.flyout.bottom <= afterToast.toast.top + 0.5,
+      { before: beforeToast, after: afterToast });
+    check("footer button stays above every visible toast",
+      footerBottomInPage <= afterToast.toast.top - 2,
+      { footerBottomInPage, toastTop: afterToast.toast.top, footerButton });
+    await screenshot(cdp, appSession, "19-toast-footer-after.png");
+
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.close()");
+    await sleep(700);
+
     /* Tab B: a plain page with the extension panel, not the app. */
     const otherTarget = await cdp.send("Target.createTarget", { url: base + "/" + TARGET_PATH });
     const otherSession = await attach(cdp, otherTarget.targetId);
@@ -449,6 +626,60 @@ async function main() {
       appPanelAfterB.section === null && appPanelAfterB.connected === true, appPanelAfterB);
     await screenshot(cdp, appSession, "12-real-tabs-panel-closed.png");
 
+    /* Dedicated Projects section: list, create through the extension, switch. */
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.setMode && window.RLPanel.setMode('idle')");
+    await sleep(400);
+    await evaluate(cdp, appPanel.dockSession, "document.querySelector('.item[data-section=\"projects\"]').click()");
+    await sleep(800);
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "!!document.getElementById('rl-project-picker-tree')"), "projects list", 10000);
+    check("Projects section lists the app project",
+      await evaluate(cdp, appPanel.flyoutSession,
+        "Array.from(document.querySelectorAll('#rl-project-picker-tree [data-project-id]')).some((node) => node.innerText.indexOf('Real Tabs Project') >= 0)") === true);
+    await evaluate(cdp, appPanel.flyoutSession, "document.getElementById('rl-project-new').click()");
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "!!document.getElementById('rl-project-input')"), "new project form", 5000);
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const input = document.getElementById('rl-project-input');
+      input.value = 'Panel Created Project';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', bubbles:true, cancelable:true }));
+      return true;
+    })()`);
+    const createdByPanel = await waitFor(async () => {
+      const app = await readApp(cdp, appSession, appProjectId);
+      const project = app.registry && app.registry.projects.find((item) => item.name === 'Panel Created Project');
+      return project && app.activeId === project.id ? app : null;
+    }, "extension-created project reaches the app", 15000);
+    check("extension project creation reaches the app",
+      createdByPanel.registry.projects.length === 2 &&
+      createdByPanel.registry.projects.some((item) => item.name === "Panel Created Project"), createdByPanel.registry);
+    await screenshot(cdp, appSession, "20-projects-panel-created.png");
+    await evaluate(cdp, appPanel.dockSession, "window.RLPanel.open('projects')");
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "!!document.getElementById('rl-project-picker-tree')"), "projects list again", 8000);
+    const switchClicked = await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const row = document.querySelector('#rl-project-picker-tree [data-project-id="${appProjectId}"]');
+      if (row) row.click();
+      return !!row;
+    })()`);
+    check("Projects section row is clickable", switchClicked === true);
+    const panelSwitched = await waitFor(async () => {
+      const panel = await readPanel(cdp, appPanel.flyoutSession);
+      return panel.projectId === appProjectId ? panel : null;
+    }, "extension panel switches project", 12000);
+    check("extension project switch changes the panel project",
+      panelSwitched.projectId === appProjectId, panelSwitched);
+    check("a different panel project is shown as a mismatch, not a conflict",
+      panelSwitched.conflict === false, panelSwitched);
+    await screenshot(cdp, appSession, "21-projects-panel-switched.png");
+    /* The app remains the hub; return it to the data project through its UI. */
+    await openAppProject(cdp, appSession, appProjectId);
+    await waitFor(() => evaluate(cdp, appSession,
+      "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(appProjectId)), "app back on data project", 15000);
+    await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.projectId() === " + JSON.stringify(appProjectId)), "panel back on data project", 15000);
+
     /* Reload Tab A: identity and data must survive. */
     await cdp.send("Page.reload", {}, appSession);
     await sleep(2600);
@@ -458,7 +689,7 @@ async function main() {
       "window.__rlBridge && window.__rlBridge.projectId() === " + JSON.stringify(appProjectId)), "app project after reload", 20000);
     const afterReload = await readApp(cdp, appSession, appProjectId);
     check("reload keeps no conflict and both requests",
-      afterReload.modal === false && afterReload.ledger.requests.length === 2 &&
+      afterReload.modal === false && afterReload.ledger.requests.length === 3 &&
       afterReload.ledger.requests.some((item) => item.title === "Typed first request") &&
       afterReload.ledger.requests.some((item) => item.title === "Request from Tab B"), afterReload);
     check("reload keeps the same registry ledger id",
@@ -468,6 +699,17 @@ async function main() {
         ledger: afterReload.ledger.ledgerId
       });
     await screenshot(cdp, appSession, "13-real-tabs-reload-no-modal.png");
+    appPanel = await openPanel(cdp, appSession);
+    try{
+      await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+        "window.__rlBridgePanel && window.__rlBridgePanel.connected()"), "panel reconnects after reload", 20000);
+    }catch(error){
+      console.log("RELOAD PANEL DEBUG", JSON.stringify({
+        app: await readApp(cdp, appSession, appProjectId),
+        panel: await readPanel(cdp, appPanel.flyoutSession)
+      }));
+      throw error;
+    }
 
     /* Stop through the real UI, then start.cmd-equivalent on the same port. */
     await evaluate(cdp, appSession, "document.getElementById('railStopBtn').click()");
@@ -484,6 +726,9 @@ async function main() {
       sleep(8000).then(() => false),
     ]);
     check("Stop blocks the app and stops the server", stoppedProcess === true);
+    const lockedPanel = await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
+      "window.__rlBridgePanel && window.__rlBridgePanel.locked()"), "panel locks after stop", 10000);
+    check("Stop locks the extension panel immediately", lockedPanel === true);
     stopChild(server);
     server = null;
     await sleep(500);
@@ -513,10 +758,11 @@ async function main() {
     const afterRestart = await readApp(cdp, appSession, appProjectId);
     const panelAfterRestart = await readPanel(cdp, appPanel.flyoutSession);
     check("restart reconnects with no conflict and intact data",
-      afterRestart.modal === false && afterRestart.ledger.requests.length === 2 &&
+      afterRestart.modal === false && afterRestart.ledger.requests.length === 3 &&
       afterRestart.record.ledgerId === afterCreate.bridge.ledgerId, afterRestart);
     check("restart keeps the panel on the same ledger",
       panelAfterRestart.serverStopped === false && panelAfterRestart.ledgerId === afterCreate.bridge.ledgerId, panelAfterRestart);
+    check("restart unlocks the panel", panelAfterRestart.locked === false, panelAfterRestart);
     await screenshot(cdp, appSession, "14-real-tabs-restart-no-modal.png");
 
     check("no bridge rejection was logged for the real-tab flow",

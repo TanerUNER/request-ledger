@@ -237,7 +237,30 @@
     bridgeKnownIds = current;
   }
 
-  /* Text-only request. Media arrays never cross this channel. */
+  const BRIDGE_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
+  const bridgeSentMedia = {};
+  const bridgePeerMedia = {};
+  let bridgeMediaSending = false;
+
+  function bridgeMediaOut(item, kind){
+    if(!item || typeof item.id !== "string" || !item.id) return null;
+    const out = {
+      id:item.id,
+      name:typeof item.name === "string" ? item.name.slice(0, 180) : "",
+      type:typeof item.type === "string" ? item.type.slice(0, 120) : "",
+      ext:typeof item.ext === "string" ? item.ext.slice(0, 20) : "",
+      size:Number(item.size) || 0,
+      kind:kind
+    };
+    if(kind === "image"){
+      out.w = Number(item.w) || 0;
+      out.h = Number(item.h) || 0;
+    }
+    return out;
+  }
+
+  /* Text fields plus media *metadata*. Blobs travel separately as data URLs
+     only for ids the other side has not acknowledged. */
   function bridgeRequestOut(req){
     if(!req) return null;
     return {
@@ -254,8 +277,173 @@
       note:req.note,
       confirmed:req.confirmed === true,
       createdAt:req.createdAt,
-      updatedAt:req.updatedAt
+      updatedAt:req.updatedAt,
+      images:(Array.isArray(req.images) ? req.images : []).map(function(item){
+        return bridgeMediaOut(item, "image");
+      }).filter(Boolean),
+      attachments:(Array.isArray(req.attachments) ? req.attachments : []).map(function(item){
+        return bridgeMediaOut(item, "file");
+      }).filter(Boolean)
     };
+  }
+
+  function bridgeMediaKey(kind, id){
+    return (activeProjectId || "") + "|" + kind + "|" + id;
+  }
+
+  function bridgeMediaList(value, kind){
+    return (Array.isArray(value) ? value : []).map(function(item){
+      if(!item || typeof item.id !== "string" || !item.id) return null;
+      const out = {
+        id:item.id, name:item.name || "", type:item.type || "", ext:item.ext || "",
+        size:Number(item.size) || 0, file:""
+      };
+      if(kind === "image"){ out.w = Number(item.w) || 0; out.h = Number(item.h) || 0; }
+      return out;
+    }).filter(Boolean);
+  }
+
+  function bridgeMergeMedia(incoming, local, kind){
+    const byId = {};
+    bridgeMediaList(local, kind).forEach(function(item){ byId[item.id] = item; });
+    bridgeMediaList(incoming, kind).forEach(function(item){ byId[item.id] = item; });
+    return Object.keys(byId).map(function(id){ return byId[id]; });
+  }
+
+  function bridgeBlobToDataUrl(blob){
+    return new Promise(function(resolve, reject){
+      if(!blob){ reject(new Error("missing blob")); return; }
+      if(typeof FileReader !== "undefined"){
+        const reader = new FileReader();
+        reader.onload = function(){ resolve(reader.result); };
+        reader.onerror = function(){ reject(reader.error || new Error("media read failed")); };
+        reader.readAsDataURL(blob);
+        return;
+      }
+      reject(new Error("FileReader unavailable"));
+    });
+  }
+
+  async function bridgeSendMediaItem(req, item, kind, force){
+    if(!req || !item || !item.id) return false;
+    const key = bridgeMediaKey(kind, item.id);
+    if(!force && (bridgeSentMedia[key] || bridgePeerMedia[key])) return false;
+    try{
+      const record = kind === "image" ? await idbGet(item.id) : await idbFileGet(item.id);
+      if(!record || !record.blob) return false;
+      if(record.blob.size > BRIDGE_MEDIA_MAX_BYTES) return false;
+      const dataUrl = await bridgeBlobToDataUrl(record.blob);
+      if(typeof dataUrl !== "string" || dataUrl.length > BRIDGE_MEDIA_MAX_BYTES * 2) return false;
+      window.postMessage({
+        source:"request-ledger-web",
+        type:"RL_APP_MEDIA",
+        v:BRIDGE_VERSION,
+        ledgerId:state.ledgerId,
+        projectId:activeProjectId || "",
+        requestId:req.id,
+        media:[{
+          kind:kind,
+          id:item.id,
+          meta:bridgeMediaOut(item, kind),
+          dataUrl:dataUrl
+        }]
+      }, bridgePostTarget());
+      bridgeSentMedia[key] = true;
+      bridgeStats.sent++;
+      return true;
+    }catch(err){
+      return false;
+    }
+  }
+
+  async function bridgeSendPendingMedia(force){
+    if(!bridgeEnabled() || !activeProjectId || bridgeMediaSending) return;
+    bridgeMediaSending = true;
+    try{
+      for(const req of state.requests){
+        for(const img of (Array.isArray(req.images) ? req.images : [])){
+          await bridgeSendMediaItem(req, img, "image", force);
+        }
+        for(const att of (Array.isArray(req.attachments) ? req.attachments : [])){
+          await bridgeSendMediaItem(req, att, "file", force);
+        }
+      }
+    }finally{
+      bridgeMediaSending = false;
+    }
+  }
+
+  /* The receiver asks for ids whose metadata arrived without a local blob. */
+  function bridgeRequestMissingMedia(){
+    if(!bridgeEnabled() || !activeProjectId) return;
+    const ids = [];
+    state.requests.forEach(function(req){
+      (Array.isArray(req.images) ? req.images : []).forEach(function(img){ if(img && img.id) ids.push("image:" + img.id); });
+      (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
+    });
+    if(!ids.length) return;
+    window.postMessage({
+      source:"request-ledger-web",
+      type:"RL_APP_MEDIA_REQUEST",
+      v:BRIDGE_VERSION,
+      ledgerId:state.ledgerId,
+      projectId:activeProjectId || "",
+      ids:ids.slice(0, 100)
+    }, bridgePostTarget());
+  }
+
+  async function handleBridgeMedia(data){
+    if(!data || !activeProjectId) return;
+    if(bridgeEnvelopeProjectId(data) && bridgeEnvelopeProjectId(data) !== activeProjectId){
+      bridgeRecordReject("media-project-mismatch", data);
+      return;
+    }
+    const requestId = typeof data.requestId === "string" ? data.requestId : "";
+    const req = requestId ? state.requests.find(function(item){ return item.id === requestId; }) : null;
+    if(!req || !Array.isArray(data.media)) return;
+    let changed = false;
+    for(const item of data.media.slice(0, 20)){
+      if(!item || typeof item.id !== "string" || typeof item.dataUrl !== "string") continue;
+      if(!/^data:(image|application)\//.test(item.dataUrl)) continue;
+      const kind = item.kind === "file" ? "file" : "image";
+      try{
+        const blob = await (await fetch(item.dataUrl)).blob();
+        if(blob.size > BRIDGE_MEDIA_MAX_BYTES) continue;
+        const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+        if(kind === "image"){
+          await idbPut({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" });
+          const list = Array.isArray(req.images) ? req.images : [];
+          if(!list.some(function(entry){ return entry.id === item.id; })){
+            list.push({
+              id:item.id, name:meta.name || "image", w:Number(meta.w) || 0,
+              h:Number(meta.h) || 0, type:meta.type || blob.type || "image/webp",
+              ext:meta.ext || "", file:""
+            });
+            req.images = list;
+            changed = true;
+          }
+        }else{
+          await idbFilePut({ id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream" });
+          const list = Array.isArray(req.attachments) ? req.attachments : [];
+          if(!list.some(function(entry){ return entry.id === item.id; })){
+            list.push({
+              id:item.id, name:meta.name || "file", size:Number(meta.size) || blob.size,
+              type:meta.type || blob.type || "application/octet-stream",
+              ext:meta.ext || "", file:""
+            });
+            req.attachments = list;
+            changed = true;
+          }
+        }
+        bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+      }catch(err){ /* skip a broken media record */ }
+    }
+    if(changed){
+      req.updatedAt = nowISO();
+      saveNow();
+      renderList();
+      refreshGlobal();
+    }
   }
 
   function bridgeEnvelope(type){
@@ -333,6 +521,7 @@
     bridgeSendTimer = setTimeout(function(){
       bridgeSendTimer = null;
       bridgePost("RL_APP_PATCH");
+      bridgeSendPendingMedia(false);
     }, 120);
   }
 
@@ -370,9 +559,10 @@
          of the same revision has not caught up yet. */
       if(local && String(local.updatedAt || "") >= String(raw.updatedAt || "")) return;
       const normalized = normalizeRequest(raw, index);
-      /* media is local-only: preserve whatever this surface already has */
-      normalized.images = local ? local.images : [];
-      normalized.attachments = local ? local.attachments : [];
+      /* Metadata crosses with the request; blobs travel separately and stay
+         local until their data URL arrives. */
+      normalized.images = bridgeMergeMedia(raw.images, local && local.images, "image");
+      normalized.attachments = bridgeMergeMedia(raw.attachments, local && local.attachments, "file");
       normalized.collapsed = local ? local.collapsed !== false : true;
       if(!local) order.push(normalized.id);
       byId.set(normalized.id, normalized);
@@ -458,8 +648,8 @@
         incoming.forEach(function(raw, index){
           if(!raw || typeof raw.id !== "string" || !raw.id) return;
           const normalized = normalizeRequest(raw, index);
-          normalized.images = [];
-          normalized.attachments = [];
+          normalized.images = bridgeMediaList(raw.images, "image");
+          normalized.attachments = bridgeMediaList(raw.attachments, "file");
           state.requests.push(normalized);
         });
         const incomingName = normalizeProjectName(bridgeEnvelopeProjectName(data));
@@ -506,6 +696,7 @@
     refreshGlobal();
     updateBridgeIndicator();
     bridgeStats.applied++;
+    setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
     return true;
   }
 
@@ -607,6 +798,18 @@
     if(bridgeForceApply || (!localRequestCount && incomingRequestCount > 0)) mode = "replace";
     bridgeApply(data, mode);
     if(mode === "replace") bridgeForceApply = false;
+    /* A panel that mounted after the boot HELLO retries still needs a reply so
+       it can mark the bridge connected and lock/unlock correctly. */
+    try{
+      window.postMessage({
+        source:"request-ledger-web",
+        type:"RL_APP_ACK",
+        v:BRIDGE_VERSION,
+        ledgerId:state.ledgerId,
+        projectId:activeProjectId || "",
+        projectName:state.project
+      }, bridgePostTarget());
+    }catch(err){ /* ignore */ }
   }
 
   function bridgeHandleAck(data){
@@ -723,12 +926,116 @@
       bridgeApply(data, "merge");
       return;
     }
+    if(data.type === "RL_APP_MEDIA"){ handleBridgeMedia(data); return; }
+    if(data.type === "RL_APP_MEDIA_REQUEST"){
+      const ids = Array.isArray(data.ids) ? data.ids : [];
+      const wanted = {};
+      ids.slice(0, 100).forEach(function(value){ wanted[String(value)] = true; });
+      state.requests.forEach(function(req){
+        (Array.isArray(req.images) ? req.images : []).forEach(function(img){
+          if(wanted["image:" + img.id]) bridgeSendMediaItem(req, img, "image", true);
+        });
+        (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){
+          if(wanted["file:" + att.id]) bridgeSendMediaItem(req, att, "file", true);
+        });
+      });
+      return;
+    }
+    if(data.type === "RL_APP_PROJECT_CREATE"){ bridgeApplyProjectCreate(data); return; }
     if(data.type === "RL_APP_TABS_RESULT"){ handleBridgeTabsResult(data); return; }
     if(data.type === "RL_APP_PICK_RESULT"){ handleBridgePickResult(data); return; }
     if(data.type === "RL_APP_CAPTURE_RESULT"){ handleBridgeCaptureResult(data); return; }
     if(data.type === "RL_APP_SNAPSHOT"){
       if(data.resolution === "extension") bridgeForceApply = true;
       bridgeReconcile(data);
+    }
+  }
+
+  let bridgeLastProjectCommand = "";
+  const bridgeProjectCommands = [];
+
+  /* The extension can create a project while the app is open in another tab.
+     The app owns the project list, so it creates the same id/ledger id here
+     and then announces the new project through the normal bridge. */
+  function bridgeApplyProjectCreate(data){
+    const commandId = typeof data.commandId === "string" ? data.commandId : "";
+    if(commandId && commandId === bridgeLastProjectCommand) return;
+    const projectId = typeof data.projectId === "string" && /^prj_[A-Za-z0-9_]+$/.test(data.projectId) ? data.projectId : "";
+    if(!projectId) return;
+    const name = normalizeProjectName(data.name) || importedProjectName(state.language);
+    const ledgerId = normalizeLedgerId(data.ledgerId) || newLedgerId();
+    const commandType = data.commandType === "project-switch" ? "project-switch" : "project-create";
+    const beforeActive = activeProjectId;
+    if(commandId) bridgeLastProjectCommand = commandId;
+    bridgeProjectCommands.push({ at:nowISO(), commandType:commandType, projectId:projectId, beforeActive:beforeActive });
+    if(bridgeProjectCommands.length > 20) bridgeProjectCommands.shift();
+    if(commandType === "project-switch" && findProjectRecord(projectId)){
+      if(activeProjectId !== projectId){
+        saveNow();
+        openProjectById(projectId);
+      }
+      return;
+    }
+    if(commandType === "project-rename"){
+      const renamed = updateProjectRecord(projectId, { name:name, updatedAt:nowISO() });
+      if(renamed && activeProjectId === projectId){
+        state.project = renamed.name;
+        saveNow();
+        renderProjectGate();
+        updateTargetFolderUI();
+        bridgeSendHello({ projectSwitch:true });
+      }
+      return;
+    }
+    if(commandType === "project-delete"){
+      const registry = readRegistry();
+      const nextId = registry ? registry.projects.filter(function(item){ return item.id !== projectId; })[0] : null;
+      removeProjectRecord(projectId);
+      try{ localStorage.removeItem(projectLedgerKey(projectId)); }catch(err){ /* ignore */ }
+      idbDeleteProjectMedia(projectId).catch(function(){ /* best effort */ });
+      if(activeProjectId === projectId){
+        if(nextId){
+          openProjectById(nextId.id);
+        }else{
+          activeProjectId = null;
+          projectScreen = "picker";
+          renderProjectGate();
+        }
+      }
+      return;
+    }
+    if(activeProjectId && activeProjectId !== projectId) saveNow();
+    let project = findProjectRecord(projectId);
+    if(!project){
+      const registry = readRegistry() || emptyProjectRegistry();
+      const stamp = nowISO();
+      project = {
+        id:projectId, name:name, createdAt:stamp, updatedAt:stamp,
+        ledgerId:ledgerId, exportTarget:"", archiveCollapsed:false
+      };
+      registry.projects.push(project);
+      registry.activeId = projectId;
+      writeRegistry(registry);
+      try{
+        localStorage.setItem(projectLedgerKey(projectId), JSON.stringify({
+          version:1,
+          project:name,
+          projectCreated:true,
+          ledgerId:ledgerId,
+          updatedAt:stamp,
+          requests:[],
+          agents:[],
+          language:state.language === "tr" ? "tr" : "en",
+          exportBehavior:"default",
+          lastExport:null
+        }));
+      }catch(err){ /* loadState retries the empty payload */ }
+    }
+    if(activeProjectId === projectId){
+      saveNow();
+      bridgeSendHello({ panelProjectCreate:true });
+    }else{
+      openProjectById(projectId);
     }
   }
 
@@ -820,6 +1127,7 @@
         conflict:function(){ return bridgeConflictOpen; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },
+        projectCommands:function(){ return bridgeProjectCommands.slice(); },
         serverStopped:function(){ return bridgeServerStoppedState(); }
       });
     }catch(err){ /* ignore */ }

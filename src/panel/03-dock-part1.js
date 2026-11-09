@@ -301,6 +301,7 @@
   function sectionAllowed(section, mode){
     if(section === "settings" || section === "backup" || section === "help") return true;
     if(section === "project") return !hasProjectName();
+    if(section === "projects") return mode !== "compose";
     if(mode === "compose") return section === "detail" || section === "page" || section === "desc" || section === "export";
     return section === "new" || section === "list";
   }

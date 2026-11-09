@@ -2,6 +2,8 @@
      Başlangıç
      ============================================================ */
   async function init(){
+    /* Active companion presence marker for the extension content script. */
+    try{ document.documentElement.setAttribute("data-request-ledger-app", "1"); }catch(err){ /* ignore */ }
     initProjectRegistry();
     if(!state.ledgerId) state.ledgerId = newLedgerId();
     try{

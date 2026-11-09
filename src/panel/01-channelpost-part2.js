@@ -566,6 +566,11 @@
   }
 
   function saveNow(){
+    if(typeof companionLocked === "function" && companionLocked()){
+      if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      setSaveState("saved");
+      return false;
+    }
     if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
     /* Phase 2b: no project open means there is no project ledger to write. */
     if(!activeProjectId){

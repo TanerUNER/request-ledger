@@ -117,6 +117,8 @@
     RL_APP_ACK: 1,
     RL_APP_BYE: 1,
     RL_APP_SERVER_STOP: 1,
+    RL_APP_MEDIA: 1,
+    RL_APP_MEDIA_REQUEST: 1,
     RL_APP_TABS_REQUEST: 1,
     RL_APP_PICK_REQUEST: 1,
     RL_APP_PICK_CANCEL: 1,
@@ -128,6 +130,9 @@
     RL_APP_PATCH: 1,
     RL_APP_ACK: 1,
     RL_APP_BYE: 1,
+    RL_APP_MEDIA: 1,
+    RL_APP_MEDIA_REQUEST: 1,
+    RL_APP_PROJECT_CREATE: 1,
     RL_APP_TABS_RESULT: 1,
     RL_APP_PICK_RESULT: 1,
     RL_APP_CAPTURE_RESULT: 1
@@ -773,13 +778,42 @@
     return DOCK_CARD_TOP + anchorTop + anchorHeight;
   }
 
+  /* Toasts live just above the viewport bottom. While any toast is visible,
+     reserve its measured height + gap so the flyout footer never sits under
+     it. The inset is zero when the stack is empty, so no space is wasted. */
+  var toastInsetNow = 0;
+  var toastSyncTimer = null;
+
+  function measureToastInset() {
+    if (!toastLayer || !toastLayer.children.length) return 0;
+    var rect = toastLayer.getBoundingClientRect();
+    if (!rect || !isFinite(rect.height) || rect.height <= 0) return 0;
+    return Math.ceil(rect.height + 12);
+  }
+
+  function syncToastInset() {
+    var next = measureToastInset();
+    if (next === toastInsetNow) return;
+    toastInsetNow = next;
+    if (!isOpen || !flyoutFrame) return;
+    if (toastSyncTimer) { clearTimeout(toastSyncTimer); toastSyncTimer = null; }
+    if (!reducedMotion()) {
+      setImportant(flyoutFrame, "transition", "top " + TOAST_IN_MS + "ms ease, height " + TOAST_IN_MS + "ms ease");
+    }
+    placeFlyout(lastCardHeight || flyoutAvailableHeight());
+    toastSyncTimer = setTimeout(function () {
+      toastSyncTimer = null;
+      if (flyoutFrame && isOpen) setImportant(flyoutFrame, "transition", "none");
+    }, TOAST_IN_MS + 30);
+  }
+
   function flyoutSpaceBelow() {
     var vh = window.innerHeight || 0;
-    return (vh - HINT_EDGE) - flyoutAnchorTop();
+    return (vh - HINT_EDGE - toastInsetNow) - flyoutAnchorTop();
   }
 
   function flyoutSpaceAbove() {
-    return flyoutAnchorBottom() - HINT_EDGE;
+    return flyoutAnchorBottom() - HINT_EDGE - toastInsetNow;
   }
 
   function flyoutOpensUp() {
@@ -789,7 +823,7 @@
   function flyoutAvailableHeight() {
     var vh = window.innerHeight || 0;
     var raw = flyoutOpensUp() ? flyoutSpaceAbove() : flyoutSpaceBelow();
-    var max = Math.max(0, vh - (HINT_EDGE * 2));
+    var max = Math.max(0, vh - (HINT_EDGE * 2) - toastInsetNow);
     return Math.max(0, Math.floor(Math.min(raw, max)));
   }
 
@@ -797,7 +831,7 @@
      bottom minus h when flipped up. */
   function flyoutTopForHeight(h) {
     var vh = window.innerHeight || 0;
-    var maxTop = Math.max(HINT_EDGE, vh - HINT_EDGE - h);
+    var maxTop = Math.max(HINT_EDGE, vh - HINT_EDGE - toastInsetNow - h);
     if (flyoutOpensUp()) {
       return clamp(flyoutAnchorBottom() - h, HINT_EDGE, maxTop);
     }
@@ -968,6 +1002,7 @@
     }
     var index = toastAll.indexOf(record);
     if (index !== -1) { toastAll.splice(index, 1); }
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncToastInset);
   }
 
   function removeToast(record, animated) {
@@ -1004,6 +1039,7 @@
     toastLayer.appendChild(record.el);
     toastAll.push(record);
     toastActive.push(record);
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncToastInset);
 
     while (toastActive.length > TOAST_MAX) {
       removeToast(toastActive[0], false);
@@ -1049,6 +1085,8 @@
     }
     toastAll = [];
     toastActive = [];
+    toastInsetNow = 0;
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncToastInset);
   }
 
   /* ---- v6 §4 / v9 §11: hint cards ------------------------------------ */
@@ -2967,6 +3005,9 @@
       case "RL_APP_PATCH":
       case "RL_APP_ACK":
       case "RL_APP_BYE":
+      case "RL_APP_MEDIA":
+      case "RL_APP_MEDIA_REQUEST":
+      case "RL_APP_PROJECT_CREATE":
       case "RL_APP_TABS_RESULT":
       case "RL_APP_PICK_RESULT":
       case "RL_APP_CAPTURE_RESULT":
@@ -3274,6 +3315,17 @@
         dockWidth: function () { return DOCK_WIDTH_OPEN; },
         flyoutInset: function () { return FLYOUT_RIGHT; },
         flyoutMax: function () { return lastFlyoutMax; },
+        toastInset: function () { return toastInsetNow; },
+        flyoutRect: function () {
+          if (!flyoutFrame) return null;
+          var r = flyoutFrame.getBoundingClientRect();
+          return { top:r.top, bottom:r.bottom, height:r.height };
+        },
+        toastRect: function () {
+          if (!toastLayer || !toastLayer.children.length) return null;
+          var r = toastLayer.getBoundingClientRect();
+          return { top:r.top, bottom:r.bottom, height:r.height };
+        },
         flyoutSpace: function () {
           return {
             up: flyoutOpensUp(),
@@ -3345,11 +3397,60 @@
 
   /* ---- runtime control (picker-only flow) ---------------------------- */
   /* Sent by the worker only to the tab that receives a cross-tab pick. */
-  function onRuntimeControl(message) {
+  function onRuntimeControl(message, sender, sendResponse) {
     if (!message || typeof message !== "object") { return; }
+    if (message.type === "RL_APP_PRESENCE_PING") {
+      var isApp = document.documentElement.getAttribute("data-request-ledger-app") === "1";
+      var stopped = document.documentElement.getAttribute("data-rl-server-stopped") === "1";
+      if (isApp && !stopped) {
+        try {
+          chrome.storage.local.set({
+            "rl-app-port": Number(window.location.port) || 0,
+            "rl-app-url": window.location.href
+          });
+        } catch (error) { /* ignore */ }
+      }
+      if (typeof sendResponse === "function") {
+        sendResponse({
+          app: isApp,
+          stopped: stopped,
+          file: window.location.protocol === "file:",
+          port: Number(window.location.port) || 0,
+          url: window.location.href
+        });
+      }
+      return true;
+    }
     if (message.type === "RL_DOCK_SUSPEND") { suspendHost(); return; }
     if (message.type === "RL_DOCK_RESUME") { resumeHost(); }
   }
+
+  /* Cross-tab project creation: a panel that has no page-local bridge queues a
+     command; the app tab's content script relays it to the app page. */
+  try {
+    if (chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area !== "local" || !changes["rl-app-command"]) return;
+        var command = changes["rl-app-command"].newValue;
+        if (!command || command.type !== "project-create") return;
+        if (document.documentElement.getAttribute("data-request-ledger-app") !== "1") return;
+        var target = window.location.protocol === "file:" ? "*" : window.location.origin;
+        try {
+          window.postMessage({
+            source: "request-ledger-host",
+            type: "RL_APP_PROJECT_CREATE",
+            v: 1,
+            commandId: String(command.id || ""),
+            commandType: String(command.type || "project-create"),
+            projectId: String(command.projectId || ""),
+            ledgerId: String(command.ledgerId || ""),
+            name: String(command.name || ""),
+            at: command.at || ""
+          }, target);
+        } catch (error) { /* ignore */ }
+      });
+    }
+  } catch (error) { /* extension context can be invalidated */ }
 
   try {
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {

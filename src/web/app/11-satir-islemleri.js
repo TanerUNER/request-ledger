@@ -295,6 +295,14 @@
       row.scrollIntoView({ behavior:"smooth", block:"nearest" });
     }
   }
+  function mediaReferencedByOther(mediaId, exceptRequestId){
+    return state.requests.some(function(item){
+      if(!item || item.id === exceptRequestId) return false;
+      return (item.images || []).some(function(img){ return img.id === mediaId; }) ||
+        (item.attachments || []).some(function(att){ return att.id === mediaId; });
+    });
+  }
+
   function deleteRequest(id){
     const req = getReq(id);
     if(!req) return;
@@ -307,12 +315,12 @@
         const index = state.requests.findIndex(function(item){ return item.id === id; });
         for(let i = 0; i < req.images.length; i++){
           revokeImageURL(req.images[i].id);
-          if(!snapshotReferencesMedia(req.images[i].id)){
+          if(!snapshotReferencesMedia(req.images[i].id) && !mediaReferencedByOther(req.images[i].id, id)){
             try{ await idbDelete(req.images[i].id); }catch(err){}
           }
         }
         for(let i = 0; i < req.attachments.length; i++){
-          if(!snapshotReferencesMedia(req.attachments[i].id)){
+          if(!snapshotReferencesMedia(req.attachments[i].id) && !mediaReferencedByOther(req.attachments[i].id, id)){
             try{ await idbFileDelete(req.attachments[i].id); }catch(err){}
           }
         }

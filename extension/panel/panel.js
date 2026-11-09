@@ -217,6 +217,7 @@
     new:      { id:"new",      label:"Yeni istek", title:"Yeni istek",   iconKey:"plus",     primary:true },
     list:     { id:"list",     label:"İstekler",   title:"İstekler",     iconKey:"list",     badge:true },
     project:  { id:"project",  labelKey:"newProject", titleKey:"newProjectTitle", primary:true },
+    projects: { id:"projects", labelKey:"projects", titleKey:"projects", iconKey:"folder" },
     detail:   { id:"detail",   label:"İstek",      title:"İstek",        iconKey:"doc",      badge:true },
     page:     { id:"page",     label:"Sayfa",      title:"Sayfa",        iconKey:"folder",   badge:true },
     desc:     { id:"desc",     label:"Açıklama",   title:"Açıklama",     iconKey:"doc",      badge:true },
@@ -358,6 +359,11 @@
     bridgeConflictShort:{ tr:"Defter seçimi bekliyor", en:"Ledger choice pending" },
     bridgeDifferentProject:{ tr:"Farklı proje açık", en:"Different project open" },
     bridgeServerStopped:{ tr:"Uygulama sunucusu durduruldu", en:"App server stopped" },
+    companionLockTitle:{ tr:"Uzantıyı kullanmak için Request Ledger uygulamasını aç", en:"Open the Request Ledger app to use the extension" },
+    companionLockBody:{ tr:"Uzantı uygulamayla birlikte çalışır. Uygulama kapalıyken düzenleme, dışa aktarma ve yedekleme kilitlidir.", en:"The extension works with the app. Editing, export and backup are locked while the app is closed." },
+    companionChecking:{ tr:"Uygulama aranıyor…", en:"Looking for the Request Ledger app…" },
+    companionRetry:{ tr:"Yeniden kontrol et", en:"Check again" },
+    companionDraftDiscarded:{ tr:"Uygulama kapandı; gönderilmemiş taslak atıldı.", en:"The app closed; the unsent draft was discarded." },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
     bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },
@@ -1235,7 +1241,36 @@
     refreshProjectViews();
   }
 
+  function queueAppProjectCommand(type, projectId, name, ledgerId){
+    var command = {
+      id:"cmd_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      type:type,
+      projectId:String(projectId || ""),
+      ledgerId:String(ledgerId || ""),
+      name:String(name || ""),
+      at:nowISO()
+    };
+    try{
+      if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
+        chrome.storage.local.set({ "rl-app-command": command });
+      }
+    }catch(err){ /* the page-local bridge still covers same-tab panels */ }
+    try{
+      if(typeof bridgePost === "function" && typeof bridgeConnected !== "undefined" && bridgeConnected){
+        bridgePost("RL_APP_PROJECT_CREATE", {
+          commandId:command.id,
+          commandType:command.type,
+          projectId:command.projectId,
+          ledgerId:command.ledgerId,
+          name:command.name,
+          at:command.at
+        });
+      }
+    }catch(err){ /* cross-tab storage command is the fallback */ }
+  }
+
   function createProjectAndOpen(name){
+    if(typeof companionLocked === "function" && companionLocked()) return false;
     var value = normalizeProjectName(name);
     if(!value) return false;
     var hadProject = !!activeProjectId;
@@ -1270,6 +1305,9 @@
       lastExport: null
     };
     try{ localStorage.setItem(projectLedgerKey(id), JSON.stringify(ledger)); }catch(err){ /* the first save retries */ }
+    /* Route the create through the app tab's content script; the app is the
+       hub and must own the project list. */
+    queueAppProjectCommand("project-create", id, value, ledgerId);
     projectCreatePending = null;
     projectFormOpen = false;
     openProjectById(id);
@@ -1999,6 +2037,11 @@
   }
 
   function saveNow(){
+    if(typeof companionLocked === "function" && companionLocked()){
+      if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      setSaveState("saved");
+      return false;
+    }
     if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
     /* Phase 2b: no project open means there is no project ledger to write. */
     if(!activeProjectId){
@@ -2637,6 +2680,7 @@
     if(data.type === "RL_APP_HELLO" || data.type === "RL_APP_SNAPSHOT" ||
        data.type === "RL_APP_PATCH" || data.type === "RL_APP_ACK" ||
        data.type === "RL_APP_BYE" || data.type === "RL_APP_SERVER_STOP" ||
+       data.type === "RL_APP_MEDIA" || data.type === "RL_APP_MEDIA_REQUEST" ||
        data.type === "RL_BRIDGE_CONTEXT" ||
        data.type === "RL_APP_TABS_REQUEST" || data.type === "RL_APP_PICK_REQUEST" ||
        data.type === "RL_APP_PICK_CANCEL" || data.type === "RL_APP_CAPTURE_REQUEST" ||
@@ -3038,6 +3082,7 @@
   function sectionAllowed(section, mode){
     if(section === "settings" || section === "backup" || section === "help") return true;
     if(section === "project") return !hasProjectName();
+    if(section === "projects") return mode !== "compose";
     if(mode === "compose") return section === "detail" || section === "page" || section === "desc" || section === "export";
     return section === "new" || section === "list";
   }
@@ -3481,6 +3526,8 @@
     }else{
       topItems.push(buildItem(SECTION_SPECS.new));
       topItems.push(buildItem(SECTION_SPECS.list));
+      /* Dedicated Projects workspace: list/search/create/switch/settings. */
+      topItems.push(buildItem(SECTION_SPECS.projects));
       for(var i = 0; i < topItems.length; i++) els.topGroup.appendChild(topItems[i]);
     }
 
@@ -3720,6 +3767,7 @@
     }
 
     state.active = section;
+    if(typeof companionProbeNow === "function") companionProbeNow(true);
     var utility = isUtilitySection(section);
     /* top-group sections collapse the idle buttons and slide the active one
        to the top; utility sections keep the top group untouched */
@@ -3813,6 +3861,7 @@
 
   function triggerReady(){
     if(role !== "dock") return;
+    if(typeof companionLocked === "function" && companionLocked()) return;
     channelPost({ type:"ready" });
   }
 
@@ -4732,8 +4781,10 @@
       if(value && merged.indexOf(value) < 0) merged.push(value);
     }
     if(merged.indexOf(selector) < 0) merged.push(selector);
-    return merged.join(" | ");
+    return merged.join(" | ").slice(0, 200);
   }
+
+  try{ window.__rlPanelMergeLocation = mergeLocation; }catch(err){ /* ignore */ }
 
   function handlePickResult(message){
     clearPickPending();
@@ -4834,7 +4885,7 @@
       backupBusy = false;
     }
 
-    els.title.textContent = section === "project" ? projectSectionTitle() : sectionText(spec, "title");
+    els.title.textContent = (section === "project" || section === "projects") ? projectSectionTitle() : sectionText(spec, "title");
     var req = activeRequest();
     if(req && (section === "detail" || section === "page" || section === "desc" || section === "export")){
       els.chip.hidden = false;
@@ -4853,7 +4904,7 @@
 
     if(section === "new") renderNew(scroller);
     else if(section === "list") renderList(scroller);
-    else if(section === "project") renderProject(scroller);
+    else if(section === "project" || section === "projects") renderProject(scroller);
     else if(section === "detail") renderDetail(scroller);
     else if(section === "page") renderPage(scroller);
     else if(section === "desc") renderDesc(scroller);
@@ -7762,6 +7813,7 @@
       broadcastState();
       if(role === "flyout" && state.section === "list") updateList();
     }
+    queueAppProjectCommand("project-rename", projectId, record.name, record.ledgerId);
     if(input) input.classList.remove("is-invalid");
     toast(lx("projectRenamed"));
     projectSettingsCounts = null;
@@ -7816,6 +7868,7 @@
     if(!projectId) return;
     deleteProjectById(projectId).then(function(ok){
       if(!ok) return;
+      queueAppProjectCommand("project-delete", projectId, "", "");
       projectDeleteConfirm = false;
       renderArchiveProjectTree();
     }).catch(function(){ /* deleteProjectById reports its own errors */ });
@@ -10458,16 +10511,24 @@
     requestClose();
   }
 
+  function mediaReferencedElsewhere(mediaId, exceptRequestId){
+    return (app && Array.isArray(app.requests) ? app.requests : []).some(function(item){
+      if(!item || item.id === exceptRequestId) return false;
+      return (item.images || []).some(function(img){ return img.id === mediaId; }) ||
+        (item.attachments || []).some(function(att){ return att.id === mediaId; });
+    });
+  }
+
   function deleteMediaFor(req){
     if(!req || !core || !core.storage) return Promise.resolve();
     var jobs = [];
     (req.images || []).forEach(function(img){
-      if(core.storage.deleteImage){
+      if(core.storage.deleteImage && !mediaReferencedElsewhere(img.id, req.id)){
         jobs.push(Promise.resolve().then(function(){ return core.storage.deleteImage(img.id); }).catch(function(){}));
       }
     });
     (req.attachments || []).forEach(function(att){
-      if(core.storage.deleteFile){
+      if(core.storage.deleteFile && !mediaReferencedElsewhere(att.id, req.id)){
         jobs.push(Promise.resolve().then(function(){ return core.storage.deleteFile(att.id); }).catch(function(){}));
       }
     });
@@ -11663,6 +11724,151 @@
   }
 
   /* Text-only request envelope. Media arrays are intentionally omitted. */
+  var BRIDGE_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
+  var bridgeSentMedia = {};
+  var bridgePeerMedia = {};
+  var bridgeMediaSending = false;
+
+  function bridgeMediaOut(item, kind){
+    if(!item || typeof item.id !== "string" || !item.id) return null;
+    var out = {
+      id:item.id,
+      name:typeof item.name === "string" ? item.name.slice(0, 180) : "",
+      type:typeof item.type === "string" ? item.type.slice(0, 120) : "",
+      ext:typeof item.ext === "string" ? item.ext.slice(0, 20) : "",
+      size:Number(item.size) || 0,
+      kind:kind
+    };
+    if(kind === "image"){
+      out.w = Number(item.w) || 0;
+      out.h = Number(item.h) || 0;
+    }
+    return out;
+  }
+
+  function bridgeMediaKey(kind, id){
+    return (activeProjectId || "") + "|" + kind + "|" + id;
+  }
+
+  function bridgeBlobToDataUrl(blob){
+    return new Promise(function(resolve, reject){
+      if(!blob){ reject(new Error("missing blob")); return; }
+      try{
+        var reader = new FileReader();
+        reader.onload = function(){ resolve(reader.result); };
+        reader.onerror = function(){ reject(reader.error || new Error("media read failed")); };
+        reader.readAsDataURL(blob);
+      }catch(err){ reject(err); }
+    });
+  }
+
+  function bridgeSendMediaItem(req, item, kind, force){
+    if(!req || !item || !item.id) return Promise.resolve(false);
+    var key = bridgeMediaKey(kind, item.id);
+    if(!force && (bridgeSentMedia[key] || bridgePeerMedia[key])) return Promise.resolve(false);
+    var read = kind === "image" ? core.storage.getImage(item.id) : core.storage.getFile(item.id);
+    return Promise.resolve(read).then(function(record){
+      if(!record || !record.blob || record.blob.size > BRIDGE_MEDIA_MAX_BYTES) return false;
+      return bridgeBlobToDataUrl(record.blob).then(function(dataUrl){
+        if(typeof dataUrl !== "string" || dataUrl.length > BRIDGE_MEDIA_MAX_BYTES * 2) return false;
+        bridgePost("RL_APP_MEDIA", {
+          requestId:req.id,
+          media:[{ kind:kind, id:item.id, meta:bridgeMediaOut(item, kind), dataUrl:dataUrl }]
+        });
+        bridgeSentMedia[key] = true;
+        return true;
+      });
+    }).catch(function(){ return false; });
+  }
+
+  function bridgeSendPendingMedia(force){
+    if(bridgeServerStopped || bridgeMediaSending || !app) return;
+    bridgeMediaSending = true;
+    var jobs = [];
+    (app.requests || []).forEach(function(req){
+      (Array.isArray(req.images) ? req.images : []).forEach(function(img){
+        jobs.push(bridgeSendMediaItem(req, img, "image", force));
+      });
+      (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){
+        jobs.push(bridgeSendMediaItem(req, att, "file", force));
+      });
+    });
+    Promise.all(jobs).then(function(){ bridgeMediaSending = false; }, function(){ bridgeMediaSending = false; });
+  }
+
+  function bridgeRequestMissingMedia(){
+    if(bridgeServerStopped || !app) return;
+    var ids = [];
+    (app.requests || []).forEach(function(req){
+      (Array.isArray(req.images) ? req.images : []).forEach(function(img){ if(img && img.id) ids.push("image:" + img.id); });
+      (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){ if(att && att.id) ids.push("file:" + att.id); });
+    });
+    if(!ids.length) return;
+    bridgePost("RL_APP_MEDIA_REQUEST", { ids:ids.slice(0, 100) });
+  }
+
+  function bridgeHandleMedia(data){
+    if(!data || !app || !activeProjectId) return;
+    if(bridgeEnvelopeProjectId(data) && bridgeEnvelopeProjectId(data) !== activeProjectId){
+      bridgeRecordReject("media-project-mismatch", data);
+      return;
+    }
+    var req = null;
+    (app.requests || []).some(function(item){
+      if(item.id === data.requestId){ req = item; return true; }
+      return false;
+    });
+    if(!req || !Array.isArray(data.media)) return;
+    var changed = false;
+    var jobs = data.media.slice(0, 20).map(function(item){
+      if(!item || typeof item.id !== "string" || typeof item.dataUrl !== "string") return Promise.resolve();
+      if(!/^data:(image|application)\//.test(item.dataUrl)) return Promise.resolve();
+      var kind = item.kind === "file" ? "file" : "image";
+      var meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+      return fetch(item.dataUrl).then(function(response){ return response.blob(); }).then(function(blob){
+        if(blob.size > BRIDGE_MEDIA_MAX_BYTES) return;
+        if(kind === "image"){
+          return core.storage.putImage({ id:item.id, blob:blob, type:meta.type || blob.type || "image/webp" }).then(function(){
+            var list = Array.isArray(req.images) ? req.images : [];
+            if(!list.some(function(entry){ return entry.id === item.id; })){
+              list.push({
+                id:item.id, name:meta.name || lx("imageFallback"), w:Number(meta.w) || 0,
+                h:Number(meta.h) || 0, type:meta.type || blob.type || "image/webp",
+                ext:meta.ext || "", file:""
+              });
+              req.images = list;
+              changed = true;
+            }
+          });
+        }
+        return core.storage.putFile({
+          id:item.id, blob:blob, type:meta.type || blob.type || "application/octet-stream"
+        }).then(function(){
+          var list = Array.isArray(req.attachments) ? req.attachments : [];
+          if(!list.some(function(entry){ return entry.id === item.id; })){
+            list.push({
+              id:item.id, name:meta.name || lx("filesTitle"), size:Number(meta.size) || blob.size,
+              type:meta.type || blob.type || "application/octet-stream",
+              ext:meta.ext || "", file:""
+            });
+            req.attachments = list;
+            changed = true;
+          }
+        });
+      }).then(function(){
+        bridgePeerMedia[bridgeMediaKey(kind, item.id)] = true;
+      }).catch(function(){ /* skip broken media */ });
+    });
+    Promise.all(jobs).then(function(){
+      if(!changed) return;
+      req.updatedAt = bridgeNow();
+      core.requests.update(req, { images:req.images, attachments:req.attachments });
+      saveNow();
+      if(role === "flyout" && state.section) renderFlyout(state.section);
+      if(role === "dock") updateDockBadges();
+    });
+  }
+
   function bridgeRequestOut(req){
     if(!req) return null;
     return {
@@ -11679,8 +11885,33 @@
       note:req.note,
       confirmed:req.confirmed === true,
       createdAt:req.createdAt,
-      updatedAt:req.updatedAt
+      updatedAt:req.updatedAt,
+      images:(Array.isArray(req.images) ? req.images : []).map(function(item){
+        return bridgeMediaOut(item, "image");
+      }).filter(Boolean),
+      attachments:(Array.isArray(req.attachments) ? req.attachments : []).map(function(item){
+        return bridgeMediaOut(item, "file");
+      }).filter(Boolean)
     };
+  }
+
+  function bridgeMediaList(value, kind){
+    return (Array.isArray(value) ? value : []).map(function(item){
+      if(!item || typeof item.id !== "string" || !item.id) return null;
+      var out = {
+        id:item.id, name:item.name || "", type:item.type || "", ext:item.ext || "",
+        size:Number(item.size) || 0, file:""
+      };
+      if(kind === "image"){ out.w = Number(item.w) || 0; out.h = Number(item.h) || 0; }
+      return out;
+    }).filter(Boolean);
+  }
+
+  function bridgeMergeMedia(incoming, local, kind){
+    var byId = {};
+    bridgeMediaList(local, kind).forEach(function(item){ byId[item.id] = item; });
+    bridgeMediaList(incoming, kind).forEach(function(item){ byId[item.id] = item; });
+    return Object.keys(byId).map(function(id){ return byId[id]; });
   }
 
   function bridgeAgentOut(agent){
@@ -11780,6 +12011,133 @@
   var bridgePeerLedgerId = "";
   var bridgePeerRequestCount = 0;
   var bridgeServerStopped = false;
+  var companionPresence = { checked:false, open:false, mode:"", port:0, origin:"" };
+  var companionProbeTimer = null;
+  var companionProbeBusy = false;
+  var companionWasLocked = false;
+
+  function companionLocked(){
+    return companionPresence.checked && !bridgeConnected && !companionPresence.open;
+  }
+
+  function companionOverlayLocked(){
+    return !bridgeConnected && !companionPresence.open;
+  }
+
+  function ensureCompanionLock(){
+    if(!document.body) return null;
+    var existing = document.getElementById("rl-companion-lock");
+    if(existing) return existing;
+    var wrap = document.createElement("div");
+    wrap.id = "rl-companion-lock";
+    wrap.className = "companion-lock";
+    wrap.hidden = true;
+    wrap.setAttribute("role", "alertdialog");
+    wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-labelledby", "rl-companion-lock-title");
+    var card = document.createElement("div");
+    card.className = "companion-lock__card";
+    var eyebrow = document.createElement("div");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "Companion";
+    var title = document.createElement("b");
+    title.id = "rl-companion-lock-title";
+    title.textContent = lx("companionLockTitle");
+    var body = document.createElement("p");
+    body.id = "rl-companion-lock-body";
+    body.textContent = lx("companionLockBody");
+    var steps = document.createElement("ol");
+    steps.className = "companion-lock__steps";
+    ["Start with start.cmd or open index.html.", "Keep the app tab open while using the extension.", "The extension unlocks automatically when the app answers."].forEach(function(text){
+      var item = document.createElement("li");
+      item.textContent = text;
+      steps.appendChild(item);
+    });
+    var retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "btn btn--small btn--primary";
+    retry.id = "rl-companion-retry";
+    retry.textContent = lx("companionRetry");
+    retry.addEventListener("click", function(){ companionProbeNow(true); });
+    card.appendChild(eyebrow);
+    card.appendChild(title);
+    card.appendChild(body);
+    card.appendChild(steps);
+    card.appendChild(retry);
+    wrap.appendChild(card);
+    document.body.appendChild(wrap);
+    return wrap;
+  }
+
+  function discardCompanionDraft(){
+    var discarded = false;
+    if(typeof pendingRequest !== "undefined" && pendingRequest){
+      if(typeof discardPending === "function") discardPending();
+      else pendingRequest = null;
+      discarded = true;
+    }
+    if(typeof composeDirty !== "undefined" && composeDirty){
+      composeDirty = false;
+      if(typeof state !== "undefined" && state.mode === "compose" && typeof setMode === "function") setMode("idle");
+      discarded = true;
+    }
+    if(discarded) toast(lx("companionDraftDiscarded"), "error");
+  }
+
+  function updateCompanionLock(){
+    var overlayLocked = companionOverlayLocked();
+    var lock = ensureCompanionLock();
+    if(lock){
+      lock.hidden = !overlayLocked;
+      var body = document.getElementById("rl-companion-lock-body");
+      if(body){
+        body.textContent = !companionPresence.checked
+          ? lx("companionChecking")
+          : lx("companionLockBody");
+      }
+    }
+    try{ document.body.setAttribute("data-companion-locked", overlayLocked ? "1" : "0"); }catch(err){ /* ignore */ }
+    if(overlayLocked && !companionWasLocked) discardCompanionDraft();
+    if(!overlayLocked && companionWasLocked && typeof bridgeRefreshFromStorage === "function"){
+      bridgeRefreshFromStorage();
+    }
+    companionWasLocked = overlayLocked;
+  }
+
+  function companionProbeNow(force){
+    if(companionProbeBusy || !hasHost) {
+      if(!hasHost) { companionPresence.checked = true; companionPresence.open = false; updateBridgeUI(); }
+      return;
+    }
+    if(!force && companionPresence.checked && Date.now() - (companionPresence.lastAt || 0) < 2500) return;
+    companionProbeBusy = true;
+    var port = Number(window.location.port) || 0;
+    sendRuntime({ type:"RL_APP_PRESENCE", port:port }, function(response, failure){
+      companionProbeBusy = false;
+      if(failure || !response){
+        companionPresence = { checked:true, open:false, mode:"", port:port, origin:"", lastAt:Date.now() };
+      }else{
+        companionPresence = {
+          checked:true,
+          open: response.open === true,
+          mode: typeof response.mode === "string" ? response.mode : "",
+          port: Number(response.port) || port,
+          origin: typeof response.origin === "string" ? response.origin : "",
+          lastAt: Date.now()
+        };
+      }
+      if(companionPresence.open && !activeProjectId && typeof bridgeRefreshFromStorage === "function"){
+        bridgeRefreshFromStorage();
+      }
+      updateBridgeUI();
+    });
+  }
+
+  function startCompanionProbe(){
+    if(companionProbeTimer) clearInterval(companionProbeTimer);
+    companionProbeNow(true);
+    companionProbeTimer = setInterval(function(){ companionProbeNow(false); }, 4000);
+  }
   var bridgeRejects = [];
   var bridgeConflictInfo = null;
   var BRIDGE_DIAGNOSTIC_MAX = 50;
@@ -12048,6 +12406,7 @@
     bridgeSendTimer = setTimeout(function(){
       bridgeSendTimer = null;
       bridgePost("RL_APP_PATCH");
+      bridgeSendPendingMedia(false);
     }, 120);
   }
 
@@ -12086,9 +12445,10 @@
       var normalized = core && core.requests && core.requests.normalize
         ? core.requests.normalize(raw, index)
         : raw;
-      /* Media never crosses the bridge: keep whatever is local. */
-      normalized.images = local && Array.isArray(local.images) ? local.images : [];
-      normalized.attachments = local && Array.isArray(local.attachments) ? local.attachments : [];
+      /* Metadata crosses with the request; blobs travel separately. Keep a
+         local-only id so it can still be uploaded to the other surface. */
+      normalized.images = bridgeMergeMedia(raw.images, local && local.images, "image");
+      normalized.attachments = bridgeMergeMedia(raw.attachments, local && local.attachments, "file");
       normalized.collapsed = local ? local.collapsed !== false : true;
       if(!local) order.push(normalized.id);
       byId[normalized.id] = normalized;
@@ -12215,8 +12575,8 @@
           var normalized = core && core.requests && core.requests.normalize
             ? core.requests.normalize(raw, index)
             : raw;
-          normalized.images = [];
-          normalized.attachments = [];
+          normalized.images = bridgeMediaList(raw.images, "image");
+          normalized.attachments = bridgeMediaList(raw.attachments, "file");
           app.requests.push(normalized);
         });
         var replacedName = bridgeEnvelopeProjectName(data);
@@ -12262,6 +12622,7 @@
     reloadSharedState(incomingProjectId || activeProjectId);
     updateBridgeUI();
     bridgeStats.applied++;
+    setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
     return true;
   }
 
@@ -12510,6 +12871,7 @@
   function handleBridgeBye(){
     if(bridgeServerStopped) return;
     bridgeConnected = false;
+    companionPresence = { checked:true, open:false, mode:"", port:companionPresence.port || 0, origin:"", lastAt:Date.now() };
     bridgeLastHeard = 0;
     bridgePeerProjectId = "";
     bridgePeerLedgerId = "";
@@ -12543,6 +12905,7 @@
     bridgeServerStopped = true;
     bridgeConnected = false;
     bridgeLastHeard = 0;
+    companionPresence = { checked:true, open:false, mode:"", port:companionPresence.port || 0, origin:"", lastAt:Date.now() };
     bridgeConflict = false;
     bridgePeerHello = null;
     bridgePeerProjectId = "";
@@ -12572,6 +12935,23 @@
     }
     if(data.type === "RL_APP_SERVER_STOP"){
       handleBridgeServerStop(false);
+      return;
+    }
+    if(data.type === "RL_APP_MEDIA"){
+      bridgeHandleMedia(data);
+      return;
+    }
+    if(data.type === "RL_APP_MEDIA_REQUEST"){
+      var mediaIds = {};
+      (Array.isArray(data.ids) ? data.ids : []).slice(0, 100).forEach(function(value){ mediaIds[String(value)] = true; });
+      (app && Array.isArray(app.requests) ? app.requests : []).forEach(function(req){
+        (Array.isArray(req.images) ? req.images : []).forEach(function(img){
+          if(mediaIds["image:" + img.id]) bridgeSendMediaItem(req, img, "image", true);
+        });
+        (Array.isArray(req.attachments) ? req.attachments : []).forEach(function(att){
+          if(mediaIds["file:" + att.id]) bridgeSendMediaItem(req, att, "file", true);
+        });
+      });
       return;
     }
     if(bridgeServerStopped){
@@ -12663,6 +13043,7 @@
     var extBtn = document.getElementById("rl-bridge-use-extension");
     if(appBtn) appBtn.disabled = !bridgeConflict;
     if(extBtn) extBtn.disabled = !bridgeConflict;
+    if(typeof updateCompanionLock === "function") updateCompanionLock();
   }
 
   function bridgeWatch(){
@@ -12752,8 +13133,12 @@
     if(app && (app.requests.length > 0 || String(app.project || "").trim())) bridgeLedgerSynced = true;
     window.addEventListener("storage", function(event){
       if(!event || !event.key) return;
-      if(event.key === PROJECTS_KEY ||
-         (activeProjectId && event.key === projectLedgerKey(activeProjectId))){
+      if(event.key === PROJECTS_KEY){
+        projectRegistry = readRegistry();
+        if(typeof syncProjectGate === "function") syncProjectGate(true);
+        if(typeof refreshProjectViews === "function") refreshProjectViews();
+        bridgeRefreshFromStorage();
+      }else if(activeProjectId && event.key === projectLedgerKey(activeProjectId)){
         bridgeRefreshFromStorage();
       }
     });
@@ -12766,6 +13151,7 @@
     /* Advertise our ledger once the panel is ready. The host drops this on
        non-allowlisted pages, so no data leaves the two approved origins. */
     setTimeout(function(){ bridgePost("RL_APP_SNAPSHOT"); }, 120);
+    startCompanionProbe();
     try{
       window.__rlBridgePanel = Object.freeze({
         connected:function(){ return bridgeConnected; },
@@ -12779,7 +13165,14 @@
         ledgerId:function(){ return app && app.ledgerId ? app.ledgerId : ""; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes }; },
         pageToken:function(){ return panelPageToken; },
-        pageOrigin:function(){ return bridgePageOrigin; }
+        pageOrigin:function(){ return bridgePageOrigin; },
+        requests:function(){
+          return app && Array.isArray(app.requests) ? app.requests.map(function(req){
+            return { id:req.id, images:(req.images || []).length, attachments:(req.attachments || []).length };
+          }) : [];
+        },
+        presence:function(){ return { checked:companionPresence.checked, open:companionPresence.open, mode:companionPresence.mode, port:companionPresence.port }; },
+        locked:function(){ return companionOverlayLocked(); }
       });
     }catch(err){ /* ignore */ }
   }

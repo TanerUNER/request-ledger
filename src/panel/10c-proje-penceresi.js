@@ -227,6 +227,7 @@
       broadcastState();
       if(role === "flyout" && state.section === "list") updateList();
     }
+    queueAppProjectCommand("project-rename", projectId, record.name, record.ledgerId);
     if(input) input.classList.remove("is-invalid");
     toast(lx("projectRenamed"));
     projectSettingsCounts = null;
@@ -281,6 +282,7 @@
     if(!projectId) return;
     deleteProjectById(projectId).then(function(ok){
       if(!ok) return;
+      queueAppProjectCommand("project-delete", projectId, "", "");
       projectDeleteConfirm = false;
       renderArchiveProjectTree();
     }).catch(function(){ /* deleteProjectById reports its own errors */ });

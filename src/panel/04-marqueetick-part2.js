@@ -163,6 +163,8 @@
     }else{
       topItems.push(buildItem(SECTION_SPECS.new));
       topItems.push(buildItem(SECTION_SPECS.list));
+      /* Dedicated Projects workspace: list/search/create/switch/settings. */
+      topItems.push(buildItem(SECTION_SPECS.projects));
       for(var i = 0; i < topItems.length; i++) els.topGroup.appendChild(topItems[i]);
     }
 
@@ -402,6 +404,7 @@
     }
 
     state.active = section;
+    if(typeof companionProbeNow === "function") companionProbeNow(true);
     var utility = isUtilitySection(section);
     /* top-group sections collapse the idle buttons and slide the active one
        to the top; utility sections keep the top group untouched */
@@ -495,6 +498,7 @@
 
   function triggerReady(){
     if(role !== "dock") return;
+    if(typeof companionLocked === "function" && companionLocked()) return;
     channelPost({ type:"ready" });
   }
 

@@ -442,6 +442,10 @@
     if(header) header.inert = serverBlocked;
     if(footer) footer.inert = serverBlocked;
     document.body.classList.toggle("is-server-blocked", serverBlocked);
+    try{
+      if(serverBlocked) document.documentElement.setAttribute("data-rl-server-stopped", "1");
+      else document.documentElement.removeAttribute("data-rl-server-stopped");
+    }catch(err){ /* ignore */ }
     if(overlay){
       overlay.hidden = !serverBlocked;
       if(serverBlocked){

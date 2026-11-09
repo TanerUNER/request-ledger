@@ -360,6 +360,14 @@ async function main() {
     }, "app fields filled", 20000);
     check("app Page is the normalized path", filled.page === "/tests/fixtures/picker-target.html", filled);
     check("app Location is the CSS selector", filled.location === "#pick-target", filled);
+    const multi = await evaluate(cdp, pageSession, `(() => ({
+      combined: window.__rlMergeLocation('#pick-target', '.card h2'),
+      deduped: window.__rlMergeLocation('#pick-target | .card h2', '.card h2'),
+      capped: window.__rlMergeLocation('a'.repeat(190), 'b'.repeat(40))
+    }))()`);
+    check("app multi-element location appends with a separator",
+      multi.combined === "#pick-target | .card h2" && multi.deduped === "#pick-target | .card h2", multi);
+    check("app multi-element location keeps the 200-character cap", multi.capped.length <= 200, multi.capped.length);
     check("chooser closes after the result", await evaluate(cdp, pageSession,
       "!document.getElementById('pickerTabsModal').classList.contains('is-open')"));
 
@@ -383,6 +391,10 @@ async function main() {
       })()`).catch(() => null);
     }, "panel detail fields", 20000);
     check("panel detail shows the mirrored fields", panelFields.page === filled.page && panelFields.location === filled.location, panelFields);
+    const panelMerge = await evaluate(cdp, flyoutSession,
+      "window.__rlPanelMergeLocation ? window.__rlPanelMergeLocation('#pick-target', '.card h2') : ''");
+    check("panel multi-element location appends with a separator",
+      panelMerge === "#pick-target | .card h2", panelMerge);
 
     await cdp.send("Page.bringToFront", {}, pageSession);
     await sleep(400);
