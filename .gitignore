@@ -5,5 +5,9 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Runtime user data (never in git)
 projects/
-projects/
+backups/
+deleted-projects/
+rl-config.json

@@ -357,6 +357,9 @@ async function createRequestInPanel(cdp, dockSession, flyoutSession, title, desc
 async function main() {
   /* server-disk reset: each e2e starts from an empty projects/ disk */
   try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'backups'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'deleted-projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'rl-config.json'), { force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
@@ -1448,27 +1451,37 @@ async function main() {
       throw error;
     }
 
-    /* Stop through the real UI, then start.cmd-equivalent on the same port. */
-    await evaluate(cdp, appSession, "document.getElementById('railStopBtn').click()");
-    await waitFor(() => evaluate(cdp, appSession,
-      "document.getElementById('confirmModal').classList.contains('is-open')"), "stop confirmation", 5000);
-    await evaluate(cdp, appSession, "document.getElementById('confirmOkBtn').click()");
-    await waitFor(() => evaluate(cdp, appSession,
-      "!document.getElementById('serverBlocked').hidden && window.__rlBridge.serverStopped()"), "server blocked", 12000);
-    const stoppedProcess = await Promise.race([
-      new Promise((resolve) => {
-        if (server.exitCode !== null) return resolve(true);
-        server.once("exit", () => resolve(true));
-      }),
-      sleep(8000).then(() => false),
-    ]);
-    check("Stop blocks the app and stops the server", stoppedProcess === true);
-    const stopHidHost = await waitFor(() => evaluate(cdp, appSession,
-      "!document.getElementById('rl-host')"), "extension host hides after stop", 10000).catch(() => false);
-    check("Stop removes the extension UI completely", stopHidHost === true);
+    /* Rail: a status dot + the port, and no stop action. */
+    const railState = await evaluate(cdp, appSession, `(() => {
+      const label = document.getElementById('railModeLabel');
+      const dot = document.getElementById('railModeDot');
+      return {
+        stopButton: !!document.getElementById('railStopBtn'),
+        label: label ? label.textContent : '',
+        dotOn: dot ? dot.classList.contains('is-on') : false,
+        server: window.__rlBridge && window.__rlBridge.connected()
+      };
+    })()`);
+    check("rail shows a green status dot and the port with no stop button",
+      railState.stopButton === false && railState.dotOn === true &&
+      new RegExp("^:" + port + "$").test(railState.label), railState);
+
+    /* External stop (equivalent to stop.cmd): the page keeps its data, and a
+       restart with start.cmd + a reload restores the pair. */
     stopChild(server);
     server = null;
-    await sleep(500);
+    await waitFor(async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:" + port + "/__rl/status");
+        return !response.ok;
+      } catch (error) { return true; }
+    }, "port free after external stop", 12000).catch(() => false);
+    const keptData = await evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${appProjectId}');
+      const value = raw ? JSON.parse(raw) : null;
+      return value && value.requests ? value.requests.length : 0;
+    })()`);
+    check("the open page keeps its ledger data when the server stops", keptData === 3, keptData);
 
     server = startServer(port, "real-tabs-b.lock");
     await primeServer(port);
@@ -1482,10 +1495,14 @@ async function main() {
           return response.ok;
         } catch (error) { return false; }
       }, "server back on the same port", 15000);
-      await sleep(4500);
+      /* A stopped server cannot reload the page; the user refreshes after
+         start.cmd, so the test does the same. */
+      await cdp.send("Page.reload", {}, appSession);
+      await sleep(3000);
       appSession = await attach(cdp, appTarget.targetId);
+      await dismissOnboarding(cdp, appSession);
       await waitFor(() => evaluate(cdp, appSession,
-        "window.__rlBridge && !window.__rlBridge.serverStopped() && window.__rlBridge.connected()"), "app reconnects after restart", 25000);
+        "window.__rlBridge && window.__rlBridge.connected()"), "app reconnects after restart", 25000);
     } finally {
       clearInterval(keepAlive);
     }

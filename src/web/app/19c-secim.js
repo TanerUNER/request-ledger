@@ -24,7 +24,7 @@
       mode: "pick",
       label: "Öğe seç",
       busy: "Seçiliyor…",
-      title: "Sayfa ve konumu uzantıdan seç."
+      title: "Sayfa ve konumu eklentidan seç."
     },
     "capture-tab": {
       mode: "capture",
@@ -64,7 +64,7 @@
       button.disabled = busy || locked || full;
       button.setAttribute("aria-disabled", String(off && !busy && !locked && !full));
       button.title = off
-        ? translateString("Uzantı bağlı değil — kurulum adımlarını görmek için tıkla.")
+        ? translateString("Eklenti bağlı değil — kurulum adımlarını görmek için tıkla.")
         : full
           ? translateString("Bir satıra en fazla " + MAX_IMAGES + " görsel eklenebilir.")
           : translateString(spec.title);
@@ -214,8 +214,8 @@
         waitingHint: "Seçtiğin sekmede kırpılacak alanı sürükle. 30 saniye içinde sonuç gelmezse işlem iptal edilir.",
         cancel: "Görüntü almayı iptal et",
         timeout: "Görüntü alma zaman aşımına uğradı.",
-        timeoutFail: "Görüntü alma zaman aşımına uğradı. Uzantı penceresini kapatıp yeniden dene.",
-        disconnected: "Uzantı bağlantısı kesildi. Görüntü alınamadı.",
+        timeoutFail: "Görüntü alma zaman aşımına uğradı. Eklenti penceresini kapatıp yeniden dene.",
+        disconnected: "Eklenti bağlantısı kesildi. Görüntü alınamadı.",
         cancelled: "Görüntü alımı iptal edildi.",
         invalid: "Görüntü sonucu geçersiz. Yeniden dene."
       };
@@ -228,8 +228,8 @@
         waitingHint: "Seçtiğin sekmede bir öğeye tıkla; görüntüsü de alınacak. 30 saniye içinde sonuç gelmezse işlem iptal edilir.",
         cancel: "İşlemi iptal et",
         timeout: "Öğe ve görüntü zaman aşımına uğradı.",
-        timeoutFail: "İşlem zaman aşımına uğradı. Uzantı penceresini kapatıp yeniden dene.",
-        disconnected: "Uzantı bağlantısı kesildi. Öğe ve görüntü alınamadı.",
+        timeoutFail: "İşlem zaman aşımına uğradı. Eklenti penceresini kapatıp yeniden dene.",
+        disconnected: "Eklenti bağlantısı kesildi. Öğe ve görüntü alınamadı.",
         cancelled: "Öğe ve görüntü alımı iptal edildi.",
         invalid: "Seçim sonucu geçersiz. Yeniden dene."
       };
@@ -241,8 +241,8 @@
       waitingHint: "Seçtiğin sekmede bir öğeye tıkla. 30 saniye içinde sonuç gelmezse seçim iptal edilir.",
       cancel: "Seçimi iptal et",
       timeout: "Öğe seçimi zaman aşımına uğradı.",
-      timeoutFail: "Seçim zaman aşımına uğradı. Uzantı penceresini kapatıp yeniden dene.",
-      disconnected: "Uzantı bağlantısı kesildi. Öğe seçilemedi.",
+      timeoutFail: "Seçim zaman aşımına uğradı. Eklenti penceresini kapatıp yeniden dene.",
+      disconnected: "Eklenti bağlantısı kesildi. Öğe seçilemedi.",
       cancelled: "Öğe seçimi iptal edildi.",
       invalid: "Seçim sonucu geçersiz. Yeniden dene."
     };
@@ -313,7 +313,7 @@
 
   function pickerTabsTimeout(){
     if(!pickerFlow || pickerFlow.phase !== "tabs") return;
-    pickerFail(translateString("Sekme listesi alınamadı. Uzantının açık ve bağlı olduğundan emin ol."));
+    pickerFail(translateString("Sekme listesi alınamadı. Eklentinın açık ve bağlı olduğundan emin ol."));
   }
 
   function pickerPickTimeout(){
@@ -336,7 +336,7 @@
     }
     pickerCancel(true);
     if(!bridgeEnabled()){
-      showToast(translateString("Bu sayfa uzantı köprüsüne izin vermiyor."), "error");
+      showToast(translateString("Bu sayfa eklenti köprüsüne izin vermiyor."), "error");
       return;
     }
     if(!bridgeConnected){
@@ -575,7 +575,7 @@
       showToast(translateString(copy.disconnected), "error");
       return;
     }
-    pickerFail(translateString("Uzantı bağlantısı kesildi. Kurulum adımlarını kontrol et."));
+    pickerFail(translateString("Eklenti bağlantısı kesildi. Kurulum adımlarını kontrol et."));
   }
 
   function initPickerBridge(){

@@ -61,7 +61,7 @@
     "Planning with optional AI agents",
     "Markdown, ZIP and single-file export",
     "Records, drafts and export history",
-    "ZIP and JSON backup",
+    "ZIP backup",
     "Turkish and English interface",
     "Local-first storage with no server and no telemetry"
   ]
@@ -75,11 +75,16 @@
 (function(){
   "use strict";
   var theme = "light", stored = null;
-  try{ stored = localStorage.getItem("gd-theme"); }catch(err){}
-  if(stored === "dark" || stored === "light"){
-    theme = stored;
-  } else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
-    theme = "dark";
+  var boot = window.__RL_SERVER_BOOT;
+  if(boot && (boot.theme === "dark" || boot.theme === "light")){
+    theme = boot.theme;
+  }else{
+    try{ stored = localStorage.getItem("gd-theme"); }catch(err){}
+    if(stored === "dark" || stored === "light"){
+      theme = stored;
+    } else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
+      theme = "dark";
+    }
   }
   document.documentElement.setAttribute("data-theme", theme);
   var meta = document.querySelector('meta[name="theme-color"]');
@@ -137,15 +142,12 @@
   .rail__spacer{flex:1}
   .rail__note{display:flex;align-items:center;gap:5px;font-size:8px;color:var(--muted-2);letter-spacing:.04em;text-transform:uppercase;padding:7px 0 2px;writing-mode:vertical-rl;transform:rotate(180deg)}
   .rail__dot{width:5px;height:5px;border-radius:50%;background:var(--sage);box-shadow:0 0 0 3px rgba(111,129,106,.12)}
-  .rail__mode{width:60px;margin-top:4px;padding:6px 4px 5px;border:1px solid var(--line);border-radius:10px;background:var(--card);display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;color:var(--muted)}
-  .rail__mode-dot{width:5px;height:5px;border-radius:50%;background:var(--muted-2);flex:0 0 5px}
-  .rail__mode-dot.is-on{background:var(--sage);box-shadow:0 0 0 3px rgba(111,129,106,.12)}
-  .rail__mode-text{font-size:7.5px;line-height:1.15;font-weight:650;letter-spacing:.01em;color:var(--ink-2);overflow-wrap:anywhere;max-width:100%}
-  .rail__mode-sub{font-size:7px;line-height:1.2;color:var(--muted-2);overflow-wrap:anywhere;max-width:100%}
-  .rail__stop{width:100%;height:20px;margin-top:3px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface-2);color:var(--danger);font-size:7.5px;font-weight:650;line-height:1;transition:background .14s,border-color .14s,color .14s}
-  .rail__stop:hover{background:#fdf1ef;border-color:#eccac3;color:var(--danger)}
+  .rail__mode{width:60px;margin-top:4px;padding:7px 4px;border:1px solid var(--line);border-radius:10px;background:var(--card);display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;color:var(--muted)}
+  .rail__mode-dot{width:6px;height:6px;border-radius:50%;background:var(--danger);flex:0 0 6px}
+  .rail__mode-dot.is-on{background:var(--sage);box-shadow:0 0 0 3px rgba(111,129,106,.14)}
+  .rail__mode-text{font-size:9.5px;line-height:1.15;font-weight:700;letter-spacing:.01em;color:var(--ink-2);overflow-wrap:anywhere;max-width:100%}
   html[data-theme="dark"] .rail__mode{background:var(--card)}
-  html[data-theme="dark"] .rail__stop:hover{background:#33211d;border-color:#5a3a34}
+  html[data-theme="dark"] .rail__mode-text{color:var(--ink)}
 
   /* ---------- History / İstek Listesi ---------- */
   .history{width:252px;flex:0 0 252px;position:sticky;top:0;height:100vh;z-index:45;display:flex;flex-direction:column;gap:9px;background:var(--paper-2);border-right:1px solid var(--line);padding:18px 12px 14px}
@@ -552,27 +554,6 @@
   .readinessnotice{grid-column:1/-1;display:flex;align-items:center;gap:7px;margin-top:-6px;padding:0;border:0;background:transparent;color:var(--amber-text);font-size:10.5px;line-height:1.4}
   .readinessnotice__icon{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:transparent;color:var(--amber-text);flex:0 0 20px}
   .readinessnotice__text{min-width:0}
-  .serverstop{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--muted);font-size:10.5px;line-height:1.45}
-  .serverstop__icon{width:26px;height:26px;flex:0 0 26px;border-radius:8px;display:grid;place-items:center;background:var(--card);border:1px solid var(--line);color:var(--accent-dark)}
-  .serverstop__body{min-width:0;display:flex;flex-direction:column;gap:1px}
-  .serverstop__body b{font-size:11px;font-weight:650;color:var(--ink-2)}
-  .serverstop code{font-family:var(--mono);font-size:10px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 4px}
-  html[data-theme="dark"] .serverstop{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
-  html[data-theme="dark"] .serverstop code{background:var(--card);border-color:var(--line)}
-  /* Blocked server state: the page stays visible for context but every
-     interactive surface behind it is inert until the same port returns. */
-  .serverblocked{position:fixed;inset:0;z-index:145;display:grid;place-items:center;padding:20px;background:rgba(26,22,16,.38);backdrop-filter:blur(3px)}
-  .serverblocked[hidden]{display:none}
-  .serverblocked__card{width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 80px rgba(32,28,20,.24);padding:26px 26px 22px;text-align:left}
-  .serverblocked__icon{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-dark);margin-bottom:13px}
-  .serverblocked__card h2{font-size:20px;letter-spacing:-.025em;margin:5px 0 8px;line-height:1.18}
-  .serverblocked__card p{margin:0 0 9px;font-size:11.5px;line-height:1.55;color:var(--muted)}
-  .serverblocked__card code{font-family:var(--mono);font-size:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
-  .serverblocked__hint{font-size:10.5px;color:var(--muted-2)}
-  .serverblocked__actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
-  html[data-theme="dark"] .serverblocked{background:rgba(10,9,8,.62)}
-  html[data-theme="dark"] .serverblocked__card{box-shadow:0 30px 80px rgba(0,0,0,.5)}
-
   /* ---------- Footer / toast ---------- */
   footer{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:4px 2px 22px;font-size:9.5px;color:var(--muted-2)}
   footer .sep{width:3px;height:3px;border-radius:50%;background:var(--line-2)}
@@ -654,6 +635,14 @@
   .backupopt__icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--card);color:var(--ink-2);flex:0 0 30px;border:1px solid var(--line)}
   .backupopt b{display:block;font-size:11px;color:var(--ink)}
   .backupopt small{display:block;font-size:9.5px;color:var(--muted-2);margin-top:2px;line-height:1.4}
+  .backupopt--row{align-items:center}
+  .backupopt__body{flex:1;min-width:0}
+  .backupopt__body b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .backupopt__actions{display:flex;gap:6px;flex:0 0 auto}
+  .backupgroup{margin-top:12px}
+  .backupgroup__head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 6px}
+  .backupgroup__head b{font-size:11px;color:var(--ink)}
+  .backupgroup__hint{font-size:9.5px;color:var(--muted-2)}
   .planning__intro{font-size:11.5px;color:var(--muted);line-height:1.55;margin-bottom:12px}
   .exportsteps{display:flex;align-items:center;gap:8px;padding:0 2px 14px}
   .exportstepdot{display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:600;color:var(--muted-2);white-space:nowrap}
@@ -1037,11 +1026,9 @@
       </button>
     </div>
     <div class="rail__spacer"></div>
-    <div class="rail__mode" id="railMode" aria-live="polite">
+    <div class="rail__mode" id="railMode" data-server="off" aria-live="polite">
       <span class="rail__mode-dot" id="railModeDot" aria-hidden="true"></span>
       <span class="rail__mode-text" id="railModeLabel">Dosya</span>
-      <span class="rail__mode-sub" id="railModeSub">Dosyadan başlatıldı</span>
-      <button class="rail__stop" type="button" id="railStopBtn" hidden aria-label="Sunucuyu durdur" title="Sunucuyu durdur">Durdur</button>
     </div>
   </nav>
 
@@ -1122,7 +1109,7 @@
         <div class="topright">
           <span class="bridgechip" id="bridgeChip" hidden role="status" aria-live="polite" title="Extension connected">
             <span class="bridgechip__dot" aria-hidden="true"></span>
-            <span class="bridgechip__label" id="bridgeChipText">Uzantı bağlı</span>
+            <span class="bridgechip__label" id="bridgeChipText">Eklenti bağlı</span>
           </span>
           <button class="iconbtn themebtn" type="button" id="themeBtn" aria-label="Karanlık mod" title="Karanlık mod" aria-pressed="false">
             <svg class="ico ico--moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M21 12.8A8.6 8.6 0 1 1 11.2 3a6.7 6.7 0 0 0 9.8 9.8z"/></svg>
@@ -1141,16 +1128,6 @@
     </header>
 
     <main id="main">
-      <div class="serverstop" id="serverStopNote" hidden role="status" aria-live="polite">
-        <span class="serverstop__icon" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
-        </span>
-        <div class="serverstop__body">
-          <b>Sunucu durduruldu.</b>
-          <span>Yeniden başlatmak için <code>start.cmd</code> çalıştır.</span>
-        </div>
-      </div>
-
       <section class="projectgate" id="projectPicker" hidden aria-labelledby="projectPickerTitle">
         <div class="empty">
           <div class="empty__icon" aria-hidden="true">
@@ -1296,19 +1273,6 @@
   </div>
 </div>
 
-<div class="serverblocked" id="serverBlocked" hidden role="alertdialog" aria-modal="true" aria-labelledby="serverBlockedTitle" tabindex="-1">
-  <div class="serverblocked__card">
-    <div class="serverblocked__icon" aria-hidden="true">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3v9"/><path d="M7.1 5.6a8 8 0 1 0 9.8 0"/></svg>
-    </div>
-    <div class="eyebrow">Server</div>
-    <h2 id="serverBlockedTitle">Sunucu durduruldu</h2>
-    <p>Bu pencere sunucuya bağlıydı. Düzenleme ve uzantı köprüsü durduruldu; defter tarayıcıda korunuyor.</p>
-    <p id="serverBlockedText">Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.</p>
-    <p class="serverblocked__hint" id="serverBlockedHint">Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.</p>
-  </div>
-</div>
-
 <div class="toast" id="toast" role="status" aria-live="polite">
   <span id="toastIcon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg></span>
   <span id="toastText">Kaydedildi.</span>
@@ -1349,11 +1313,10 @@
         <p class="field__hint" id="onboardServerHint"></p>
         <div class="onboardactions" id="onboardServerActions" hidden>
           <button class="btn btn--ghost btn--small" type="button" id="onboardOpenServerBtn">Sunucuyu aç</button>
-          <button class="btn btn--danger btn--small" type="button" id="onboardStopServerBtn">Sunucuyu durdur</button>
         </div>
       </div>
       <div>
-        <label class="checkline onboardcheck"><input type="checkbox" id="onboardExtensionToggle" checked> Tarayıcı uzantısı yardımcısını etkinleştir</label>
+        <label class="checkline onboardcheck"><input type="checkbox" id="onboardExtensionToggle" checked> Tarayıcı eklentisı yardımcısını etkinleştir</label>
         <div class="onboardstatus" id="onboardExtensionStatus">
           <span class="onboardstatus__dot" id="onboardExtensionDot" aria-hidden="true"></span>
           <span id="onboardExtensionText">Aranıyor…</span>
@@ -1364,12 +1327,12 @@
         <p class="onboardcaption" id="onboardTableCaption">Yetenek karşılaştırması</p>
         <table class="onboardtable" aria-labelledby="onboardTableCaption">
           <thead>
-            <tr><th scope="col">Yetenek</th><th scope="col">HTML dosyası</th><th scope="col">Yerel sunucu</th><th scope="col">Uzantı</th></tr>
+            <tr><th scope="col">Yetenek</th><th scope="col">HTML dosyası</th><th scope="col">Yerel sunucu</th><th scope="col">Eklenti</th></tr>
           </thead>
           <tbody>
             <tr><th scope="row">Çevrimdışı</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td></tr>
             <tr><th scope="row">Doğrudan klasöre aktarım</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardno" role="img" aria-label="Hayır">✕</span></td></tr>
-            <tr><th scope="row">Uzantı köprüsü</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td></tr>
+            <tr><th scope="row">Eklenti köprüsü</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td></tr>
             <tr><th scope="row">Öğe seçici</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td></tr>
             <tr><th scope="row">Otomatik başlatma</th><td><span class="onboardno" role="img" aria-label="Hayır">✕</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td></tr>
             <tr><th scope="row">Taşınabilir dosya</th><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardyes" role="img" aria-label="Evet">✓</span></td><td><span class="onboardno" role="img" aria-label="Hayır">✕</span></td></tr>
@@ -1378,9 +1341,9 @@
         </table>
       </div>
       <div class="onboardnotes">
-        <div class="onboardnote"><b>HTML dosyası</b><span>Tek dosyayı kopyalayıp çevrimdışı açabilirsin. Yerel sunucu başlatamaz; uzantı köprüsü ve öğe seçici, uzantının dosya URL’lerine erişim izni olduğunda çalışır.</span></div>
+        <div class="onboardnote"><b>HTML dosyası</b><span>Tek dosyayı kopyalayıp çevrimdışı açabilirsin. Yerel sunucu başlatamaz; eklenti köprüsü ve öğe seçici, eklentinın dosya URL’lerine erişim izni olduğunda çalışır.</span></div>
         <div class="onboardnote"><b>Yerel sunucu</b><span>Uygulama yerel bir adresten açılır; köprü ve öğe seçici çalışır. Node.js gerekir ve sunucu uygulama kapanınca durur.</span></div>
-        <div class="onboardnote"><b>Uzantı</b><span>Baktığın sayfadan bağlam toplar ve metni canlı eşitler. Görseller ve dosya ekleri yalnızca ZIP yedeğiyle taşınır.</span></div>
+        <div class="onboardnote"><b>Eklenti</b><span>Baktığın sayfadan bağlam toplar ve metni canlı eşitler. Görseller ve dosya ekleri yalnızca ZIP yedeğiyle taşınır.</span></div>
       </div>
     </div>
     <div class="modal__foot">
@@ -1529,22 +1492,28 @@
       <div class="backupgrid">
         <button class="backupopt" type="button" id="backupZipBtn">
           <span class="backupopt__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3M9 13l2 2 4-4"/></svg></span>
-          <span><b>Tam yedek indir (.zip)</b><small>Tüm projeler + talepler + Kayıtlar + görseller + dosya ekleri. Başka bir tarayıcıya taşımak için en güvenli yol.</small></span>
-        </button>
-        <button class="backupopt" type="button" id="backupJsonBtn">
-          <span class="backupopt__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>
-          <span><b>Metin yedeği indir (.json)</b><small>Tüm projelerin talep ve Kayıt metinleri. Görseller ve dosya ekleri bu dosyaya dahil edilmez.</small></span>
+          <span><b>Tam yedek indir (.zip)</b><small>Tüm projeler + talepler + Kayıtlar + görseller + dosya ekleri. Sunucu modunda backups/ klasörüne de yazılır.</small></span>
         </button>
         <button class="backupopt" type="button" id="restoreBackupBtn">
           <span class="backupopt__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M8 9l4-4 4 4"/><path d="M4 21h16"/></svg></span>
-          <span><b>Yedekten yükle</b><small>.zip veya .json dosyası seç. Tüm projeler yedekteki verilerle değiştirilir.</small></span>
+          <span><b>Yedekten yükle</b><small>.zip dosyası seç. Tüm projeler yedekteki verilerle değiştirilir.</small></span>
         </button>
+      </div>
+      <div id="serverDataSections" hidden>
+        <div class="backupgroup">
+          <div class="backupgroup__head"><b>Sunucudaki yedekler</b><span class="backupgroup__hint">En yeni önce</span></div>
+          <div class="backupgrid" id="serverBackupList"></div>
+        </div>
+        <div class="backupgroup">
+          <div class="backupgroup__head"><b>Silinen projeler</b><span class="backupgroup__hint">Proje başına ZIP</span></div>
+          <div class="backupgrid" id="deletedProjectList"></div>
+        </div>
       </div>
       <div class="warnbox">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5M12 17.5v.5"/><path d="M10.3 3.9L2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <span>Veriler tarayıcıya bağlıdır. Tarayıcı verisi temizlenirse kayıtlar kaybolur; düzenli yedek almayı unutma.</span>
+        <span>Sunucu modunda veriler projects/ klasöründe tutulur; yedekler backups/ altında saklanır. Tarayıcı verisi temizlenirse yalnızca yerel önbellek kaybolur.</span>
       </div>
-      <p class="field__hint">Hedef klasör seçiliyse yedekler de oraya kaydedilir; aksi halde tarayıcı indirilenler klasörüne iner.</p>
+      <p class="field__hint">Hedef klasör seçiliyse indirilen yedek de oraya kaydedilir; aksi halde tarayıcı indirilenler klasörüne iner.</p>
       <div class="dangerzone">
         <button class="btn btn--danger" type="button" id="clearAllBtn">Proje verilerini temizle</button>
       </div>
@@ -1552,57 +1521,6 @@
     <div class="modal__foot">
       <div class="spacer"></div>
       <button class="btn btn--ghost" type="button" data-close-modal>Kapat</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="portMoveModal" role="dialog" aria-modal="true" aria-labelledby="portMoveTitle" aria-hidden="true">
-  <button class="modal__scrim" type="button" data-close-modal aria-label="Kapat" tabindex="-1"></button>
-  <div class="modal__card">
-    <div class="modal__head">
-      <div>
-        <div class="eyebrow">Port</div>
-        <h2 id="portMoveTitle">Port değişikliği yeni bir tarayıcı kaynağı açar.</h2>
-      </div>
-      <button class="iconbtn" type="button" data-close-modal aria-label="Kapat">×</button>
-    </div>
-    <div class="modal__body">
-      <div class="warnbox">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5M12 17.5v.5"/><path d="M10.3 3.9L2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <span id="portMoveMessage"></span>
-      </div>
-      <p class="field__hint" id="portMoveDetail"></p>
-    </div>
-    <div class="modal__foot">
-      <button class="btn btn--ghost" type="button" data-close-modal>Vazgeç</button>
-      <div class="spacer"></div>
-      <button class="btn btn--ghost" type="button" id="portMoveNoBackupBtn">Yedeksiz geç</button>
-      <button class="btn btn--primary" type="button" id="portMoveBackupBtn">Yedek indir ve geç</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="movedPortModal" role="dialog" aria-modal="true" aria-labelledby="movedPortTitle" aria-hidden="true">
-  <button class="modal__scrim" type="button" data-close-modal aria-label="Kapat" tabindex="-1"></button>
-  <div class="modal__card">
-    <div class="modal__head">
-      <div>
-        <div class="eyebrow">Port</div>
-        <h2 id="movedPortTitle">Bu portun yeni bir kaynağı var.</h2>
-      </div>
-      <button class="iconbtn" type="button" data-close-modal aria-label="Kapat">×</button>
-    </div>
-    <div class="modal__body">
-      <div class="warnbox">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5M12 17.5v.5"/><path d="M10.3 3.9L2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <span id="movedPortText">Az önce indirdiğin yedek ZIP dosyasını geri yükle.</span>
-      </div>
-      <p class="field__hint" id="movedPortDetail"></p>
-    </div>
-    <div class="modal__foot">
-      <button class="btn btn--ghost" type="button" data-close-modal>Şimdi değil</button>
-      <div class="spacer"></div>
-      <button class="btn btn--primary" type="button" id="movedPortRestoreBtn">Yedeği geri yükle</button>
     </div>
   </div>
 </div>
@@ -1642,7 +1560,7 @@
                 <div class="systemrow__control" id="themeSettingMount"></div>
               </div>
               <div class="systemrow">
-                <div class="systemrow__text"><b>Kurulum</b><span>Kullanım biçimini ve uzantı durumunu yeniden gör.</span></div>
+                <div class="systemrow__text"><b>Kurulum</b><span>Kullanım biçimini ve eklenti durumunu yeniden gör.</span></div>
                 <div class="systemrow__control systemrow__control--actions">
                   <button class="btn btn--ghost btn--small" type="button" id="openOnboardingBtn">Kurulumu aç</button>
                 </div>
@@ -1728,7 +1646,7 @@
               <div><dt>Sürüm</dt><dd id="aboutVersion">1.9.2</dd></div>
               <div><dt>Uygulama reposu</dt><dd><a href="https://github.com/TanerUNER" target="_blank" rel="noopener">github.com/TanerUNER</a></dd></div>
               <div><dt>İletişim</dt><dd><a href="mailto:mail.taneruner@gmail.com">mail.taneruner@gmail.com</a></dd></div>
-              <div><dt>Canlı bağlantı</dt><dd>Metinler uzantıyla anlık eşitlenir. Görseller ve dosya ekleri yalnızca ZIP yedeğiyle taşınır.</dd></div>
+              <div><dt>Canlı bağlantı</dt><dd>Metinler eklentiyla anlık eşitlenir. Görseller ve dosya ekleri yalnızca ZIP yedeğiyle taşınır.</dd></div>
               <div><dt>Destek</dt><dd><a href="https://www.buymeacoffee.com/tnruner" target="_blank" rel="noopener noreferrer">Buy Me a Coffee</a></dd></div>
               <div><dt>Güncelleme Geçmişi</dt><dd><div class="changeloglinks" id="changelogLinks"></div></dd></div>
             </dl>
@@ -1782,7 +1700,7 @@
       <div class="helpstep"><b>5. Tik ile onayla</b><span>Zorunlu alanlar dolunca satırdaki tiki tıkla. Tik tıklanmayan satır varsa dışa aktarma kapalı kalır.</span></div>
       <div class="helpstep"><b>6. Dışa aktar</b><span>Çıktı biçimini ve planlamayı seç. Hemen aktar ile bu seçimleri kaydet; sonraki dışa aktarımlar modal açılmadan aynı seçimlerle çalışır.</span></div>
       <div class="helpstep"><b>7. Kayıtları yönet</b><span>Kaydet ile anlık kayıt al. Aynı deftere ait bir kayıt varsa uygulama seni uyarır. Kayıt detayından Yeniden adlandır ile yalnızca görünen adı değiştirebilirsin.</span></div>
-      <div class="helpstep"><b>8. Yedek al</b><span>Yedek bölümünden ZIP veya JSON yedeği indir. Yedekler proje adı, dil, ajanlar, defter kimliği ve talepleri içerir; görseller ve dosyalar yalnızca ZIP yedeğinde taşınır. Tema ve dışa aktarma geçmişi yedeğe dahil değildir.</span></div>
+      <div class="helpstep"><b>8. Yedek al</b><span>Yedek bölümünden tam ZIP yedeği indir. Yedekler proje adı, dil, ajanlar, defter kimliği ve talepleri içerir; görseller ve dosyalar da ZIP içinde taşınır. Tema yedeğe dahil değildir.</span></div>
       <div class="warnbox" style="margin-bottom:0">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5M12 17.5v.5"/><path d="M10.3 3.9L2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
         <span>“Hazır” tiki, özelliğin yapıldığı anlamına gelmez; sadece bu talebin dışa aktarılmaya hazır olduğunu onaylar.</span>
@@ -1820,20 +1738,20 @@
   <div class="modal__card">
     <div class="modal__head">
       <div>
-        <div class="eyebrow">Uzantı</div>
-        <h2 id="pickerInstallTitle">Öğe seçici için uzantı gerekli</h2>
+        <div class="eyebrow">Eklenti</div>
+        <h2 id="pickerInstallTitle">Öğe seçici için eklenti gerekli</h2>
       </div>
       <button class="iconbtn" type="button" data-close-modal aria-label="Kapat">×</button>
     </div>
     <div class="modal__body">
-      <p class="field__hint" style="margin-top:0">Canlı bağlantı kurulu değil. Öğe seçiciyi kullanmak için Request Ledger uzantısını kur ve bu sayfayı yenile.</p>
+      <p class="field__hint" style="margin-top:0">Canlı bağlantı kurulu değil. Öğe seçiciyi kullanmak için Request Ledger eklentisını kur ve bu sayfayı yenile.</p>
       <div class="helpstep"><b>1. Paketi indir</b><span>Sürüm sayfasından request-ledger-extension-*.zip dosyasını indir ve bir klasöre çıkar.</span></div>
       <div class="helpstep"><b>2. Geliştirici modunu aç</b><span>chrome://extensions adresini aç ve sağ üstten Geliştirici modu’nu etkinleştir.</span></div>
       <div class="helpstep"><b>3. Paketi yükle</b><span>Paketlenmemiş öğe yükle ile çıkardığın extension klasörünü seç.</span></div>
       <div class="helpstep"><b>4. Sayfayı yenile</b><span>Bu sekmeyi yenile. Bağlantı kurulunca “Öğe seç” yeniden etkinleşir.</span></div>
       <div class="warnbox" style="margin-bottom:0">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v5M12 17.5v.5"/><path d="M10.3 3.9L2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        <span>Uzantı yokken defter, satırlar ve dışa aktarma çalışmaya devam eder; yalnızca canlı eşitleme ve öğe seçici kullanılamaz.</span>
+        <span>Eklenti yokken defter, satırlar ve dışa aktarma çalışmaya devam eder; yalnızca canlı eşitleme ve öğe seçici kullanılamaz.</span>
       </div>
     </div>
     <div class="modal__foot">
@@ -1967,7 +1885,7 @@
 
 <input type="file" id="globalImageInput" accept="image/*" multiple hidden>
 <input type="file" id="globalAttachmentInput" multiple hidden>
-<input type="file" id="restoreInput" accept=".zip,.json,application/zip,application/json" hidden>
+<input type="file" id="restoreInput" accept=".zip,application/zip" hidden>
 
 <div class="modal" id="renameModal" role="dialog" aria-modal="true" aria-labelledby="renameTitle" aria-hidden="true">
   <button class="modal__scrim" type="button" data-close-modal aria-label="Kapat" tabindex="-1"></button>

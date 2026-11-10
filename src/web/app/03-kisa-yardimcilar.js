@@ -209,6 +209,7 @@
     state.language = next;
     applyLanguage(next);
     saveNow();
+    if(typeof serverSaveUiConfig === "function") serverSaveUiConfig();
   }
   function applyLanguage(lang){
     state.language = lang === "en" ? "en" : "tr";

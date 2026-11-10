@@ -149,7 +149,11 @@
       confirm.appendChild(h("p", "mc-text", lx("projectDeleteTitle")));
       confirm.appendChild(h("p", "mc-sub", project.name + " · " + lx("projectDeleteMsg")));
       var confirmActions = h("div", "mc-actions");
-      var del = h("button", "btn btn--small btn--danger", t("Sil"));
+      var delBackup = h("button", "btn btn--small btn--primary", lx("projectDeleteWithBackup"));
+      delBackup.type = "button";
+      delBackup.setAttribute("data-project-act", "delete-confirm-backup");
+      confirmActions.appendChild(delBackup);
+      var del = h("button", "btn btn--small btn--danger", lx("projectDeleteNoBackup"));
       del.type = "button";
       del.setAttribute("data-project-act", "delete-confirm");
       confirmActions.appendChild(del);
@@ -277,12 +281,12 @@
     renderProjectSettingsModal();
   }
 
-  function deleteProjectFromSettings(){
+  function deleteProjectFromSettings(keepBackup){
     var projectId = projectSettingsId;
     if(!projectId) return;
     deleteProjectById(projectId).then(function(ok){
       if(!ok) return;
-      queueAppProjectCommand("project-delete", projectId, "", "");
+      queueAppProjectCommand("project-delete", projectId, "", "", { keepBackup: keepBackup === true });
       projectDeleteConfirm = false;
       renderArchiveProjectTree();
     }).catch(function(){ /* deleteProjectById reports its own errors */ });
@@ -300,7 +304,8 @@
     if(action === "clear-target"){ clearProjectSettingsTarget(); return; }
     if(action === "open"){ openProjectFromSettings(); return; }
     if(action === "delete"){ openProjectDeleteConfirm(); return; }
-    if(action === "delete-confirm"){ deleteProjectFromSettings(); return; }
+    if(action === "delete-confirm"){ deleteProjectFromSettings(false); return; }
+    if(action === "delete-confirm-backup"){ deleteProjectFromSettings(true); return; }
     if(action === "delete-cancel"){
       projectDeleteConfirm = false;
       renderProjectSettingsModal();

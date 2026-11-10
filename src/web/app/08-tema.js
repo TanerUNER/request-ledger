@@ -17,6 +17,7 @@
     document.documentElement.setAttribute("data-theme", next);
     try{ localStorage.setItem(THEME_KEY, next); }catch(err){}
     syncTheme();
+    if(typeof serverSaveUiConfig === "function") serverSaveUiConfig();
     if(!silent) showToast(next === "dark" ? "Karanlık mod açık." : "Aydınlık mod açık.");
   }
   function toggleTheme(){

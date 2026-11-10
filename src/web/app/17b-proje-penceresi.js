@@ -171,6 +171,21 @@
     try{ await idbHistoryClear(projectId); }catch(err){}
   }
 
+  /* Server mode: the disk folder is the source of truth, so the folder must be
+     removed (optionally archived into deleted-projects/) before the registry
+     entry. A failed server delete aborts: dropping only the registry entry
+     would bring the project back on the next bootstrap. */
+  async function deleteProjectEverywhere(projectId, keepBackup){
+    if(typeof serverDiskEnabled === "function" && serverDiskEnabled()){
+      const result = await serverDeleteProjectOnDisk(projectId, keepBackup === true);
+      if(!result || result.ok !== true){
+        showToast(translateString("Proje diskten silinemedi; hiçbir şey değiştirilmedi."), "error");
+        return false;
+      }
+    }
+    return true;
+  }
+
   function deleteProjectFromSettings(){
     const projectId = projectSettingsId;
     if(!projectId) return;
@@ -183,44 +198,49 @@
       return;
     }
     const wasActive = projectId === activeProjectId;
-    openConfirm({
-      title: "Proje silinsin mi?",
-      message: project.name + " ve bu projedeki tüm talepler, görseller, kayıtlar, taslaklar ve dışa aktarılanlar kalıcı olarak silinecek. Bu işlem geri alınamaz.",
-      eyebrow: "Sil",
-      confirmLabel: "Sil",
-      danger: true,
-      onConfirm: async function(){
-        if(wasActive) cancelScheduledSave();
-        const updated = removeProjectRecord(projectId);
-        if(!updated){
-          showToast("Proje listesi güncellenemedi.", "error");
-          return;
-        }
-        await deleteProjectData(projectId);
-        projectSettingsId = null;
-        archiveSelectedProjectId = null;
-        closeModal($("#projectSettingsModal"));
-        if(wasActive){
-          activeProjectId = null;
-          projectSnapshot = null;
-          targetFolderHandle = null;
-          targetFolderNeedsPermission = false;
-          records = [];
-          drafts = [];
-          historyItems = [];
-          clearImageURLs();
-          if(updated.activeId) openProjectById(updated.activeId);
-          else {
-            projectScreen = "picker";
-            renderProjectGate();
-          }
-        }else{
-          renderArchiveProjects();
-          renderHistoryTree();
+    const runDelete = async function(keepBackup){
+      if(wasActive) cancelScheduledSave();
+      if(!(await deleteProjectEverywhere(projectId, keepBackup))) return;
+      const updated = removeProjectRecord(projectId);
+      if(!updated){
+        showToast("Proje listesi güncellenemedi.", "error");
+        return;
+      }
+      await deleteProjectData(projectId);
+      projectSettingsId = null;
+      archiveSelectedProjectId = null;
+      closeModal($("#projectSettingsModal"));
+      if(wasActive){
+        activeProjectId = null;
+        projectSnapshot = null;
+        targetFolderHandle = null;
+        targetFolderNeedsPermission = false;
+        records = [];
+        drafts = [];
+        historyItems = [];
+        clearImageURLs();
+        if(updated.activeId) openProjectById(updated.activeId);
+        else {
+          projectScreen = "picker";
           renderProjectGate();
         }
-        showToast("Proje silindi.");
+      }else{
+        renderArchiveProjects();
+        renderHistoryTree();
+        renderProjectGate();
       }
+      showToast(translateString(keepBackup ? "Proje silindi ve yedeği saklandı." : "Proje silindi."));
+    };
+    openConfirm({
+      title: "Proje silinsin mi?",
+      message: project.name + ": bu projedeki tüm talepler, görseller, kayıtlar, taslaklar ve dışa aktarılanlar silinecek. Bu işlem geri alınamaz. Silinen projeler bölümünden geri yüklenebilmesi için bir yedek saklamak ister misin?",
+      eyebrow: "Sil",
+      confirmLabel: "Yedekle ve sil",
+      altLabel: "Yedeksiz sil",
+      cancelLabel: "Vazgeç",
+      danger: true,
+      onConfirm: function(){ return runDelete(true); },
+      onAlt: function(){ return runDelete(false); }
     });
   }
 

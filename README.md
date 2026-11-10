@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img alt="Web app 1.9.2" src="https://img.shields.io/badge/web%20app-1.9.2-d13e27?style=for-the-badge">
-  <img alt="Extension 1.9.5" src="https://img.shields.io/badge/extension-1.9.5-4f614b?style=for-the-badge">
+  <img alt="Web app 1.10.0" src="https://img.shields.io/badge/web%20app-1.10.0-d13e27?style=for-the-badge">
+  <img alt="Extension 1.10.0" src="https://img.shields.io/badge/extension-1.10.0-4f614b?style=for-the-badge">
   <img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-bilingual-1d2328?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
@@ -56,7 +56,7 @@ optional and only adds the server mode and convenience around the Chrome compani
 | Nobody knows which request is complete. | Live ready/missing counts and a missing-field list. |
 | The handoff to a developer or an AI agent is improvised. | A consistent Markdown plan with agents, tests and runtime options. |
 | Old versions of a request get mixed together. | Records, drafts and export history per project. |
-| Moving to another browser loses the context. | A versioned ZIP backup with media, or a text-only JSON backup. |
+| Moving to another browser loses the context. | A versioned ZIP backup with media. |
 
 ### Who it is for
 
@@ -93,17 +93,19 @@ The workspace is a registry of projects. Every project keeps its own:
 
 Projects are owned by the app; the Chrome companion mirrors the active project and has no project
 management UI of its own. Switching projects is guarded by the unsaved-changes confirmation. Project
-ids are never merged, so two projects with similar names stay separate. A port change is a new browser
-origin: the app warns you, offers a ZIP backup first, and prompts for a restore on the new origin.
+ids are never merged, so two projects with similar names stay separate. Deleting a project removes
+its `projects/<slug>/` folder from disk; you can keep a ZIP copy under `deleted-projects/` and
+restore it later. A port change is silent: the current browser data is flushed to disk first and the
+page simply moves to the new server.
 
 ## Two run modes
 
 | | Single HTML file | Local server |
 |---|---|---|
 | **How to start** | Open `request-ledger.html` or `index.html` directly, or host it statically. | Run `start.cmd` on Windows, or `node scripts/serve.cjs 8080` anywhere. |
-| **Best at** | A portable file you can copy, archive or open offline. | A stable local URL, the visible server status, a stop button and a remembered port. |
+| **Best at** | A portable file you can copy, archive or open offline. | A stable local URL, a visible status dot with the port and a remembered port. |
 | **Extension bridge** | Works when the extension is installed and allowed to access file URLs. | Works on `localhost` or `127.0.0.1` while the app tab is open. |
-| **Local server** | Not available; the file cannot start one. | Started by the launcher; it stops explicitly, about 5 s after the last app tab closes, or after 5 minutes without a live page as a fallback. |
+| **Local server** | Not available; the file cannot start one. | Started by the launcher; it stops about 5 s after the last app tab closes, or after 5 minutes without a live page as a fallback. |
 | **Requires** | A modern browser. | Node.js 18 or newer on `PATH`. |
 
 `start.cmd` starts the server without a console window, opens the browser and writes
@@ -111,13 +113,23 @@ origin: the app warns you, offers a ZIP backup first, and prompts for a restore 
 automatic); if that port is busy it starts on a free port and tells you. `stop.cmd` reads the lock and
 shuts the server down.
 
-### Server lifecycle and project folders
+### Server lifecycle and runtime data
 
 Reloading, navigating or a hidden app tab keeps the server alive. Closing the last app tab sends a
 close signal and the server stops after a **5-second grace**, releasing the port and removing the lock
 file; another open tab or a reload in that window cancels the shutdown. If no close signal arrives (for
 example a crashed tab), the launcher’s 300-second idle stop is the fallback. `stop.cmd` still shuts it
-down immediately.
+down immediately. Stopping is not a page action: a browser cannot spawn a process, so a fully stopped
+server is started again with **`start.cmd`**.
+
+Runtime user data lives next to `scripts/serve.cjs` and is never committed to git:
+
+| Path | Contents |
+|---|---|
+| `projects/<slug>/` | Live project data: `project.json`, `ledger.json`, `archive.json`, `media.json`, `media/` and `exports/`. |
+| `backups/` | Full backup ZIPs written by the app. Kept by a full reset. |
+| `deleted-projects/` | Per-project ZIPs created when a project is deleted with "keep a backup". |
+| `rl-config.json` | Server-side UI config (language, theme, last port). |
 
 In server mode, each app project owns a folder under `projects/<project-slug>/` in the app directory.
 **Save** writes the current ledger snapshot there (`ledger.json`); **Export** writes to the chosen
@@ -126,10 +138,10 @@ project list/records read this folder metadata. In `file://` mode there is no se
 Save/Export show a clear “server mode required for folder saves” message and fall back to browser
 downloads.
 
-While the server is alive, Settings offers **Restart server**. It asks the live server to spawn its
-replacement on the same port, then reloads the page once the new process answers; the old process
-exits. After a hard stop the page cannot spawn a process, so the blocked screen only says **run
-`start.cmd`** to start the server again and reconnects automatically when it returns.
+While the server is alive, Settings offers **Restart server** and **Port**. Both spawn a replacement
+process; a port change is applied only after the new instance answers `/__rl/status` with its own pid
+and port, so the page never lands on a dead address. If the new instance does not come up, the old
+server keeps running and a toast explains that the port could not be changed.
 
 ## Chrome companion
 
@@ -147,7 +159,7 @@ bottom-right of pages and a 360 px flyout; it does not reflow the page.
 | **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. Ready/locked requests still allow image preview, never editing. |
 | **Per-tab pin and theme** | Pin state and the light/dark panel theme are stored per browser tab in session storage, so changing them on one page never affects another. A new tab starts from the defaults; closing it clears its keys. |
 | **Toolbar popup** | Clicking the browser action opens a small About card with the name, version, repository, support link and MIT license; it states that the app must be open. The in-page dock is unchanged. |
-| **Backup and transfer** | Download a ZIP or JSON backup, restore one, or move data between the extension and the web app. |
+| **Backup and transfer** | Download a ZIP backup, restore one, or move data between the extension and the web app. |
 
 The extension cannot enable or disable itself from `chrome://extensions`. If you disable it there, it
 cannot come back by itself; re-enable it manually. When the app is closed, the extension is simply
@@ -161,12 +173,17 @@ empty storage.
 ## Backups
 
 Both products use the same backup family. The web app writes **v4**, the extension writes **v3** and
-reads **v4**.
+reads **v4**. Only the full ZIP backup remains: it is always a compressed archive and includes media
+when present.
 
 | Format | Contains | Use it when |
 |---|---|---|
 | **ZIP (v4)** | Every project, requests, Records, Drafts, agents, images and attachments. | You want a complete, movable archive. |
-| **JSON** | Project and request text, Records, Drafts and agents. No media blobs. | You only need the text or a quick review. |
+
+In server mode a full backup is also written to `backups/` on disk; the backup screen lists the stored
+backups (newest first) with a restore action and also lists `deleted-projects/` archives. **Clear
+project data** is a full reset: it removes every live project and every deleted-project archive but
+keeps `backups/`, and it offers to take a backup first.
 
 Restore validates the bundle before touching your data and never deletes media up front. A v4 backup
 restores every project; a v3 backup restores into one project. Backups are plaintext files — treat

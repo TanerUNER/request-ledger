@@ -2,6 +2,17 @@
      Başlangıç
      ============================================================ */
   async function init(){
+    /* Server mode: language/theme come from rl-config.json, injected by the
+       server before the first paint. Apply the language synchronously here so
+       the shell is translated before the first await yields to a frame. */
+    try{
+      const bootConfig = window.__RL_SERVER_BOOT;
+      if(bootConfig && (bootConfig.language === "tr" || bootConfig.language === "en")){
+        state.language = bootConfig.language;
+        document.documentElement.setAttribute("lang", state.language);
+        translateDOM(document.body);
+      }
+    }catch(err){ /* keep the default language */ }
     /* Active companion presence marker for the extension content script. */
     try{ document.documentElement.setAttribute("data-request-ledger-app", "1"); }catch(err){ /* ignore */ }
     try{

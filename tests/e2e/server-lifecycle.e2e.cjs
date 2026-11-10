@@ -291,6 +291,9 @@ async function screenshot(cdp, sessionId, name) {
 async function main() {
   /* server-disk reset: each e2e starts from an empty projects/ disk */
   try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'backups'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'deleted-projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'rl-config.json'), { force: true }); }catch(error){ /* ignore */ }
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
@@ -447,49 +450,34 @@ async function main() {
     check("Restart server reconnects the panel",
       await evaluate(cdp, panel.flyoutSession, "window.__rlBridgePanel.serverStopped()") === false);
 
-    /* Explicit Stop from the app: the app becomes blocked, the heartbeat and
-       bridge stop, and the panel switches to "App server stopped" without
-       applying further bridge traffic. */
+    /* No stop action exists in the UI; the rail only reports the port. */
+    const rail = await evaluate(cdp, appSession, `(() => {
+      const label = document.getElementById('railModeLabel');
+      const dot = document.getElementById('railModeDot');
+      return {
+        stopButton: !!document.getElementById('railStopBtn'),
+        onboardStop: !!document.getElementById('onboardStopServerBtn'),
+        label: label ? label.textContent : '',
+        dotOn: dot ? dot.classList.contains('is-on') : false
+      };
+    })()`);
+    check("rail shows the server port with a green dot and no stop button",
+      rail.stopButton === false && rail.onboardStop === false && rail.dotOn === true &&
+      rail.label === ":" + portA, rail);
+    const bridgeLabel = await evaluate(cdp, appSession,
+      "document.getElementById('bridgeChipText').textContent.trim()");
+    check("bridge chip uses the Eklenti wording",
+      /Eklenti bağlı|Extension connected/.test(bridgeLabel), bridgeLabel);
+
+    /* External stop (stop.cmd): the page keeps its ledger, and start.cmd plus a
+       reload restores the pair. A browser cannot start a process. */
     const reachablePid = await waitFor(async () => {
       const pid = await evaluate(cdp, appSession,
         "fetch('/__rl/status', { cache:'no-store' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){ return d && Number(d.pid) || 0; }).catch(function(){ return 0; })");
       return pid > 0 ? pid : null;
-    }, "app reaches the reused server before stop", 15000);
-    check("app reaches the active server before Stop", reachablePid > 0, reachablePid);
+    }, "app reaches the active server before stop", 15000);
+    check("app reaches the active server before the external stop", reachablePid > 0, reachablePid);
     const stoppedPid = reachablePid;
-    await evaluate(cdp, appSession, "document.getElementById('railStopBtn').click()");
-    await waitFor(() => evaluate(cdp, appSession,
-      "document.getElementById('confirmModal').classList.contains('is-open')"), "stop confirmation", 5000);
-    await evaluate(cdp, appSession, "document.getElementById('confirmOkBtn').click()");
-    const blocked = await waitFor(() => evaluate(cdp, appSession, `(() => {
-      const state = {
-        visible: !document.getElementById('serverBlocked').hidden,
-        inert: document.getElementById('main').inert === true,
-        serverStopped: window.__rlBridge && window.__rlBridge.serverStopped()
-      };
-      return state.visible && state.inert && state.serverStopped ? state : null;
-    })()`), "app server blocked state", 10000);
-    check("Stop: app shows the blocked server state",
-      blocked.visible === true && blocked.inert === true && blocked.serverStopped === true, blocked);
-    const blockedUi = await evaluate(cdp, appSession, `(() => ({
-      retry: !!document.getElementById('serverBlockedRetry'),
-      text: (document.getElementById('serverBlockedText') || {}).textContent || ''
-    }))()`);
-    check("blocked state has no non-working reconnect button and names start.cmd",
-      blockedUi.retry === false && /start\.cmd/.test(blockedUi.text), blockedUi);
-    const hostHidden = await waitFor(() => evaluate(cdp, appSession,
-      "!document.getElementById('rl-host')"), "extension host hides after stop", 9000).catch(() => false);
-    check("stopped server hides the extension host completely", hostHidden === true);
-    const plainHostHidden = await waitFor(() => evaluate(cdp, plainSession,
-      "!document.getElementById('rl-host')"), "plain page host hides after stop", 9000).catch(() => false);
-    check("stopped server hides the extension on other pages too", plainHostHidden === true);
-    await screenshot(cdp, appSession, "05-server-blocked.png");
-    const stoppedApp = await evaluate(cdp, appSession, `(() => {
-      const raw = localStorage.getItem('oz-istek-defteri-p-${P_LIFE}');
-      const value = raw ? JSON.parse(raw) : null;
-      return value && value.requests ? value.requests.map((item) => item.title) : [];
-    })()`);
-    check("stopped app keeps local ledger data", stoppedApp.indexOf("Lifecycle request") >= 0, stoppedApp);
     const processExited = await Promise.race([
       new Promise((resolve) => {
         if (serverB.exitCode !== null) return resolve(true);
@@ -497,7 +485,7 @@ async function main() {
       }),
       sleep(8000).then(() => false)
     ]);
-    check("Stop actually shuts the server process down", processExited === true);
+    check("stop.cmd-equivalent shuts the server process down", processExited === true);
     if (serverB) {
       stopChild(serverB);
       serverB = null;
@@ -510,8 +498,18 @@ async function main() {
         return true;
       }
     }, "port free after stop", 12000).catch(() => false);
+    const stoppedApp = await evaluate(cdp, appSession, `(() => {
+      const raw = localStorage.getItem('oz-istek-defteri-p-${P_LIFE}');
+      const value = raw ? JSON.parse(raw) : null;
+      return value && value.requests ? value.requests.map((item) => item.title) : [];
+    })()`);
+    check("stopped app keeps local ledger data", stoppedApp.indexOf("Lifecycle request") >= 0, stoppedApp);
+    /* The extension host is driven by app presence, not by a stop action. In a
+       test machine another ledger server may still answer on 8080, so no host
+       visibility assertion is made here. */
 
-    /* start.cmd on the same port must reconnect the same pair automatically. */
+    /* start.cmd on the same port; the user reloads the page (a browser cannot
+       reconnect a stopped server by itself). */
     serverD = startServer(portA, "lifecycle-d.lock");
     await primeServer(portA);
     const restarted = await waitFor(async () => {
@@ -522,29 +520,26 @@ async function main() {
       } catch (error) { return null; }
     }, "server restart on the same port", 15000);
     check("start.cmd restarts on the same port", restarted.port === portA, restarted);
-    /* start.cmd also opens the app, which sends a heartbeat at once. The test
-       has no visible second window, so keep the fresh server alive while the
-       blocked tab's reconnect poll runs. */
     const keepAlive = setInterval(() => {
       fetch("http://127.0.0.1:" + portA + "/__rl/heartbeat", { method: "POST" }).catch(() => {});
     }, 700);
-    await sleep(4200);
+    await cdp.send("Page.reload", {}, appSession);
+    await sleep(3200);
     appSession = await attach(cdp, appTarget.targetId);
     try{
       await waitFor(() => evaluate(cdp, appSession,
-        "window.__rlBridge && !window.__rlBridge.serverStopped() && window.__rlBridge.connected()"), "app reconnects after restart", 20000);
+        "window.__rlBridge && window.__rlBridge.connected()"), "app reconnects after restart", 20000);
     }finally{
       clearInterval(keepAlive);
     }
     const appReconnected = await evaluate(cdp, appSession, `(() => ({
-      blocked: !document.getElementById('serverBlocked').hidden,
       conflict: document.getElementById('confirmModal').classList.contains('is-open'),
       ledgerId: window.__rlBridge.ledgerId(),
       title: (document.getElementById('title-IST-LIFE') || {}).value || '',
       rows: Array.from(document.querySelectorAll('.req')).length
     }))()`);
-    check("restart clears the blocked app state and reconnect conflict",
-      appReconnected.blocked === false && appReconnected.conflict === false &&
+    check("reload after start.cmd restores the app without a conflict",
+      appReconnected.conflict === false &&
       appReconnected.ledgerId === L_LIFE && appReconnected.rows === 1, appReconnected);
     panel = await waitConnectedPanel(cdp, 25000);
     const panelReconnected = await evaluate(cdp, panel.flyoutSession, `(() => {
@@ -594,19 +589,22 @@ async function main() {
         return data && data.port !== portBusy && data.fallbackFromPort === portBusy ? data : null;
       } catch (error) { return null; }
     }, "fallback status", 12000);
-    check("busy unrelated port falls back", fallback.port !== portBusy && fallback.fallbackFromPort === portBusy, fallback);
-    check("fallback URL carries the warning marker", fallback.url.indexOf("rl-moved=" + portBusy) >= 0, fallback.url);
+    check("busy unrelated port falls back silently", fallback.port !== portBusy && fallback.fallbackFromPort === portBusy, fallback);
+    check("fallback URL has no origin-warning marker", fallback.url.indexOf("rl-moved=") === -1, fallback.url);
 
     const fallbackTarget = await cdp.send("Target.createTarget", { url: fallback.url });
     const fallbackSession = await attach(cdp, fallbackTarget.targetId);
-    await sleep(2200);
-    let warning = null;
-    try {
-      warning = await waitFor(() => evaluate(cdp, fallbackSession,
-        "document.getElementById('movedPortModal').classList.contains('is-open')"), "fallback warning modal", 10000);
-    } catch (error) { warning = false; }
-    check("fallback warning is visible", warning === true);
-    await screenshot(cdp, fallbackSession, "02-fallback-warning.png");
+    await sleep(2600);
+    const fallbackUi = await evaluate(cdp, fallbackSession, `(() => ({
+      modal: !!document.getElementById('movedPortModal'),
+      blocked: !!document.getElementById('serverBlocked'),
+      label: (document.getElementById('railModeLabel') || {}).textContent || '',
+      dotOn: (document.getElementById('railModeDot') || { classList: { contains: () => false } }).classList.contains('is-on')
+    }))()`);
+    check("fallback opens with no origin modal and shows the new port",
+      fallbackUi.modal === false && fallbackUi.blocked === false &&
+      fallbackUi.dotOn === true && fallbackUi.label === ":" + fallback.port, fallbackUi);
+    await screenshot(cdp, fallbackSession, "02-fallback-silent.png");
 
     /* Closing one of two app tabs must not stop the server; closing the last
        live app page starts the 5 s close grace. Reload already survived above. */

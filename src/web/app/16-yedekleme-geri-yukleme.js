@@ -36,27 +36,22 @@
         }
       }
       const zip = makeZip(files);
-      await saveOutput(zip, "istek-defteri-yedek-" + formatStamp() + ".zip", useTarget);
+      const fileName = "istek-defteri-yedek-" + formatStamp() + ".zip";
+      /* Server mode: the full backup also lands in backups/ on disk. */
+      if(typeof serverDiskEnabled === "function" && serverDiskEnabled()){
+        const stored = await serverStoreBackup(zip, fileName).catch(function(){ return null; });
+        if(stored){
+          if(typeof refreshServerDataLists === "function") refreshServerDataLists();
+        }else{
+          showToast(translateString("Yedek sunucuya yazılamadı; indirilen dosyayı sakla."), "error");
+        }
+      }
+      await saveOutput(zip, fileName, useTarget);
       return true;
     }catch(err){
       console.error(err);
-      showToast("Yedek oluşturulamadı.", "error");
+      showToast(translateString("Yedek oluşturulamadı."), "error");
       return false;
-    }
-  }
-  async function downloadBackupJson(){
-    try{
-      if(activeProjectId) saveNow();
-      const useTarget = await prepareTargetFolder(false);
-      const data = await buildBackupV4(false);
-      const backup = Object.assign({}, data.backup, {
-        note: "Görseller ve dosya ekleri bu yedeğe dahil değildir. Tam yedek için ZIP kullanın."
-      });
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type:"application/json;charset=utf-8" });
-      await saveOutput(blob, "istek-defteri-yedek-" + formatStamp() + ".json", useTarget);
-    }catch(err){
-      console.error(err);
-      showToast("Yedek oluşturulamadı.", "error");
     }
   }
   async function restoreRequestMedia(req, entries, stats, projectId){
@@ -343,40 +338,58 @@
     }
     showToast("Defter temizlendi. Kayıtlar, Taslaklar ve Dışa Aktarılanlar korundu.");
   }
-  function clearAllData(){
-    if(!activeProjectId){
-      showToast("Önce bir proje aç.", "error");
-      return;
+  /* Full reset: every live project (disk + browser) and every deleted-project
+     archive goes away; backups/ and the UI config are kept. */
+  async function performFullReset(){
+    if(typeof serverDiskEnabled === "function" && serverDiskEnabled()){
+      const result = await serverResetAll();
+      if(!result || result.ok !== true){
+        showToast(translateString("Sıfırlama tamamlanamadı; hiçbir şey silinmedi."), "error");
+        return false;
+      }
     }
+    const registry = readRegistry();
+    if(registry){
+      for(const project of registry.projects){
+        await deleteProjectData(project.id).catch(function(){});
+      }
+    }
+    try{
+      const keys = [];
+      for(let i = 0; i < localStorage.length; i += 1){
+        const key = localStorage.key(i);
+        if(key === PROJECTS_KEY || key === STORAGE_KEY || key.indexOf(PROJECT_LEDGER_PREFIX) === 0) keys.push(key);
+      }
+      keys.forEach(function(key){ localStorage.removeItem(key); });
+    }catch(err){ /* quota */ }
+    return true;
+  }
+
+  function clearAllData(){
     openConfirm({
-      title: "Proje verilerini temizle",
-      message: "Bu projedeki tüm talepler, görseller, dosyalar, Dışa Aktarılanlar, Kayıtlar ve Taslaklar silinecek. Diğer projeler etkilenmez. Bu işlem geri alınamaz. Önce yedek almak istemediğine emin misin?",
-      confirmLabel: "Temizle",
+      title: "Tüm proje verileri sıfırlansın mı?",
+      message: "Bütün projeler, silinen proje yedekleri ve tarayıcı önbelleği silinecek. Sunucudaki backups/ klasörü korunur. Önce tam bir yedek alman önerilir; geri yükleme yalnızca bu yedeklerden yapılabilir.",
+      eyebrow: "Sıfırla",
+      confirmLabel: "Yedek al ve sıfırla",
+      altLabel: "Yedeksiz sıfırla",
+      cancelLabel: "Vazgeç",
       danger: true,
       onConfirm: async function(){
-        for(const item of records){ await deleteRootSnapshot("record", item); }
-        for(const item of drafts){ await deleteRootSnapshot("draft", item); }
-        state.requests = [];
-        state.ledgerId = newLedgerId();
-        records = [];
-        drafts = [];
-        historyItems = [];
-        await idbDeleteProjectMedia(activeProjectId).catch(function(){});
-        try{ await idbHistoryClear(activeProjectId); }catch(err){}
-        try{ await idbCollectionClear(RECORDS_STORE, activeProjectId); }catch(err){}
-        try{ await idbCollectionClear(DRAFTS_STORE, activeProjectId); }catch(err){}
-        clearImageURLs();
-        stateDirtySinceExport = false;
-        lastJumpId = null;
-        activeRowId = null;
-        lastExpandedId = null;
-        barDismissed = false;
-        resetFilters(false);
-        saveNow();
-        renderList();
-        renderHistoryTree();
-        closeModal($("#backupModal"));
-        showToast("Proje verileri temizlendi. Diğer projeler korundu.");
+        const ok = await downloadBackupZip(true);
+        if(!ok){
+          showToast(translateString("Yedek oluşturulamadı; sıfırlama iptal edildi."), "error");
+          return;
+        }
+        if(await performFullReset()){
+          showToast(translateString("Tüm proje verileri sıfırlandı. Yedekler korundu."));
+          setTimeout(function(){ try{ window.location.reload(); }catch(err){ /* ignore */ } }, 900);
+        }
+      },
+      onAlt: async function(){
+        if(await performFullReset()){
+          showToast(translateString("Tüm proje verileri sıfırlandı. Yedekler korundu."));
+          setTimeout(function(){ try{ window.location.reload(); }catch(err){ /* ignore */ } }, 900);
+        }
       }
     });
   }

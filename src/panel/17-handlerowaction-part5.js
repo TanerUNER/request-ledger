@@ -168,7 +168,6 @@
       return;
     }
     if(action === "backup-zip"){ runBackupDownload("zip"); return; }
-    if(action === "backup-json"){ runBackupDownload("json"); return; }
     if(action === "backup-restore"){
       var backupInput = document.getElementById("rl-backup-input");
       if(backupInput && !backupInput.disabled) backupInput.click();

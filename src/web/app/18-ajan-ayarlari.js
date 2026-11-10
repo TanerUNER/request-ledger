@@ -246,6 +246,7 @@
       state.language = system.language;
       applyLanguage(system.language);
       saveNow();
+      if(typeof serverSaveUiConfig === "function") serverSaveUiConfig();
       refreshGlobal();
     }
   }

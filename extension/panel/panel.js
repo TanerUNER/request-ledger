@@ -293,7 +293,9 @@
     projectTargetNone:{ tr:"Seçilmedi", en:"Not selected" },
     projectDeleteBtn:{ tr:"Projeyi sil", en:"Delete project" },
     projectDeleteTitle:{ tr:"Proje silinsin mi?", en:"Delete this project?" },
-    projectDeleteMsg:{ tr:"Bu projedeki tüm talepler, görseller, kayıtlar, taslaklar ve dışa aktarılanlar kalıcı olarak silinecek. Bu işlem geri alınamaz.", en:"Every request, image, record, draft and export in this project will be permanently deleted. This action cannot be undone." },
+    projectDeleteMsg:{ tr:"Bu projedeki tüm talepler, görseller, kayıtlar, taslaklar ve dışa aktarılanlar kalıcı olarak silinecek. Sunucu modunda projects/ klasörü de silinir. Silinen projeler bölümünden geri yükleyebilmek için yedek saklamak ister misin?", en:"Every request, image, record, draft and export in this project will be permanently deleted. In server mode the projects/ folder is deleted too. Do you want to keep a backup so it can be restored from the deleted projects section?" },
+    projectDeleteWithBackup:{ tr:"Yedekle ve sil", en:"Back up and delete" },
+    projectDeleteNoBackup:{ tr:"Yedeksiz sil", en:"Delete without backup" },
     projectLastGuard:{ tr:"Son proje silinemez.", en:"The last project cannot be deleted." },
     projectDeleted:{ tr:"Proje silindi.", en:"Project deleted." },
     projectRenamed:{ tr:"Proje adı güncellendi.", en:"Project name updated." },
@@ -368,16 +370,16 @@
     bridgeConflictShort:{ tr:"Defter seçimi bekliyor", en:"Ledger choice pending" },
     bridgeDifferentProject:{ tr:"Farklı proje açık", en:"Different project open" },
     bridgeServerStopped:{ tr:"Uygulama sunucusu durduruldu", en:"App server stopped" },
-    companionLockTitle:{ tr:"Uzantıyı kullanmak için Request Ledger uygulamasını aç", en:"Open the Request Ledger app to use the extension" },
-    companionLockBody:{ tr:"Uzantı uygulamayla birlikte çalışır. Uygulama kapalıyken düzenleme, dışa aktarma ve yedekleme kilitlidir.", en:"The extension works with the app. Editing, export and backup are locked while the app is closed." },
+    companionLockTitle:{ tr:"Eklentiyı kullanmak için Request Ledger uygulamasını aç", en:"Open the Request Ledger app to use the extension" },
+    companionLockBody:{ tr:"Eklenti uygulamayla birlikte çalışır. Uygulama kapalıyken düzenleme, dışa aktarma ve yedekleme kilitlidir.", en:"The extension works with the app. Editing, export and backup are locked while the app is closed." },
     companionChecking:{ tr:"Uygulama aranıyor…", en:"Looking for the Request Ledger app…" },
     companionRetry:{ tr:"Yeniden kontrol et", en:"Check again" },
     companionDraftDiscarded:{ tr:"Uygulama kapandı; gönderilmemiş taslak atıldı.", en:"The app closed; the unsent draft was discarded." },
     openProjectInApp:{ tr:"Projeyi uygulamada aç.", en:"Open a project in the app." },
     bridgeConflictTitle:{ tr:"İki defter bulundu", en:"Two ledgers found" },
-    bridgeConflictHint:{ tr:"Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
+    bridgeConflictHint:{ tr:"Uygulama ve eklenti farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır.", en:"The app and the extension hold different ledgers. Which one should be used? The app ledger is the default." },
     bridgeUseApp:{ tr:"Uygulamadaki defter", en:"Use app ledger" },
-    bridgeUseExtension:{ tr:"Uzantıdaki defter", en:"Use extension ledger" },
+    bridgeUseExtension:{ tr:"Eklentidaki defter", en:"Use extension ledger" },
     bridgeMediaNote:{ tr:"Metinler canlı eşitlenir. Görseller ve dosya ekleri yalnızca ZIP yedeğiyle taşınır.", en:"Text syncs live. Images and attachments travel only with a backup ZIP." },
 
     /* Phase 8 — tabs / screenshot / element picker */
@@ -460,11 +462,9 @@
 
     /* Phase 6 — backup / restore */
     backupZip:   { tr:"Tam yedek indir (.zip)", en:"Download full backup (.zip)" },
-    backupZipSub:{ tr:"Talepler + Kayıtlar + görseller + dosya ekleri. Başka bir tarayıcıya taşımak için en güvenli yol.", en:"Requests + Records + images + attachments. The safest way to move to another browser." },
-    backupJson:  { tr:"Metin yedeği indir (.json)", en:"Download text backup (.json)" },
-    backupJsonSub:{ tr:"Talep ve Kayıt metinleri. Görseller ve dosya ekleri bu dosyaya dahil edilmez.", en:"Request and Record texts. Images and attachments are not included in this file." },
+    backupZipSub:{ tr:"Talepler + Kayıtlar + görseller + dosya ekleri. Her zaman sıkıştırılmış ZIP; sunucu modunda backups/ klasörüne de yazılır.", en:"Requests + Records + images + attachments. Always a compressed ZIP; in server mode it is also written to backups/." },
     backupRestore:{ tr:"Yedekten yükle", en:"Restore from backup" },
-    backupRestoreSub:{ tr:".zip veya .json dosyası seç. v3 yedekleri tek projeye, v4 yedekleri tüm projelere geri yüklenir.", en:"Choose a .zip or .json file. v3 backups restore into one project; v4 backups restore every project." },
+    backupRestoreSub:{ tr:".zip dosyası seç. v3 yedekleri tek projeye, v4 yedekleri tüm projelere geri yüklenir.", en:"Choose a .zip file. v3 backups restore into one project; v4 backups restore every project." },
     restoreV4Msg:{ tr:"{projects} proje, {requests} talep ve {records} kayıt geri yüklenecek. Mevcut tüm projeler ve verileri yedekteki verilerle değiştirilecek. Devam etmek istiyor musun?", en:"{projects} projects, {requests} requests and {records} records will be restored. Every current project and its data will be replaced by the backup. Continue?" },
     restoreV4Done:{ tr:"{projects} proje, {requests} talep ve {records} kayıt geri yüklendi.", en:"{projects} projects, {requests} requests and {records} records restored." },
     restoreV3Msg:{ tr:"{requests} talep ve {records} kayıt açık projeye geri yüklenecek. Mevcut talepler ve Kayıtlar yedekteki verilerle değiştirilecek.", en:"{requests} requests and {records} records will be restored into the open project. Current requests and Records will be replaced with the backup data." },
@@ -475,7 +475,7 @@
     backupReading:{ tr:"Yedek okunuyor…", en:"Reading the backup…" },
     backupFailed:{ tr:"Yedek oluşturulamadı.", en:"Could not create the backup." },
     clearAll:    { tr:"Tüm verileri temizle", en:"Clear all data" },
-    clearProject:{ tr:"Proje verilerini temizle", en:"Clear project data" },
+    clearProject:{ tr:"Bu projenin verilerini temizle", en:"Clear this project's data" },
     clearProjectMsg:{ tr:"Bu projedeki tüm talepler, görseller, dosyalar, Dışa Aktarılanlar, Kayıtlar ve Taslaklar silinecek. Proje ve diğer projeler korunur. Bu işlem geri alınamaz.", en:"All requests, images, files, Exported, Records and Drafts in this project will be deleted. This project and every other project are kept. This cannot be undone." },
     projectCleared:{ tr:"Proje verileri temizlendi.", en:"Project data cleared." },
     restoreMsg:  { tr:"{count} talep ve {records} kayıt geri yüklenecek. Mevcut talepler ve Kayıtlar yedekteki verilerle değiştirilecek.", en:"{count} requests and {records} records will be restored. Current requests and Records will be replaced with the backup data." },
@@ -512,7 +512,7 @@
     browserDownloads:{ tr:"İndirilenler (tarayıcı)", en:"Downloads (browser)" },
     folderRootOpen:{ tr:"Kök dizinini aç", en:"Open root directory" },
     folderExportOpen:{ tr:"Dışa aktarım dizinini aç", en:"Open export directory" },
-    folderNote:  { tr:"Uzantı dosya sistemine erişemez; çıktılar tarayıcının indirme klasörüne kaydedilir. Klasör seçimi tarayıcı tarafından yönetilir.", en:"The extension has no filesystem access; output goes to the browser download folder. Folder selection is managed by the browser." },
+    folderNote:  { tr:"Eklenti dosya sistemine erişemez; çıktılar tarayıcının indirme klasörüne kaydedilir. Klasör seçimi tarayıcı tarafından yönetilir.", en:"The extension has no filesystem access; output goes to the browser download folder. Folder selection is managed by the browser." },
     chooseFolder:{ tr:"Seç", en:"Choose" },
     folderPicked:{ tr:"Klasör seçildi: {name}", en:"Folder selected: {name}" },
     pickerUnavailable:{ tr:"Bu tarayıcıda klasör seçici kullanılamıyor.", en:"The folder picker is not available in this browser." },
@@ -570,7 +570,7 @@
     helpStep7:   { tr:"Kayıtları yönet", en:"Manage records" },
     helpStep7Text:{ tr:"Kaydet ile anlık kayıt al. Aynı deftere ait kayıt varsa uygulama uyarır; yeniden adlandırma yalnızca görünen adı değiştirir.", en:"Take an instant record with Save. The app warns if a record for the same ledger exists; renaming changes only the display name." },
     helpStep8:   { tr:"Yedek al", en:"Back up" },
-    helpStep8Text:{ tr:"Yedek bölümünden ZIP veya JSON yedeği indir. Yedekler dil, tema, ajanlar ve defter kimliği dahil güncel ayarları içerir.", en:"Download a ZIP or JSON backup from the Backup section. Backups include current settings such as language, theme, agents and ledger ID." },
+    helpStep8Text:{ tr:"Yedek bölümünden tam ZIP yedeği indir. Yedekler dil, tema, ajanlar ve defter kimliği dahil güncel ayarları içerir.", en:"Download a full ZIP backup from the Backup section. Backups include current settings such as language, theme, agents and ledger ID." },
     helpNote:    { tr:"“Hazır” tiki özelliğin yapıldığı anlamına gelmez; dışa aktarmaya hazır olduğunu onaylar.", en:"The “Ready” check does not mean the feature is done; it confirms the request is ready for export." }
   };
 
@@ -1263,7 +1263,7 @@
     refreshProjectViews();
   }
 
-  function queueAppProjectCommand(type, projectId, name, ledgerId){
+  function queueAppProjectCommand(type, projectId, name, ledgerId, extra){
     var command = {
       id:"cmd_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       type:type,
@@ -1272,6 +1272,9 @@
       name:String(name || ""),
       at:nowISO()
     };
+    if(extra && typeof extra === "object"){
+      Object.keys(extra).forEach(function(key){ command[key] = extra[key]; });
+    }
     try{
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-app-command": command });
@@ -1285,7 +1288,8 @@
           projectId:command.projectId,
           ledgerId:command.ledgerId,
           name:command.name,
-          at:command.at
+          at:command.at,
+          keepBackup:command.keepBackup === true
         });
       }
     }catch(err){ /* cross-tab storage command is the fallback */ }
@@ -7973,7 +7977,11 @@
       confirm.appendChild(h("p", "mc-text", lx("projectDeleteTitle")));
       confirm.appendChild(h("p", "mc-sub", project.name + " · " + lx("projectDeleteMsg")));
       var confirmActions = h("div", "mc-actions");
-      var del = h("button", "btn btn--small btn--danger", t("Sil"));
+      var delBackup = h("button", "btn btn--small btn--primary", lx("projectDeleteWithBackup"));
+      delBackup.type = "button";
+      delBackup.setAttribute("data-project-act", "delete-confirm-backup");
+      confirmActions.appendChild(delBackup);
+      var del = h("button", "btn btn--small btn--danger", lx("projectDeleteNoBackup"));
       del.type = "button";
       del.setAttribute("data-project-act", "delete-confirm");
       confirmActions.appendChild(del);
@@ -8101,12 +8109,12 @@
     renderProjectSettingsModal();
   }
 
-  function deleteProjectFromSettings(){
+  function deleteProjectFromSettings(keepBackup){
     var projectId = projectSettingsId;
     if(!projectId) return;
     deleteProjectById(projectId).then(function(ok){
       if(!ok) return;
-      queueAppProjectCommand("project-delete", projectId, "", "");
+      queueAppProjectCommand("project-delete", projectId, "", "", { keepBackup: keepBackup === true });
       projectDeleteConfirm = false;
       renderArchiveProjectTree();
     }).catch(function(){ /* deleteProjectById reports its own errors */ });
@@ -8124,7 +8132,8 @@
     if(action === "clear-target"){ clearProjectSettingsTarget(); return; }
     if(action === "open"){ openProjectFromSettings(); return; }
     if(action === "delete"){ openProjectDeleteConfirm(); return; }
-    if(action === "delete-confirm"){ deleteProjectFromSettings(); return; }
+    if(action === "delete-confirm"){ deleteProjectFromSettings(false); return; }
+    if(action === "delete-confirm-backup"){ deleteProjectFromSettings(true); return; }
     if(action === "delete-cancel"){
       projectDeleteConfirm = false;
       renderProjectSettingsModal();
@@ -8436,7 +8445,7 @@
 
   function setBackupBusy(busy){
     backupBusy = !!busy;
-    var ids = ["rl-backup-zip", "rl-backup-json", "rl-backup-restore", "rl-backup-clear", "rl-backup-confirm"];
+    var ids = ["rl-backup-zip", "rl-backup-restore", "rl-backup-clear", "rl-backup-confirm"];
     for(var i = 0; i < ids.length; i++){
       var node = document.getElementById(ids[i]);
       if(node) node.disabled = backupBusy;
@@ -8479,7 +8488,6 @@
 
     var grid = h("div", "bk-grid");
     grid.appendChild(backupOption("rl-backup-zip", "backup-zip", "backupZip", "backupZipSub", "backup"));
-    grid.appendChild(backupOption("rl-backup-json", "backup-json", "backupJson", "backupJsonSub", "doc"));
     grid.appendChild(backupOption("rl-backup-restore", "backup-restore", "backupRestore", "backupRestoreSub", "upload"));
     block.appendChild(grid);
 
@@ -8525,7 +8533,7 @@
     var input = document.createElement("input");
     input.type = "file";
     input.id = "rl-backup-input";
-    input.accept = ".zip,.json,application/zip,application/json";
+    input.accept = ".zip,application/zip";
     input.hidden = true;
     input.tabIndex = -1;
     block.appendChild(input);
@@ -8537,6 +8545,7 @@
 
   async function runBackupDownload(kind){
     if(backupBusy) return;
+    if(kind !== "zip") return;
     setBackupBusy(true);
     setBackupStatus(lx("backupPreparing"), "busy");
     try{
@@ -8547,32 +8556,26 @@
       flushSave();
       var projectBase = core.util && core.util.safeFileBase ? core.util.safeFileBase(app && app.project ? app.project : "workspace") : "workspace";
       var suffix = state.lang === "en" ? "-backup-" : "-yedek-";
-      var fileName = projectBase + suffix + core.util.formatStamp() + (kind === "zip" ? ".zip" : ".json");
-      var blob = null;
-      if(kind === "zip"){
-        var bundle = await buildBackupV4(true);
-        var files = [{ name:"yedek.json", data:core.util.utf8Bytes(JSON.stringify(bundle.backup, null, 2)) }];
-        for(var i = 0; i < bundle.images.length; i++){
-          try{
-            var imageRecord = await core.storage.getImage(bundle.images[i].img.id);
-            if(imageRecord && imageRecord.blob){
-              files.push({ name:bundle.images[i].file, data:new Uint8Array(await imageRecord.blob.arrayBuffer()) });
-            }
-          }catch(err){ /* missing media is reported by restore, not fatal here */ }
-        }
-        for(var j = 0; j < bundle.attachments.length; j++){
-          try{
-            var fileRecord = await core.storage.getFile(bundle.attachments[j].att.id);
-            if(fileRecord && fileRecord.blob){
-              files.push({ name:bundle.attachments[j].file, data:new Uint8Array(await fileRecord.blob.arrayBuffer()) });
-            }
-          }catch(err){ /* missing media is reported by restore, not fatal here */ }
-        }
-        blob = core.zip.create(files);
-      }else{
-        var jsonBundle = await buildBackupV4(false);
-        blob = new Blob([core.util.utf8Bytes(JSON.stringify(jsonBundle.backup, null, 2), false)], { type:"application/json;charset=utf-8" });
+      var fileName = projectBase + suffix + core.util.formatStamp() + ".zip";
+      var bundle = await buildBackupV4(true);
+      var files = [{ name:"yedek.json", data:core.util.utf8Bytes(JSON.stringify(bundle.backup, null, 2)) }];
+      for(var i = 0; i < bundle.images.length; i++){
+        try{
+          var imageRecord = await core.storage.getImage(bundle.images[i].img.id);
+          if(imageRecord && imageRecord.blob){
+            files.push({ name:bundle.images[i].file, data:new Uint8Array(await imageRecord.blob.arrayBuffer()) });
+          }
+        }catch(err){ /* missing media is reported by restore, not fatal here */ }
       }
+      for(var j = 0; j < bundle.attachments.length; j++){
+        try{
+          var fileRecord = await core.storage.getFile(bundle.attachments[j].att.id);
+          if(fileRecord && fileRecord.blob){
+            files.push({ name:bundle.attachments[j].file, data:new Uint8Array(await fileRecord.blob.arrayBuffer()) });
+          }
+        }catch(err){ /* missing media is reported by restore, not fatal here */ }
+      }
+      var blob = core.zip.create(files);
       var ok = await downloadBlob(blob, fileName);
       if(!ok) throw new Error("download failed");
       setBackupStatus(lx("downloaded", { name:fileName }), "ok");
@@ -8592,7 +8595,7 @@
     try{
       if(!core || !core.requests || typeof core.requests.normalize !== "function") throw new Error("core.requests unavailable");
       if(!core.util || !core.zip) throw new Error("backup readers unavailable");
-      if(!/\.(zip|json)$/i.test(file.name || "")) throw new Error("unsupported file type");
+      if(!/\.zip$/i.test(file.name || "")) throw new Error("unsupported file type");
 
       var parsed = await readBackupDocument(file);
       var data = parsed.data;
@@ -13613,7 +13616,6 @@
       return;
     }
     if(action === "backup-zip"){ runBackupDownload("zip"); return; }
-    if(action === "backup-json"){ runBackupDownload("json"); return; }
     if(action === "backup-restore"){
       var backupInput = document.getElementById("rl-backup-input");
       if(backupInput && !backupInput.disabled) backupInput.click();

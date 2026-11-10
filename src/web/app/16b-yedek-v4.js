@@ -378,6 +378,14 @@
       }
     }
 
+    /* Server mode: the disk is authoritative. Prune projects that the backup
+       does not contain and push every restored project back to disk so a
+       reload cannot resurrect the old data. */
+    if(typeof serverDiskEnabled === "function" && serverDiskEnabled()){
+      await serverPruneProjects(prepared.map(function(item){ return item.project.id; })).catch(function(){});
+      await serverFlushAllProjects().catch(function(){});
+    }
+
     cancelScheduledSave();
     activeProjectId = null;
     projectSnapshot = null;

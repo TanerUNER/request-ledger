@@ -378,3 +378,127 @@
     }, SERVER_DISK_SAVE_MS);
   }
 
+
+  /* ---------- server config, backups, delete/restore, reset ---------- */
+
+  var serverConfigQueue = Promise.resolve();
+
+  /* Serialize config writes: two quick UI toggles must not land out of order. */
+  function serverConfigPost(patch){
+    if(typeof serverDiskEnabled === "function" && !serverDiskEnabled()) return;
+    serverConfigQueue = serverConfigQueue.then(function(){
+      return fetch("/__rl/config", {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        cache:"no-store",
+        keepalive:true,
+        body:JSON.stringify(patch || {})
+      });
+    }).catch(function(){ /* cache only */ });
+  }
+
+  /* Persist language/theme; localStorage stays a cache. */
+  function serverSaveUiConfig(){
+    if(!serverDiskEnabled()) return;
+    serverConfigPost({
+      language:state.language === "tr" ? "tr" : "en",
+      theme:document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"
+    });
+  }
+
+  /* Before a port change, push every browser-side project to the shared disk so
+     the new origin hydrates the same data. Idempotent by projectId/updatedAt. */
+  async function serverFlushAllProjects(){
+    if(!serverDiskEnabled()) return false;
+    var registry = readRegistry();
+    var projects = registry && Array.isArray(registry.projects) ? registry.projects : [];
+    if(activeProjectId) saveNow();
+    var sent = 0;
+    for(var i = 0; i < projects.length; i++){
+      var project = projects[i];
+      if(!project || !project.id) continue;
+      try{
+        var ok = await serverMigrateProject(project);
+        if(ok) sent += 1;
+      }catch(err){ /* next boot retries */ }
+    }
+    return sent === projects.length;
+  }
+
+  /* Remove disk projects that are not part of the kept set (a restore is
+     authoritative: an old folder must not merge back on the next boot). */
+  async function serverPruneProjects(keepIds){
+    if(!serverDiskEnabled()) return false;
+    var data = await serverJson("/__rl/bootstrap");
+    var disk = data && Array.isArray(data.projects) ? data.projects : [];
+    var keep = {};
+    (Array.isArray(keepIds) ? keepIds : []).forEach(function(id){ keep[id] = true; });
+    for(var i = 0; i < disk.length; i++){
+      var meta = disk[i];
+      if(!meta || !meta.projectId || keep[meta.projectId]) continue;
+      await serverDeleteProjectOnDisk(meta.projectId, false);
+    }
+    return true;
+  }
+
+  async function serverDeleteProjectOnDisk(projectId, keepBackup){    if(!serverDiskEnabled()) return { ok:false, error:"server mode required" };
+    var data = await serverJson("/__rl/delete-project", {
+      method:"POST",
+      body:{ projectId:projectId, backup:keepBackup === true }
+    });
+    return data && typeof data === "object" ? data : { ok:false, error:"server unavailable" };
+  }
+
+  async function serverDeletedProjectList(){
+    if(!serverDiskEnabled()) return [];
+    var data = await serverJson("/__rl/deleted");
+    return data && Array.isArray(data.deleted) ? data.deleted : [];
+  }
+
+  async function serverRestoreDeletedProject(name){
+    if(!serverDiskEnabled()) return null;
+    return serverJson("/__rl/deleted/restore", { method:"POST", body:{ name:name } });
+  }
+
+  async function serverForgetDeletedProject(name){
+    if(!serverDiskEnabled()) return false;
+    var data = await serverJson("/__rl/deleted/delete", { method:"POST", body:{ name:name } });
+    return !!(data && data.ok === true);
+  }
+
+  async function serverBackupList(){
+    if(!serverDiskEnabled()) return [];
+    var data = await serverJson("/__rl/backups");
+    return data && Array.isArray(data.backups) ? data.backups : [];
+  }
+
+  async function serverStoreBackup(blob, name){
+    if(!serverDiskEnabled() || !blob) return null;
+    var dataUrl = null;
+    try{ dataUrl = await serverBlobToDataUrl(blob); }catch(err){ return null; }
+    if(typeof dataUrl !== "string" || dataUrl.length > 520 * 1024 * 1024) return null;
+    var data = await serverJson("/__rl/backups", {
+      method:"POST",
+      body:{ name:name, dataUrl:dataUrl }
+    });
+    return data && data.ok === true ? data.backup : null;
+  }
+
+  async function serverFetchBackupFile(name){
+    if(!serverDiskEnabled() || !name) return null;
+    try{
+      var response = await fetch("/__rl/backups/" + encodeURIComponent(name), { cache:"no-store" });
+      if(!response.ok) return null;
+      var blob = await response.blob();
+      try{ return new File([blob], name, { type:"application/zip" }); }
+      catch(err){ blob.name = name; return blob; }
+    }catch(err){ return null; }
+  }
+
+  /* Full reset: remove every live project folder and every deleted-project
+     ZIP, keep backups/ and the UI config, then clear the browser cache. */
+  async function serverResetAll(){
+    if(!serverDiskEnabled()) return null;
+    return serverJson("/__rl/reset", { method:"POST", body:{} });
+  }
+

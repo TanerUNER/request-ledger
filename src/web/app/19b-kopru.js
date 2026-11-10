@@ -777,9 +777,9 @@
     openConfirm({
       eyebrow: translateString("Bağlantı"),
       title: translateString("İki defter bulundu"),
-      message: translateString("Uygulama ve uzantı farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır."),
+      message: translateString("Uygulama ve eklenti farklı defterler içeriyor. Hangisi kullanılsın? Uygulamadaki defter varsayılandır."),
       confirmLabel: translateString("Uygulamadaki defter"),
-      altLabel: translateString("Uzantıdaki defter"),
+      altLabel: translateString("Eklentidaki defter"),
       cancelLabel: translateString("Sonra karar ver"),
       onConfirm: function(){ bridgeResolveConflict("app"); },
       onAlt: function(){ bridgeResolveConflict("extension"); }
@@ -843,6 +843,8 @@
         bridgeProjectMismatch = true;
         bridgePeerSnapshot = null;
         updateBridgeIndicator();
+        /* Help the panel adopt this project instead of waiting forever. */
+        bridgeSendHello();
         return;
       }
     }
@@ -900,6 +902,7 @@
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeIndicator();
+        bridgeSendHello();
         return;
       }
     }
@@ -964,7 +967,7 @@
     }
     chip.hidden = false;
     chip.classList.toggle("is-off", bridgeProjectMismatch);
-    const label = bridgeProjectMismatch ? "Uzantı farklı projede" : "Uzantı bağlı";
+    const label = bridgeProjectMismatch ? "Eklenti farklı projede" : "Eklenti bağlı";
     chip.title = translateString(label);
     if(text) text.textContent = translateString(label);
   }
@@ -999,6 +1002,7 @@
         bridgePeerProjectId = peerProjectId;
         bridgeProjectMismatch = true;
         updateBridgeIndicator();
+        bridgeSendHello();
         return;
       }
       if(peerProjectId) bridgePeerProjectId = peerProjectId;
@@ -1037,6 +1041,35 @@
   /* The extension can create a project while the app is open in another tab.
      The app owns the project list, so it creates the same id/ledger id here
      and then announces the new project through the normal bridge. */
+  /* Panel-driven delete: disk first (server mode), then registry and caches. */
+  async function bridgeApplyProjectDelete(projectId, keepBackup){
+    const project = findProjectRecord(projectId);
+    if(!project) return;
+    if(typeof serverDiskEnabled === "function" && serverDiskEnabled()){
+      const result = await serverDeleteProjectOnDisk(projectId, keepBackup === true);
+      if(!result || result.ok !== true){
+        showToast(translateString("Proje diskten silinemedi; hiçbir şey değiştirilmedi."), "error");
+        return;
+      }
+    }
+    const registry = readRegistry();
+    const nextId = registry ? registry.projects.filter(function(item){ return item.id !== projectId; })[0] : null;
+    removeProjectRecord(projectId);
+    try{ localStorage.removeItem(projectLedgerKey(projectId)); }catch(err){ /* ignore */ }
+    if(typeof deleteProjectData === "function") await deleteProjectData(projectId).catch(function(){});
+    else idbDeleteProjectMedia(projectId).catch(function(){ /* best effort */ });
+    if(activeProjectId === projectId){
+      if(nextId){
+        openProjectById(nextId.id);
+      }else{
+        activeProjectId = null;
+        projectScreen = "picker";
+        renderProjectGate();
+      }
+    }
+    if(keepBackup === true) showToast(translateString("Proje silindi ve yedeği saklandı."));
+  }
+
   function bridgeApplyProjectCreate(data){
     const commandId = typeof data.commandId === "string" ? data.commandId : "";
     if(commandId && commandId === bridgeLastProjectCommand) return;
@@ -1068,20 +1101,10 @@
       return;
     }
     if(commandType === "project-delete"){
-      const registry = readRegistry();
-      const nextId = registry ? registry.projects.filter(function(item){ return item.id !== projectId; })[0] : null;
-      removeProjectRecord(projectId);
-      try{ localStorage.removeItem(projectLedgerKey(projectId)); }catch(err){ /* ignore */ }
-      idbDeleteProjectMedia(projectId).catch(function(){ /* best effort */ });
-      if(activeProjectId === projectId){
-        if(nextId){
-          openProjectById(nextId.id);
-        }else{
-          activeProjectId = null;
-          projectScreen = "picker";
-          renderProjectGate();
-        }
-      }
+      /* The panel already removed its registry entry. The app owns the disk:
+         delete projects/<slug>/ (optionally archived) before touching the
+         registry, otherwise the folder would resurrect the project on boot. */
+      bridgeApplyProjectDelete(projectId, data.keepBackup === true);
       return;
     }
     if(activeProjectId && activeProjectId !== projectId) saveNow();

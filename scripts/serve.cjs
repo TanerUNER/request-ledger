@@ -31,6 +31,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
+const zlib = require("node:zlib");
 const { spawn } = require("node:child_process");
 
 /* ---------- arguments ---------- */
@@ -95,6 +96,7 @@ const root = path.resolve(options.root || path.join(__dirname, ".."));
 const lockFile = options.lock ? path.resolve(process.cwd(), options.lock) : "";
 const portFile = path.join(root, ".rl-port");
 const startedAt = new Date().toISOString();
+const startedAtMs = Date.now();
 let lastHeartbeat = Date.now();
 let heartbeatSeen = false;
 let livePage = false;
@@ -103,6 +105,7 @@ const livePages = new Map();
 let closeGraceTimer = null;
 const CLOSE_GRACE_MS = 5000;
 let shuttingDown = false;
+let handoffInProgress = false;
 let actualPort = options.port;
 
 const types = {
@@ -130,12 +133,8 @@ function baseUrl() {
   return "http://localhost:" + actualPort;
 }
 
-/* A fallback port is a different browser origin. Carry the requested port
-   so the page can warn and point at the data left on the old origin. */
 function pageUrl() {
-  var url = baseUrl() + entryPage();
-  if (fallbackFromPort) url += "?rl-moved=" + fallbackFromPort;
-  return url;
+  return baseUrl() + entryPage();
 }
 
 function sendJson(response, status, payload) {
@@ -148,7 +147,299 @@ function sendJson(response, status, payload) {
   response.end(body);
 }
 
+function bootConfigScript() {
+  const config = readServerConfig();
+  const payload = {
+    language: config.language === "tr" ? "tr" : "en",
+    theme: config.theme === "dark" ? "dark" : "light",
+    port: actualPort,
+  };
+  return "<script>window.__RL_SERVER_BOOT=" + JSON.stringify(payload) + ";</script>";
+}
+
+function injectBootConfig(buffer) {
+  const html = buffer.toString("utf8");
+  /* The app bundle also mentions `window.__RL_SERVER_BOOT`; only the injected
+     <script> tag proves the config is present already. */
+  if (html.indexOf("<script>window.__RL_SERVER_BOOT=") >= 0) return buffer;
+  if (!/<head([^>]*)>/i.test(html)) return buffer;
+  return Buffer.from(html.replace(/<head([^>]*)>/i, function (match) {
+    return match + "\n" + bootConfigScript();
+  }), "utf8");
+}
+
 const projectsRoot = path.join(root, "projects");
+/* Runtime user data lives next to the server, never in git:
+   projects/ (live), backups/ (full backup ZIPs), deleted-projects/ (per-project
+   ZIPs) and rl-config.json (language/theme/last port). */
+const backupsRoot = path.join(root, "backups");
+const deletedRoot = path.join(root, "deleted-projects");
+const configFile = path.join(root, "rl-config.json");
+
+function ensureRuntimeDirs() {
+  for (const dir of [projectsRoot, backupsRoot, deletedRoot]) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (error) { /* reported on use */ }
+  }
+}
+
+function readServerConfig() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configFile, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeServerConfig(patch) {
+  const next = Object.assign({}, readServerConfig(), patch || {});
+  next.language = next.language === "tr" ? "tr" : "en";
+  next.theme = next.theme === "dark" ? "dark" : "light";
+  next.updatedAt = new Date().toISOString();
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(next, null, 2) + "\n", "utf8");
+  } catch (error) {
+    console.error("Request Ledger: could not write rl-config.json: " + error.message);
+  }
+  return next;
+}
+
+function fileStamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+/* ---------- ZIP (deflate) read/write, zip-slip safe ---------- */
+
+const CRC_TABLE = (function () {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buffer.length; i += 1) crc = CRC_TABLE[(crc ^ buffer[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date) {
+  const d = date || new Date();
+  const year = Math.max(1980, d.getFullYear());
+  return {
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2),
+    date: ((year - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+  };
+}
+
+const ZIP_MAX_ENTRIES = 20000;
+const ZIP_MAX_BYTES = 512 * 1024 * 1024;
+
+function zipCreate(files) {
+  const list = Array.isArray(files) ? files : [];
+  if (list.length > ZIP_MAX_ENTRIES) throw new Error("too many files for a ZIP");
+  const localParts = [];
+  const centralParts = [];
+  const now = dosDateTime(new Date());
+  let offset = 0;
+  let total = 0;
+  for (const file of list) {
+    const name = Buffer.from(String(file.name || ""), "utf8");
+    if (!name.length) continue;
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data || []);
+    total += data.length;
+    if (total > ZIP_MAX_BYTES) throw new Error("ZIP content is too large");
+    const deflated = zlib.deflateRawSync(data, { level: 6 });
+    const useDeflate = deflated.length > 0 && deflated.length < data.length;
+    const payload = useDeflate ? deflated : data;
+    const method = useDeflate ? 8 : 0;
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt16LE(now.time, 10);
+    local.writeUInt16LE(now.date, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(payload.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, name, payload);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(method, 10);
+    central.writeUInt16LE(now.time, 12);
+    central.writeUInt16LE(now.date, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(payload.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+
+    offset += local.length + name.length + payload.length;
+  }
+  const centralBuffer = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(centralParts.length / 2, 8);
+  end.writeUInt16LE(centralParts.length / 2, 10);
+  end.writeUInt32LE(centralBuffer.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([Buffer.concat(localParts), centralBuffer, end]);
+}
+
+function zipRead(buffer) {
+  const data = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  if (data.length < 22) throw new Error("not a ZIP file");
+  let eocd = -1;
+  const min = Math.max(0, data.length - 65557);
+  for (let i = data.length - 22; i >= min; i -= 1) {
+    if (data.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("ZIP end record not found");
+  const count = data.readUInt16LE(eocd + 10);
+  let cursor = data.readUInt32LE(eocd + 16);
+  if (count > ZIP_MAX_ENTRIES) throw new Error("too many ZIP entries");
+  const entries = [];
+  let total = 0;
+  for (let i = 0; i < count; i += 1) {
+    if (cursor + 46 > data.length || data.readUInt32LE(cursor) !== 0x02014b50) throw new Error("corrupt ZIP directory");
+    const method = data.readUInt16LE(cursor + 10);
+    const compSize = data.readUInt32LE(cursor + 20);
+    const size = data.readUInt32LE(cursor + 24);
+    const nameLen = data.readUInt16LE(cursor + 28);
+    const extraLen = data.readUInt16LE(cursor + 30);
+    const commentLen = data.readUInt16LE(cursor + 32);
+    const localOffset = data.readUInt32LE(cursor + 42);
+    const name = data.slice(cursor + 46, cursor + 46 + nameLen).toString("utf8");
+    cursor += 46 + nameLen + extraLen + commentLen;
+    if (localOffset + 30 > data.length || data.readUInt32LE(localOffset) !== 0x04034b50) throw new Error("corrupt ZIP entry");
+    const localNameLen = data.readUInt16LE(localOffset + 26);
+    const localExtra = data.readUInt16LE(localOffset + 28);
+    const start = localOffset + 30 + localNameLen + localExtra;
+    const payload = data.slice(start, start + compSize);
+    total += size;
+    if (total > ZIP_MAX_BYTES) throw new Error("ZIP content is too large");
+    let content;
+    if (method === 0) content = Buffer.from(payload);
+    else if (method === 8) content = zlib.inflateRawSync(payload);
+    else throw new Error("unsupported ZIP compression");
+    entries.push({ name: name, data: content });
+  }
+  return entries;
+}
+
+/* A ZIP entry name must stay inside the destination folder. */
+function safeZipEntryName(name) {
+  const raw = String(name || "").replace(/\\/g, "/");
+  if (!raw || raw.length > 400) return "";
+  if (raw.startsWith("/") || /^[a-zA-Z]:/.test(raw)) return "";
+  const parts = raw.split("/");
+  for (const part of parts) {
+    if (!part || part === "." || part === "..") return "";
+  }
+  return parts.join("/");
+}
+
+function zipExtractTo(buffer, destDir) {
+  const base = path.resolve(destDir);
+  const written = [];
+  for (const entry of zipRead(buffer)) {
+    const name = safeZipEntryName(entry.name);
+    if (!name) throw new Error("unsafe path in ZIP: " + entry.name.slice(0, 80));
+    const target = path.resolve(base, name);
+    if (target !== base && !target.startsWith(base + path.sep)) throw new Error("unsafe path in ZIP");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, entry.data);
+    written.push(name);
+  }
+  return written;
+}
+
+function zipFolder(folder) {
+  const files = [];
+  function walk(current, prefix) {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const full = path.join(current, entry.name);
+      const rel = prefix ? prefix + "/" + entry.name : entry.name;
+      if (entry.isDirectory()) walk(full, rel);
+      else if (entry.isFile()) files.push({ name: rel, data: fs.readFileSync(full) });
+    }
+  }
+  walk(folder, "");
+  return zipCreate(files);
+}
+
+function zipEntryJson(buffer, name) {
+  try {
+    const found = zipRead(buffer).find((entry) => entry.name === name);
+    return found ? JSON.parse(found.data.toString("utf8")) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function safeArchiveName(value) {
+  const name = String(value || "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,140}\.zip$/.test(name)) return "";
+  if (name.indexOf("..") >= 0) return "";
+  return name;
+}
+
+function uniqueChildFolder(parent, wanted) {
+  let slug = safeSlug(wanted);
+  let candidate = path.join(parent, slug);
+  let index = 2;
+  while (fs.existsSync(candidate)) {
+    slug = safeSlug(wanted).slice(0, 70) + "-" + index;
+    candidate = path.join(parent, slug);
+    index += 1;
+    if (index > 500) throw new Error("could not find a free project folder name");
+  }
+  return { slug: slug, folder: candidate };
+}
+
+function listArchiveDir(dir, rootDir) {
+  ensureRuntimeDirs();
+  const list = [];
+  let entries = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (error) { return list; }
+  for (const entry of entries) {
+    if (!entry.isFile() || !/\.zip$/i.test(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    let stat = null;
+    try { stat = fs.statSync(full); } catch (error) { continue; }
+    list.push({
+      name: entry.name,
+      size: stat.size,
+      createdAt: stat.mtime.toISOString(),
+      folder: rootDir,
+      path: full,
+    });
+  }
+  list.sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  return list;
+}
+
 
 function safeSlug(value) {
   const text = String(value || "")
@@ -415,6 +706,8 @@ function scheduleCloseGrace() {
   livePage = false;
   closeGraceTimer = setTimeout(function () {
     closeGraceTimer = null;
+    /* Never stop the old process while a replacement is being handed off. */
+    if (handoffInProgress) return;
     if (livePages.size === 0) stopServer("last page closed");
   }, CLOSE_GRACE_MS);
   closeGraceTimer.unref && closeGraceTimer.unref();
@@ -501,6 +794,17 @@ async function waitForPortFree(port, timeoutMs) {
     await new Promise(function (resolve) { setTimeout(resolve, 150); });
   }
   return false;
+}
+
+/* The replacement answers only when its own pid is serving the new port. */
+async function waitForReplacement(port, previousPid, timeoutMs) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const status = await probeLedgerServer(port);
+    if (status && Number(status.port) === Number(port) && Number(status.pid) !== Number(previousPid)) return status;
+    await new Promise(function (resolve) { setTimeout(resolve, 120); });
+  }
+  return null;
 }
 
 async function resolveStartupPort() {
@@ -775,6 +1079,309 @@ const server = http.createServer(function (request, response) {
     return;
   }
 
+  if (pathname === "/__rl/config") {
+    if (request.method === "GET") {
+      const config = readServerConfig();
+      sendJson(response, 200, {
+        ok: true,
+        language: config.language === "tr" ? "tr" : "en",
+        theme: config.theme === "dark" ? "dark" : "light",
+        port: actualPort,
+      });
+      return;
+    }
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "GET, POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 64 * 1024).then(function (body) {
+      const patch = {};
+      if (body && (body.language === "tr" || body.language === "en")) patch.language = body.language;
+      if (body && (body.theme === "dark" || body.theme === "light")) patch.theme = body.theme;
+      if (Number.isInteger(body && body.port) && body.port >= 0 && body.port <= 65535) patch.port = body.port;
+      const config = writeServerConfig(patch);
+      sendJson(response, 200, { ok: true, language: config.language, theme: config.theme, port: actualPort });
+    }).catch(function (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/delete-project") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 256 * 1024).then(function (body) {
+      const projectId = String(body && body.projectId || "").slice(0, 120);
+      const keepBackup = body && body.backup === true;
+      if (!projectId) {
+        sendJson(response, 400, { ok: false, error: "projectId is required" });
+        return;
+      }
+      const slug = findProjectSlug(projectId);
+      if (!slug) {
+        /* Browser-only project: nothing to remove on disk. */
+        sendJson(response, 200, { ok: true, existed: false, slug: "", backup: "" });
+        return;
+      }
+      const { folder } = projectFolder(slug);
+      let backupName = "";
+      if (keepBackup) {
+        ensureRuntimeDirs();
+        backupName = slug + "-" + fileStamp() + ".zip";
+        try {
+          fs.writeFileSync(path.join(deletedRoot, backupName), zipFolder(folder));
+        } catch (error) {
+          sendJson(response, 500, { ok: false, error: "backup failed: " + error.message });
+          return;
+        }
+      }
+      try {
+        fs.rmSync(folder, { recursive: true, force: true });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: "delete failed: " + error.message });
+        return;
+      }
+      if (readActiveProjectId() === projectId) {
+        try { fs.rmSync(activeProjectFile(), { force: true }); } catch (error) { /* ignore */ }
+      }
+      sendJson(response, 200, { ok: true, existed: true, slug: slug, backup: backupName });
+    }).catch(function (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/deleted") {
+    if (request.method !== "GET") {
+      response.writeHead(405, { allow: "GET" });
+      response.end("method not allowed");
+      return;
+    }
+    const list = listArchiveDir(deletedRoot, "deleted-projects").map(function (item) {
+      let meta = null;
+      try { meta = zipEntryJson(fs.readFileSync(item.path), "project.json"); } catch (error) { meta = null; }
+      const derived = item.name.replace(/\.[zZ][iI][pP]$/, "").replace(/-\d{4}-\d{2}-\d{2}T.*$/, "");
+      return {
+        name: item.name,
+        size: item.size,
+        createdAt: item.createdAt,
+        slug: meta && meta.slug ? String(meta.slug) : derived,
+        projectId: meta && meta.projectId ? String(meta.projectId) : "",
+        projectName: meta && meta.name ? String(meta.name) : derived,
+      };
+    });
+    sendJson(response, 200, { ok: true, deleted: list });
+    return;
+  }
+
+  if (pathname === "/__rl/deleted/restore") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 64 * 1024).then(function (body) {
+      const name = safeArchiveName(body && body.name);
+      if (!name) {
+        sendJson(response, 400, { ok: false, error: "invalid archive name" });
+        return;
+      }
+      const source = path.join(deletedRoot, name);
+      if (!fs.existsSync(source)) {
+        sendJson(response, 404, { ok: false, error: "archive not found" });
+        return;
+      }
+      let zipBuffer = null;
+      try { zipBuffer = fs.readFileSync(source); } catch (error) {
+        sendJson(response, 500, { ok: false, error: "could not read the archive" });
+        return;
+      }
+      let meta = zipEntryJson(zipBuffer, "project.json") || {};
+      const wanted = meta.slug || name.replace(/\.[zZ][iI][pP]$/, "").replace(/-\d{4}-\d{2}-\d{2}T.*$/, "");
+      ensureRuntimeDirs();
+      const target = uniqueChildFolder(projectsRoot, wanted);
+      const renamed = target.slug !== safeSlug(wanted);
+      const temp = path.join(projectsRoot, ".restore-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7));
+      try {
+        fs.mkdirSync(temp, { recursive: true });
+        zipExtractTo(zipBuffer, temp);
+        const metaPath = path.join(temp, "project.json");
+        const ledger = readJsonFile(path.join(temp, "ledger.json"), null);
+        if (!meta.projectId) {
+          meta.projectId = "prj_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+        }
+        if (!meta.name) {
+          meta.name = ledger && ledger.project ? String(ledger.project).slice(0, 60) : target.slug;
+        }
+        meta.slug = target.slug;
+        meta.createdAt = meta.createdAt || new Date().toISOString();
+        meta.updatedAt = new Date().toISOString();
+        meta.ledgerId = meta.ledgerId || (ledger && ledger.ledgerId) || "";
+        meta.requestCount = ledger && Array.isArray(ledger.requests) ? ledger.requests.length : 0;
+        fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n", "utf8");
+        fs.renameSync(temp, target.folder);
+        sendJson(response, 200, { ok: true, slug: target.slug, renamed: renamed, project: meta });
+      } catch (error) {
+        try { fs.rmSync(temp, { recursive: true, force: true }); } catch (cleanupError) { /* ignore */ }
+        sendJson(response, 500, { ok: false, error: "restore failed: " + error.message });
+      }
+    }).catch(function (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/deleted/delete") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 64 * 1024).then(function (body) {
+      const name = safeArchiveName(body && body.name);
+      if (!name) {
+        sendJson(response, 400, { ok: false, error: "invalid archive name" });
+        return;
+      }
+      const target = path.join(deletedRoot, name);
+      if (!fs.existsSync(target)) {
+        sendJson(response, 404, { ok: false, error: "archive not found" });
+        return;
+      }
+      try {
+        fs.rmSync(target, { force: true });
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    }).catch(function (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    });
+    return;
+  }
+
+  if (pathname === "/__rl/backups") {
+    if (request.method === "GET") {
+      const list = listArchiveDir(backupsRoot, "backups").map(function (item) {
+        return { name: item.name, size: item.size, createdAt: item.createdAt };
+      });
+      sendJson(response, 200, { ok: true, backups: list });
+      return;
+    }
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "GET, POST" });
+      response.end("method not allowed");
+      return;
+    }
+    readJsonBody(request, 512 * 1024 * 1024).then(function (body) {
+      const rawName = safeArchiveName(body && body.name);
+      if (!rawName) {
+        sendJson(response, 400, { ok: false, error: "invalid backup name" });
+        return;
+      }
+      const dataUrl = String(body && body.dataUrl || "");
+      const match = /^data:[^;,]*;base64,(.*)$/s.exec(dataUrl);
+      if (!match) {
+        sendJson(response, 400, { ok: false, error: "invalid backup data" });
+        return;
+      }
+      const bytes = Buffer.from(match[1], "base64");
+      if (!bytes.length || bytes.length > 400 * 1024 * 1024) {
+        sendJson(response, 413, { ok: false, error: "backup is too large" });
+        return;
+      }
+      ensureRuntimeDirs();
+      let name = rawName;
+      if (fs.existsSync(path.join(backupsRoot, name))) {
+        name = rawName.replace(/\.zip$/i, "") + "-" + Date.now().toString(36) + ".zip";
+      }
+      try {
+        fs.writeFileSync(path.join(backupsRoot, name), bytes);
+        const stat = fs.statSync(path.join(backupsRoot, name));
+        sendJson(response, 200, {
+          ok: true,
+          backup: { name: name, size: stat.size, createdAt: stat.mtime.toISOString() },
+        });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+    }).catch(function (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    });
+    return;
+  }
+
+  if (pathname.indexOf("/__rl/backups/") === 0) {
+    const name = safeArchiveName(pathname.slice("/__rl/backups/".length));
+    if (!name) {
+      response.writeHead(400);
+      response.end("bad backup name");
+      return;
+    }
+    const file = path.join(backupsRoot, name);
+    if (request.method === "GET") {
+      fs.readFile(file, function (error, data) {
+        if (error) {
+          response.writeHead(404);
+          response.end("not found");
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": "application/zip",
+          "content-length": data.length,
+          "cache-control": "no-store",
+        });
+        response.end(data);
+      });
+      return;
+    }
+    if (request.method === "DELETE") {
+      try {
+        if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+        sendJson(response, 200, { ok: true });
+      } catch (error) {
+        sendJson(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+    response.writeHead(405, { allow: "GET, DELETE" });
+    response.end("method not allowed");
+    return;
+  }
+
+  if (pathname === "/__rl/reset") {
+    if (request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    let removedProjects = 0;
+    let removedDeleted = 0;
+    try {
+      ensureRuntimeDirs();
+      for (const entry of fs.readdirSync(projectsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        fs.rmSync(path.join(projectsRoot, entry.name), { recursive: true, force: true });
+        removedProjects += 1;
+      }
+      for (const entry of fs.readdirSync(deletedRoot, { withFileTypes: true })) {
+        if (!entry.isFile() || !/\.zip$/i.test(entry.name)) continue;
+        fs.rmSync(path.join(deletedRoot, entry.name), { force: true });
+        removedDeleted += 1;
+      }
+      try { fs.rmSync(activeProjectFile(), { force: true }); } catch (error) { /* ignore */ }
+      /* backups/ is deliberately untouched. */
+      sendJson(response, 200, { ok: true, removedProjects: removedProjects, removedDeleted: removedDeleted });
+    } catch (error) {
+      sendJson(response, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (pathname === "/__rl/projects") {
     if (request.method === "GET") {
       const projects = [];
@@ -951,15 +1558,38 @@ const server = http.createServer(function (request, response) {
       sendJson(response, 409, { ok: false, error: "server is already stopping" });
       return;
     }
-    resolveRebindPort(requested).then(function (port) {
+    resolveRebindPort(requested).then(async function (port) {
       if (port == null) {
         sendJson(response, 409, { ok: false, error: "port is already in use" });
         return;
       }
-      if (!spawnReboundServer(port)) {
+      handoffInProgress = true;
+      if (closeGraceTimer) {
+        clearTimeout(closeGraceTimer);
+        closeGraceTimer = null;
+      }
+      const child = spawnReboundServer(port);
+      if (!child) {
+        handoffInProgress = false;
         sendJson(response, 500, { ok: false, error: "could not start the rebound server" });
         return;
       }
+      /* Do not report success (and never stop the old server) until the new
+         instance answers /__rl/status with its own pid on the new port. */
+      const started = await waitForReplacement(port, process.pid, 5000);
+      if (!started) {
+        handoffInProgress = false;
+        try { child.kill(); } catch (error) { /* ignore */ }
+        sendJson(response, 502, {
+          ok: false,
+          error: "the new server did not answer on the requested port",
+          port: actualPort,
+        });
+        return;
+      }
+      /* The replacement already wrote the lock/port file on listen; writing the
+         same port here keeps start.cmd consistent even if that write failed. */
+      writePortFile(port);
       let hostname = "localhost";
       try {
         hostname = new URL("http://" + (request.headers.host || "localhost")).hostname;
@@ -969,10 +1599,13 @@ const server = http.createServer(function (request, response) {
       sendJson(response, 200, {
         ok: true,
         port: port,
-        url: "http://" + hostname + ":" + port + entryPage() + "?rl-port=" + port + "&rl-moved=" + actualPort,
+        pid: started.pid,
+        previousPort: actualPort,
+        url: "http://" + hostname + ":" + port + entryPage() + "?rl-port=" + port,
       });
-      setTimeout(function () { stopServer("rebind"); }, 60);
+      setTimeout(function () { stopServer("rebind"); }, 80);
     }).catch(function (error) {
+      handoffInProgress = false;
       sendJson(response, 500, { ok: false, error: error.message });
     });
     return;
@@ -1005,6 +1638,12 @@ const server = http.createServer(function (request, response) {
       response.end("not found");
       return;
     }
+    /* Server-side UI config must be available before the first paint. The
+       entry page gets a tiny synchronous boot object; every other asset is
+       untouched. */
+    if (pathname === entryPage() && /\.html$/i.test(file)) {
+      data = injectBootConfig(data);
+    }
     response.writeHead(200, {
       "content-type": types[path.extname(file).toLowerCase()] || "application/octet-stream",
       "cache-control": "no-store",
@@ -1014,6 +1653,7 @@ const server = http.createServer(function (request, response) {
 });
 
 async function startListening() {
+  ensureRuntimeDirs();
   let port;
   try {
     port = await resolveStartupPort();
@@ -1028,6 +1668,8 @@ async function startListening() {
     actualPort = server.address().port;
     writeLock();
     writePortFile(actualPort);
+    const config = readServerConfig();
+    if (config.port !== actualPort) writeServerConfig({ port: actualPort });
     const url = pageUrl();
     console.log("Request Ledger: " + url);
     if (options.autoStop) {
@@ -1055,12 +1697,14 @@ startListening();
 
 if (options.autoStop) {
   const timer = setInterval(function () {
-    if (shuttingDown) return;
+    if (shuttingDown || handoffInProgress) return;
     /* A live page owns the server. Background throttling must not close it.
-       Only a pagehide marker (or a server that never saw a page) allows the
-       long grace timer to fire. */
+       Only a pagehide marker (or a server that never saw a page *after* the
+       idle window) allows the long grace timer to fire. A fresh replacement
+       must not stop itself during a port handoff before the page arrives. */
     if (livePage) return;
-    if (!heartbeatSeen || Date.now() - lastHeartbeat >= options.autoStopMs) stopServer("idle");
+    const since = heartbeatSeen ? lastHeartbeat : startedAtMs;
+    if (Date.now() - since >= options.autoStopMs) stopServer("idle");
   }, 1000);
   timer.unref();
 }

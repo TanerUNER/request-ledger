@@ -57,7 +57,7 @@ bağlıdır; yalnızca sunucu modunu ve Chrome yardımcısı çevresindeki kolay
 | Hangi isteğin tamamlandığı bilinmez. | Canlı hazır/eksik sayıları ve eksik alan listesi. |
 | Geliştiriciye veya yapay zekâ ajanına teslim doğaçlama olur. | Ajan, test ve runtime seçenekleriyle tutarlı Markdown planı. |
 | İsteğin eski sürümleri birbirine karışır. | Proje başına Kayıtlar, Taslaklar ve dışa aktarma geçmişi. |
-| Başka tarayıcıya geçince bağlam kaybolur. | Medyayı taşıyan sürümlü ZIP yedeği veya metin JSON yedeği. |
+| Başka tarayıcıya geçince bağlam kaybolur. | Medyayı taşıyan sürümlü ZIP yedeği. |
 
 ### Kimler için?
 
@@ -96,9 +96,10 @@ bağlıdır; yalnızca sunucu modunu ve Chrome yardımcısı çevresindeki kolay
 
 Projeler uygulamaya aittir; Chrome yardımcısı yalnızca etkin projeyi yansıtır ve kendi proje yönetim
 arayüzü yoktur. Proje değiştirirken kaydedilmemiş değişiklik onayı devreye girer. Proje kimlikleri
-hiçbir zaman birleştirilmez; benzer adlı iki proje ayrı kalır. Port değişikliği yeni bir tarayıcı
-kaynağı demektir: uygulama sizi uyarır, önce ZIP yedeği indirmeyi önerir ve yeni kaynakta geri yükleme
-istemi gösterir.
+hiçbir zaman birleştirilmez; benzer adlı iki proje ayrı kalır. Bir projeyi silmek diskteki
+`projects/<slug>/` klasörünü de kaldırır; isterseniz `deleted-projects/` altında ZIP kopyası saklanır
+ve sonradan geri yüklenir. Port değişikliği sessizdir: mevcut tarayıcı verisi önce diske aktarılır ve
+sayfa yeni sunucuya geçer.
 
 <a id="iki-calistirma-modu"></a>
 ## İki çalıştırma modu
@@ -106,22 +107,32 @@ istemi gösterir.
 | | Tek HTML dosyası | Yerel sunucu |
 |---|---|---|
 | **Nasıl başlatılır** | `request-ledger.html` veya `index.html` dosyasını doğrudan açın ya da statik olarak yayınlayın. | Windows’ta `start.cmd`, her yerde `node scripts/serve.cjs 8080`. |
-| **En iyi olduğu yer** | Kopyalanabilen, arşivlenebilen veya çevrimdışı açılan taşınabilir dosya. | Sabit yerel adres, görünür sunucu durumu, durdurma düğmesi ve hatırlanan port. |
+| **En iyi olduğu yer** | Kopyalanabilen, arşivlenebilen veya çevrimdışı açılan taşınabilir dosya. | Sabit yerel adres, portu gösteren durum noktası ve hatırlanan port. |
 | **Uzantı köprüsü** | Uzantı kuruluysa ve dosya URL’lerine erişim izni varsa çalışır. | Uygulama sekmesi açıkken `localhost` veya `127.0.0.1` üzerinde çalışır. |
-| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; açıkça durdurulur, son uygulama sekmesi kapandıktan ~5 saniye sonra ya da canlı sayfa olmadan 5 dakika geçince (yedek davranış) kapanır. |
+| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; son uygulama sekmesi kapandıktan ~5 saniye sonra ya da canlı sayfa olmadan 5 dakika geçince (yedek davranış) kendiliğinden kapanır. |
 | **Gereksinim** | Güncel bir tarayıcı. | `PATH` üzerinde Node.js 18 veya daha yenisi. |
 
 `start.cmd` sunucuyu konsol penceresi olmadan başlatır, tarayıcıyı açar ve süreç kimliği ile portu
 `.rl-server.lock` dosyasına yazar. Son portu `.rl-port` içinde hatırlar (`0` otomatik demektir); port
 doluysa boş bir portta başlar ve bunu size söyler. `stop.cmd` kilidi okur ve sunucuyu kapatır.
 
-### Sunucu yaşam döngüsü ve proje klasörleri
+### Sunucu yaşam döngüsü ve çalışma verileri
 
 Uygulamayı yenilemek, gezinmek veya sekmeyi arka planda tutmak sunucuyu yaşatır. Son uygulama sekmesi
 kapanınca kapatma sinyali gider ve sunucu **5 saniyelik ek süreden** sonra durur; port serbest kalır ve
 kilit dosyası silinir. Bu pencerede açılan başka bir sekme veya yenileme kapanmayı iptal eder. Kapatma
 sinyali hiç ulaşmazsa (örneğin çökmüş bir sekme), başlatıcının 300 saniyelik boşta durma kuralı yedek
-davranıştır. `stop.cmd` yine hemen kapatır.
+davranıştır. `stop.cmd` yine hemen kapatır. Durdurma bir sayfa eylemi değildir: tarayıcı süreç
+başlatamaz, bu yüzden tamamen durmuş sunucu yalnızca **`start.cmd`** ile yeniden başlatılır.
+
+Çalışma verileri `scripts/serve.cjs` yanında tutulur ve git’e girmez:
+
+| Yol | İçerik |
+|---|---|
+| `projects/<slug>/` | Canlı proje verisi: `project.json`, `ledger.json`, `archive.json`, `media.json`, `media/` ve `exports/`. |
+| `backups/` | Uygulamanın yazdığı tam yedek ZIP’leri. Tam sıfırlamada korunur. |
+| `deleted-projects/` | “Yedek sakla” seçilerek silinen projelerin ZIP arşivleri. |
+| `rl-config.json` | Sunucu tarafı arayüz yapılandırması (dil, tema, son port). |
 
 Sunucu modunda her proje uygulama dizininde `projects/<proje-adı>/` klasörüne sahiptir. **Kaydet** geçerli
 defter anlık görüntüsünü buraya (`ledger.json`) yazar; **Dışa Aktar** hedef klasör seçiliyse oraya,
@@ -129,10 +140,10 @@ seçili değilse proje klasöründeki `exports/` dizinine yazar. Arşiv proje li
 bilgisini okur. `file://` modunda sunucu klasörü yazımı yoktur: Kaydet/Dışa Aktar açık bir “klasör
 kaydı için sunucu modu gerekli” mesajı gösterir ve tarayıcı indirmesine düşer.
 
-Sunucu açıkken Ayarlar bir **Sunucuyu yeniden başlat** düğmesi sunar. Açık sunucudan aynı portta yerine
-geçecek yeni bir süreç başlatmasını ister ve yeni süreç yanıt verince sayfayı yeniler; eski süreç çıkar.
-Sert bir durdurmadan sonra sayfa süreç başlatamaz; bu yüzden engellenmiş ekran yalnızca sunucuyu yeniden
-başlatmak için **`start.cmd` çalıştır** der ve sunucu geri gelince kendiliğinden bağlanır.
+Sunucu açıkken Ayarlar **Sunucuyu yeniden başlat** ve **Port** seçeneklerini sunar. İkisi de yerine
+geçecek bir süreç başlatır; port değişikliği ancak yeni süreç `/__rl/status` üzerinde kendi pid ve
+portuyla yanıt verdikten sonra uygulanır, böylece sayfa ölü bir adrese düşmez. Yeni süreç açılamazsa
+eski sunucu çalışmaya devam eder ve portun değiştirilemediğini bildiren bir uyarı gösterilir.
 
 <a id="chrome-yardimcisi"></a>
 ## Chrome yardımcısı
@@ -151,7 +162,7 @@ bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
 | **Panelde istek masası** | Sayfadan ayrılmadan istek oluşturun, düzenleyin, arayın, sıralayın ve onaylayın. Hazır/kilitli isteklerde görsel önizleme açılır; düzenleme açılmaz. |
 | **Sekme başına sabitleme ve tema** | Sabitleme durumu ve açık/koyu panel teması tarayıcı sekmesi başına oturum depolamasında tutulur; bir sayfadaki değişiklik diğerini etkilemez. Yeni sekme varsayılanlarla başlar, kapanınca anahtarları silinir. |
 | **Araç çubuğu penceresi** | Tarayıcı eylem düğmesi ad, sürüm, depo, destek bağlantısı ve MIT lisansını gösteren küçük bir Hakkında kartı açar; uygulamanın açık olması gerektiğini belirtir. Sayfa içi panel değişmez. |
-| **Yedek ve aktarım** | ZIP veya JSON yedeği indirin, geri yükleyin ya da veriyi uzantı ile web uygulaması arasında taşıyın. |
+| **Yedek ve aktarım** | ZIP yedeği indirin, geri yükleyin ya da veriyi uzantı ile web uygulaması arasında taşıyın. |
 
 Uzantı `chrome://extensions` üzerinden kendini etkinleştirip devre dışı bırakamaz. Orada devre dışı
 bırakırsanız kendiliğinden geri gelemez; elle yeniden etkinleştirin. Uygulama kapalıyken uzantı
@@ -166,12 +177,16 @@ kaynak oluşur ve depolama boş başlar.
 ## Yedekler
 
 İki ürün aynı yedek ailesini kullanır. Web uygulaması **v4** yazar; uzantı **v3** yazar ve **v4**
-okur.
+okur. Yalnızca tam ZIP yedeği kaldı: her zaman sıkıştırılmış bir arşivdir ve varsa medyayı içerir.
 
 | Biçim | İçerik | Ne zaman kullanılır? |
 |---|---|---|
 | **ZIP (v4)** | Tüm projeler, istekler, Kayıtlar, Taslaklar, ajanlar, görseller ve dosya ekleri. | Eksiksiz ve taşınabilir bir arşiv istediğinizde. |
-| **JSON** | Proje ve istek metinleri, Kayıtlar, Taslaklar ve ajanlar. Medya ikilileri yok. | Yalnızca metin veya hızlı bir inceleme gerektiğinde. |
+
+Sunucu modunda tam yedek ayrıca diskteki `backups/` klasörüne yazılır; yedekleme ekranı saklanan
+yedekleri (en yeni önce) geri yükleme işlemiyle listeler ve `deleted-projects/` arşivlerini de
+gösterir. **Proje verilerini temizle** artık tam sıfırlamadır: tüm canlı projeleri ve silinen proje
+arşivlerini kaldırır, `backups/` korunur ve önce yedek almayı önerir.
 
 Geri yükleme, verilere dokunmadan önce paketi doğrular ve medyayı önceden silmez. v4 yedeği tüm
 projeleri geri yükler; v3 yedeği tek projeye geri yüklenir. Yedekler düz metindir; hassas belge gibi
@@ -261,8 +276,8 @@ sayfalardaki ekran görüntülerini herkese açık kabul edin.
   genişliklerini hedefler.
 - Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL'lerine erişim izni varsa köprü yine
   bağlanabilir; ancak sunucu proje klasörüne yazım yoktur.
-- Bir web sayfası süreç başlatamaz. Yeniden başlatma yalnızca sunucu açıkken çalışır; sert bir
-  durdurmadan sonra `start.cmd` çalıştırın (sunucu dönünce uygulama kendiliğinden bağlanır).
+- Bir web sayfası süreç başlatamaz. Sunucu açıkken yeniden başlatma ve port değişikliği çalışır;
+  tamamen durmuş bir sunucu yalnızca `start.cmd` ile yeniden başlatılır.
 - Canlı medya eşitleme **öğe başına 8 MB** ile sınırlıdır. Daha büyük görseller/ekler ve taşınabilir
   arşivdeki tüm medya yedek ZIP ile taşınır.
 - Uzantı bir yardımcıdır: uygulama çalışmıyorken hiçbir sayfada arayüz göstermez. `chrome://extensions`

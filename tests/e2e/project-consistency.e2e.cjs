@@ -345,6 +345,9 @@ function panelState(cdp, flyoutSession) {
 async function main() {
   /* server-disk reset: each e2e starts from an empty projects/ disk */
   try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'backups'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'deleted-projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'rl-config.json'), { force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
   const ping = await fetch(WEB_URL).catch(() => null);
   if (!ping || !ping.ok) throw new Error("local server not running on :8080");

@@ -176,7 +176,7 @@
     $$("[data-rail]").forEach(function(button){
       button.addEventListener("click", function(){
         const action = button.dataset.rail;
-        if(action === "backup") openModal($("#backupModal"));
+        if(action === "backup"){ openModal($("#backupModal")); if(typeof refreshServerDataLists === "function") refreshServerDataLists(); }
         else if(action === "help") openModal($("#helpModal"));
         else if(action === "settings") openSettingsModal();
         else window.scrollTo({ top:0, behavior:"smooth" });
@@ -241,14 +241,10 @@
 
     const backupZip = $("#backupZipBtn");
     if(backupZip) backupZip.addEventListener("click", downloadBackupZip);
-    const backupJson = $("#backupJsonBtn");
-    if(backupJson) backupJson.addEventListener("click", downloadBackupJson);
     const restoreBtn = $("#restoreBackupBtn");
     const restoreInput = $("#restoreInput");
     if(restoreBtn && restoreInput) restoreBtn.addEventListener("click", function(){ restoreInput.click(); });
     if(restoreInput) restoreInput.addEventListener("change", function(){
-      const movedPortModal = $("#movedPortModal");
-      if(movedPortModal && movedPortModal.classList.contains("is-open")) closeModal(movedPortModal);
       const file = restoreInput.files && restoreInput.files[0];
       restoreInput.value = "";
       if(file){

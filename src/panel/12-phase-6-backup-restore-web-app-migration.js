@@ -39,7 +39,7 @@
 
   function setBackupBusy(busy){
     backupBusy = !!busy;
-    var ids = ["rl-backup-zip", "rl-backup-json", "rl-backup-restore", "rl-backup-clear", "rl-backup-confirm"];
+    var ids = ["rl-backup-zip", "rl-backup-restore", "rl-backup-clear", "rl-backup-confirm"];
     for(var i = 0; i < ids.length; i++){
       var node = document.getElementById(ids[i]);
       if(node) node.disabled = backupBusy;
@@ -82,7 +82,6 @@
 
     var grid = h("div", "bk-grid");
     grid.appendChild(backupOption("rl-backup-zip", "backup-zip", "backupZip", "backupZipSub", "backup"));
-    grid.appendChild(backupOption("rl-backup-json", "backup-json", "backupJson", "backupJsonSub", "doc"));
     grid.appendChild(backupOption("rl-backup-restore", "backup-restore", "backupRestore", "backupRestoreSub", "upload"));
     block.appendChild(grid);
 
@@ -128,7 +127,7 @@
     var input = document.createElement("input");
     input.type = "file";
     input.id = "rl-backup-input";
-    input.accept = ".zip,.json,application/zip,application/json";
+    input.accept = ".zip,application/zip";
     input.hidden = true;
     input.tabIndex = -1;
     block.appendChild(input);
@@ -140,6 +139,7 @@
 
   async function runBackupDownload(kind){
     if(backupBusy) return;
+    if(kind !== "zip") return;
     setBackupBusy(true);
     setBackupStatus(lx("backupPreparing"), "busy");
     try{
@@ -150,32 +150,26 @@
       flushSave();
       var projectBase = core.util && core.util.safeFileBase ? core.util.safeFileBase(app && app.project ? app.project : "workspace") : "workspace";
       var suffix = state.lang === "en" ? "-backup-" : "-yedek-";
-      var fileName = projectBase + suffix + core.util.formatStamp() + (kind === "zip" ? ".zip" : ".json");
-      var blob = null;
-      if(kind === "zip"){
-        var bundle = await buildBackupV4(true);
-        var files = [{ name:"yedek.json", data:core.util.utf8Bytes(JSON.stringify(bundle.backup, null, 2)) }];
-        for(var i = 0; i < bundle.images.length; i++){
-          try{
-            var imageRecord = await core.storage.getImage(bundle.images[i].img.id);
-            if(imageRecord && imageRecord.blob){
-              files.push({ name:bundle.images[i].file, data:new Uint8Array(await imageRecord.blob.arrayBuffer()) });
-            }
-          }catch(err){ /* missing media is reported by restore, not fatal here */ }
-        }
-        for(var j = 0; j < bundle.attachments.length; j++){
-          try{
-            var fileRecord = await core.storage.getFile(bundle.attachments[j].att.id);
-            if(fileRecord && fileRecord.blob){
-              files.push({ name:bundle.attachments[j].file, data:new Uint8Array(await fileRecord.blob.arrayBuffer()) });
-            }
-          }catch(err){ /* missing media is reported by restore, not fatal here */ }
-        }
-        blob = core.zip.create(files);
-      }else{
-        var jsonBundle = await buildBackupV4(false);
-        blob = new Blob([core.util.utf8Bytes(JSON.stringify(jsonBundle.backup, null, 2), false)], { type:"application/json;charset=utf-8" });
+      var fileName = projectBase + suffix + core.util.formatStamp() + ".zip";
+      var bundle = await buildBackupV4(true);
+      var files = [{ name:"yedek.json", data:core.util.utf8Bytes(JSON.stringify(bundle.backup, null, 2)) }];
+      for(var i = 0; i < bundle.images.length; i++){
+        try{
+          var imageRecord = await core.storage.getImage(bundle.images[i].img.id);
+          if(imageRecord && imageRecord.blob){
+            files.push({ name:bundle.images[i].file, data:new Uint8Array(await imageRecord.blob.arrayBuffer()) });
+          }
+        }catch(err){ /* missing media is reported by restore, not fatal here */ }
       }
+      for(var j = 0; j < bundle.attachments.length; j++){
+        try{
+          var fileRecord = await core.storage.getFile(bundle.attachments[j].att.id);
+          if(fileRecord && fileRecord.blob){
+            files.push({ name:bundle.attachments[j].file, data:new Uint8Array(await fileRecord.blob.arrayBuffer()) });
+          }
+        }catch(err){ /* missing media is reported by restore, not fatal here */ }
+      }
+      var blob = core.zip.create(files);
       var ok = await downloadBlob(blob, fileName);
       if(!ok) throw new Error("download failed");
       setBackupStatus(lx("downloaded", { name:fileName }), "ok");
@@ -195,7 +189,7 @@
     try{
       if(!core || !core.requests || typeof core.requests.normalize !== "function") throw new Error("core.requests unavailable");
       if(!core.util || !core.zip) throw new Error("backup readers unavailable");
-      if(!/\.(zip|json)$/i.test(file.name || "")) throw new Error("unsupported file type");
+      if(!/\.zip$/i.test(file.name || "")) throw new Error("unsupported file type");
 
       var parsed = await readBackupDocument(file);
       var data = parsed.data;

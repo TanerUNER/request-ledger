@@ -4,8 +4,9 @@
      First-run screen shown over the project picker exactly once. The
      choice and the extension toggle are stored per browser profile.
      When the page is served by scripts/serve.cjs, the app heartbeats so
-     the server can stop itself after the tab is gone, and it can ask the
-     server to shut down explicitly.
+     the server can stop itself after the last tab is gone. Stopping and
+     restarting the server is not a page action: a browser cannot spawn a
+     process, so a fully stopped server is started again with start.cmd.
      ============================================================ */
 
   const ONBOARDING_DONE_KEY = "rl-onboarding-v1";
@@ -16,16 +17,12 @@
   const PORT_KEY = "rl-port";
 
   let onboardingOpen = false;
-  let serverStopNotice = false;
-  let serverReconnectTimer = null;
   let serverRestartTimer = null;
   const serverPageId = "pg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
 
   function serverLifecycleUrl(path){
     return path + "?page=" + encodeURIComponent(serverPageId);
   }
-  let pendingPortMove = null;
-  let movedFromPort = null;
   let onboardingMode = "html";
   let onboardingServer = null;
   let onboardingExtensionOn = true;
@@ -85,39 +82,27 @@
     if(!label) return;
     const sub = $("#railModeSub");
     const dot = $("#railModeDot");
-    const stop = $("#railStopBtn");
     const server = onboardingServerDetected();
     if(server){
-      const text = translateString("Sunucu") + " · :" + onboardingServer.port;
+      const text = ":" + onboardingServer.port;
       label.textContent = text;
-      label.title = text;
+      label.title = translateString("Yerel sunucu") + " · " + text;
       if(sub) sub.textContent = translateString("Yerel sunucu");
     }else{
       const text = translateString("Dosya");
       label.textContent = text;
-      label.title = text;
-      if(sub){
-        sub.textContent = window.location.protocol === "file:"
-          ? translateString("Dosyadan başlatıldı")
-          : (serverStopNotice ? translateString("Sunucu durduruldu.") : translateString("Sunucu çalışmıyor."));
-      }
+      label.title = translateString("Dosyadan başlatıldı");
+      if(sub) sub.textContent = window.location.protocol === "file:"
+        ? translateString("Dosyadan başlatıldı")
+        : translateString("Sunucu yok");
     }
     if(dot) dot.classList.toggle("is-on", server);
-    if(stop) stop.hidden = !server;
-  }
-
-  function updateServerStopNote(){
-    const note = $("#serverStopNote");
-    if(!note) return;
-    note.hidden = !serverStopNotice;
-    if(serverStopNotice){
-      try{ note.scrollIntoView({ block: "center", behavior: "smooth" }); }catch(err){ /* ignore */ }
-    }
+    const mode = $("#railMode");
+    if(mode) mode.setAttribute("data-server", server ? "on" : "off");
   }
 
   function renderServerRuntimeUi(){
     updateRailMode();
-    updateServerStopNote();
     const input = $("#settingsPort");
     if(input && document.activeElement !== input){
       input.value = String(readStoredPort());
@@ -132,89 +117,17 @@
     }
   }
 
-  function openPortMoveWarning(port, fromPort){
-    pendingPortMove = { port: port, fromPort: fromPort };
-    const title = $("#portMoveTitle");
-    if(title) title.textContent = translateString("Port değişikliği yeni bir tarayıcı kaynağı açar.");
-    const message = $("#portMoveMessage");
-    if(message){
-      message.textContent =
-        translateString("Projeler ve defterler tarayıcı kaynağı başına saklanır. Mevcut veriler şurada kalır:") + " :" + fromPort + ". " +
-        translateString("Yeni port şurada boş başlar:") + " :" + port + ". " +
-        translateString("Önce yedek indirip yeni portta geri yükle.");
-    }
-    const detail = $("#portMoveDetail");
-    if(detail) detail.textContent = translateString("Yeni kaynakta geri yükleme istemi açılır.");
-    openModal($("#portMoveModal"));
-  }
-
-  function openPortMoveWithoutBackup(port, fromPort){
-    openConfirm({
-      eyebrow: translateString("Port"),
-      title: translateString("Yedeksiz geçilsin mi?"),
-      message:
-        translateString("Yeni port boş bir defterle açılır. Mevcut veriler şurada kalır:") + " :" + fromPort + ". " +
-        translateString("Bu işlem geri alınamaz."),
-      confirmLabel: translateString("Yedeksiz geç"),
-      cancelLabel: translateString("Vazgeç"),
-      danger: true,
-      onConfirm: async function(){ await rebindServer(port, fromPort); }
-    });
-  }
-
-  function openMovedPortPrompt(oldPort){
-    const title = $("#movedPortTitle");
-    if(title) title.textContent = translateString("Bu portun yeni bir kaynağı var.");
-    const text = $("#movedPortText");
-    if(text) text.textContent = translateString("Az önce indirdiğin yedek ZIP dosyasını geri yükle.");
-    const detail = $("#movedPortDetail");
-    if(detail) detail.textContent = translateString("Önceki projeler ve defterler şurada kalır:") + " :" + oldPort + ".";
-    openModal($("#movedPortModal"));
-  }
-
-  function clearMoveQuery(){
-    try{
-      const url = new URL(window.location.href);
-      url.searchParams.delete("rl-moved");
-      url.searchParams.delete("rl-port");
-      const search = url.searchParams.toString();
-      window.history.replaceState(null, "", url.pathname + (search ? "?" + search : "") + url.hash);
-    }catch(err){ /* ignore */ }
-  }
-
-  function initPortMoveUi(){
-    const backupBtn = $("#portMoveBackupBtn");
-    if(backupBtn) backupBtn.addEventListener("click", async function(){
-      const move = pendingPortMove;
-      closeModal($("#portMoveModal"));
-      if(!move) return;
-      setPortStatus(translateString("Yedek hazırlanıyor…"));
-      const ok = await downloadBackupZip(true);
-      if(!ok){
-        setPortStatus(translateString("Yedek oluşturulamadı."), true);
-        showToast(translateString("Yedek oluşturulamadı."), "error");
-        return;
-      }
-      await rebindServer(move.port, move.fromPort);
-    });
-    const noBackupBtn = $("#portMoveNoBackupBtn");
-    if(noBackupBtn) noBackupBtn.addEventListener("click", function(){
-      const move = pendingPortMove;
-      closeModal($("#portMoveModal"));
-      if(!move) return;
-      openPortMoveWithoutBackup(move.port, move.fromPort);
-    });
-    const movedRestore = $("#movedPortRestoreBtn");
-    if(movedRestore) movedRestore.addEventListener("click", function(){
-      const input = $("#restoreInput");
-      if(input) input.click();
-    });
-  }
-
+  /* A port change is silent: the running server spawns the replacement and the
+     browser data is flushed to the shared disk first. No warning modal and no
+     origin prompt: the page simply navigates to the served URL. */
   async function rebindServer(port, fromPort){
     const oldPort = Number(fromPort) || (onboardingServer ? onboardingServer.port : 0);
     setPortStatus(translateString("Sunucu yeniden başlatılıyor."));
     try{
+      if(typeof serverFlushAllProjects === "function"){
+        await serverFlushAllProjects().catch(function(){ /* disk hydrate handles it */ });
+      }
+      if(activeProjectId) saveNow();
       const response = await fetch("/__rl/rebind?port=" + encodeURIComponent(String(port)), {
         method: "POST",
         cache: "no-store",
@@ -227,23 +140,19 @@
           ? translateString("Bu port zaten kullanımda.")
           : response.status === 400
             ? translateString("Port 0 ile 65535 arasında bir tam sayı olmalı.")
-            : translateString("Port uygulanamadı.");
+            : translateString("Port değiştirilemedi; sunucu çalışmaya devam ediyor.");
         setPortStatus(reason, true);
         showToast(reason, "error");
         return;
       }
       const nextPort = Number(data.port);
-      let nextUrl = typeof data.url === "string" ? data.url : "";
-      if(nextUrl && oldPort > 0 && !/[?&]rl-moved=/.test(nextUrl)){
-        nextUrl += (nextUrl.indexOf("?") >= 0 ? "&" : "?") + "rl-moved=" + oldPort;
-      }
+      const nextUrl = typeof data.url === "string" ? data.url : "";
       storePort(port);
+      if(typeof serverConfigPost === "function") serverConfigPost({ port:nextPort });
       onboardingServer = null;
       stopServerHeartbeat();
-      serverStopNotice = false;
       updateRailMode();
-      updateServerStopNote();
-      setPortStatus(
+        setPortStatus(
         translateString("Sunucu yeniden başlatılıyor.") +
         (Number.isInteger(nextPort) && nextPort > 0 ? " · :" + nextPort : "")
       );
@@ -251,10 +160,10 @@
       if(nextUrl){
         setTimeout(function(){
           try{ window.location.href = nextUrl; }catch(err){ /* ignore */ }
-        }, 900);
+        }, 250);
       }
     }catch(err){
-      const reason = translateString("Port uygulanamadı.");
+      const reason = translateString("Port değiştirilemedi; sunucu çalışmaya devam ediyor.");
       setPortStatus(reason, true);
       showToast(reason, "error");
     }
@@ -288,28 +197,9 @@
       return;
     }
     const fromPort = onboardingServer.port;
-    const startMove = function(){ openPortMoveWarning(port, fromPort); };
-    if(activeProjectId && isProjectDirty()){
-      openConfirm({
-        eyebrow: translateString("Kurulum"),
-        title: translateString("Kaydedilmemiş değişiklikler"),
-        message: translateString("Portu uygulamadan önce bu projede kaydedilmemiş değişiklikler var. Kaydetmek ister misin?"),
-        confirmLabel: translateString("Kaydet ve uygula"),
-        altLabel: translateString("Kaydetmeden uygula"),
-        cancelLabel: translateString("Vazgeç"),
-        onConfirm: async function(){
-          cancelScheduledSave();
-          saveNow();
-          startMove();
-        },
-        onAlt: async function(){
-          cancelScheduledSave();
-          startMove();
-        }
-      });
-      return;
-    }
-    startMove();
+    /* Silent + lossless: flush this origin's browser data to disk, save, move. */
+    if(activeProjectId) saveNow();
+    rebindServer(port, fromPort);
   }
 
   function onboardingDefaultMode(){
@@ -350,10 +240,6 @@
         url: typeof data.url === "string" && data.url ? data.url : window.location.origin + window.location.pathname
       };
       storePort(onboardingServer.port);
-      const fallbackFrom = normalisePort(data.fallbackFromPort);
-      if(fallbackFrom != null && fallbackFrom > 0 && fallbackFrom !== onboardingServer.port){
-        movedFromPort = fallbackFrom;
-      }
       return onboardingServer;
     }catch(err){
       onboardingServer = null;
@@ -403,12 +289,6 @@
     if(!onboardingHeartbeatTimer) return;
     clearInterval(onboardingHeartbeatTimer);
     onboardingHeartbeatTimer = null;
-  }
-
-  function stopServerReconnectWatch(){
-    if(!serverReconnectTimer) return;
-    clearInterval(serverReconnectTimer);
-    serverReconnectTimer = null;
   }
 
   function stopServerRestartWatch(){
@@ -471,7 +351,6 @@
       }
       stopServerHeartbeat();
       onboardingServer = null;
-      serverStopNotice = false;
       const restartBtn = $("#restartServerBtn");
       if(restartBtn) restartBtn.hidden = true;
       showToast(translateString("Sunucu yeniden başlatılıyor."));
@@ -481,138 +360,6 @@
       setPortStatus(reason, true);
       showToast(reason, "error");
     }
-  }
-
-  /* The page is still in the browser's cache after the server stops. Poll the
-     same origin and reload as soon as start.cmd brings the same port back, so
-     the pair reconnects automatically instead of asking the user to refresh. */
-  function startServerReconnectWatch(stoppedPid){
-    if(serverReconnectTimer) return;
-    const previousPid = Number(stoppedPid) || 0;
-    /* The user asked for a stop and the shutdown request succeeded, so the old
-       process is expected to be gone. The pid check still protects the case
-       where it lingers; the first poll is delayed past the shutdown window. */
-    const hint = $("#serverBlockedHint");
-    if(hint) hint.textContent = translateString("Sunucu bekleniyor; yeniden başlatılınca otomatik bağlanılacak.");
-    serverReconnectTimer = setInterval(function(){
-      if(!serverBlocked) return;
-      fetch("/__rl/status", { method:"GET", cache:"no-store" }).then(function(response){
-        if(!response.ok) return null;
-        return response.json();
-      }).then(function(data){
-        if(!serverBlocked) return;
-        if(!data || data.app !== "request-ledger" || data.server !== true) return;
-        /* The old process can answer for a moment while it closes. With a
-           known pid only a different pid is the restarted server. */
-        if(previousPid && Number(data.pid) === previousPid) return;
-        stopServerReconnectWatch();
-        if(hint) hint.textContent = translateString("Sunucu yeniden başladı; bağlanılıyor…");
-        try{ window.location.reload(); }catch(err){ /* ignore */ }
-      }).catch(function(){ /* server not back yet */ });
-    }, 3000);
-  }
-
-  function setServerBlocked(blocked){
-    serverBlocked = blocked === true;
-    const overlay = $("#serverBlocked");
-    const main = document.getElementById("main");
-    const header = document.querySelector("header");
-    const footer = document.querySelector("footer");
-    if(main) main.inert = serverBlocked;
-    if(header) header.inert = serverBlocked;
-    if(footer) footer.inert = serverBlocked;
-    document.body.classList.toggle("is-server-blocked", serverBlocked);
-    try{
-      if(serverBlocked) document.documentElement.setAttribute("data-rl-server-stopped", "1");
-      else document.documentElement.removeAttribute("data-rl-server-stopped");
-    }catch(err){ /* ignore */ }
-    if(overlay){
-      overlay.hidden = !serverBlocked;
-      if(serverBlocked){
-        const text = $("#serverBlockedText");
-        if(text) text.textContent = translateString("Sunucu kapalı. Yeniden başlatmak için start.cmd çalıştır.");
-        try{ overlay.focus(); }catch(err){ /* ignore */ }
-      }
-    }
-    if(!serverBlocked){
-      stopServerReconnectWatch();
-    }
-  }
-
-  async function sendServerShutdown(){
-    let stopped = false;
-    let stoppedPid = 0;
-    try{
-      const before = await fetch("/__rl/status", { method:"GET", cache:"no-store" });
-      if(before.ok){
-        const info = await before.json();
-        stoppedPid = Number(info && info.pid) || 0;
-      }
-    }catch(err){ /* the shutdown below reports the failure */ }
-    try{
-      const response = await fetch("/__rl/shutdown", { method:"POST", cache:"no-store", keepalive:true });
-      stopped = response.ok;
-    }catch(err){
-      stopped = false;
-    }
-    if(!stopped){
-      try{ stopped = navigator.sendBeacon ? navigator.sendBeacon("/__rl/shutdown") : false; }
-      catch(err){ stopped = false; }
-    }
-    if(stopped){
-      /* Tell the connected panels before the bridge is disabled. The stop is
-         deliberate: the app becomes blocked, the bridge sends nothing, and the
-         panel switches to "App server stopped". */
-      try{ if(typeof bridgeAnnounceServerStop === "function") bridgeAnnounceServerStop(); }catch(err){ /* ignore */ }
-      try{ if(typeof bridgeSetServerStopped === "function") bridgeSetServerStopped(true); }catch(err){ /* ignore */ }
-      onboardingServer = null;
-      serverStopNotice = true;
-      stopServerHeartbeat();
-      setServerBlocked(true);
-      startServerReconnectWatch(stoppedPid);
-      renderOnboarding();
-      updateRailMode();
-      updateServerStopNote();
-      showToast(translateString("Sunucu durduruldu. Yeniden başlatmak için start.cmd çalıştır."));
-    }else{
-      showToast(translateString("Yerel sunucu bulunamadı."), "error");
-    }
-  }
-
-  function stopLocalServer(){
-    if(!onboardingServerDetected()){
-      showToast(translateString("Yerel sunucu bulunamadı."), "error");
-      return;
-    }
-    if(activeProjectId && isProjectDirty()){
-      openConfirm({
-        eyebrow: translateString("Kurulum"),
-        title: translateString("Kaydedilmemiş değişiklikler"),
-        message: translateString("Sunucuyu durdurmadan önce bu projede kaydedilmemiş değişiklikler var. Kaydetmek ister misin?"),
-        confirmLabel: translateString("Kaydet ve durdur"),
-        altLabel: translateString("Kaydetmeden durdur"),
-        cancelLabel: translateString("Vazgeç"),
-        onConfirm: async function(){
-          cancelScheduledSave();
-          saveNow();
-          await sendServerShutdown();
-        },
-        onAlt: async function(){
-          cancelScheduledSave();
-          await sendServerShutdown();
-        }
-      });
-      return;
-    }
-    openConfirm({
-      eyebrow: translateString("Kurulum"),
-      title: translateString("Sunucu durdurulsun mu?"),
-      message: translateString("Yerel sunucu kapanacak. Defter tarayıcıda kalır; yeniden başlatmak için start.cmd çalıştır."),
-      confirmLabel: translateString("Sunucuyu durdur"),
-      cancelLabel: translateString("Vazgeç"),
-      danger: true,
-      onConfirm: async function(){ await sendServerShutdown(); }
-    });
   }
 
   function onboardingBeforeUnload(event){
@@ -636,7 +383,6 @@
     const hint = $("#onboardServerHint");
     const actions = $("#onboardServerActions");
     const openBtn = $("#onboardOpenServerBtn");
-    const stopBtn = $("#onboardStopServerBtn");
     const cmd = $("#onboardCmdText");
     if(cmd) cmd.textContent = onboardingCommand();
 
@@ -667,14 +413,13 @@
         hint.textContent = translateString("HTML dosyası yerel sunucu başlatamaz; komut yalnızca sunucu modu içindir.");
       }else{
         hint.textContent = onboardingServerDetected()
-          ? translateString("Sunucu bu sayfayı yerel adresten sunuyor. Kapatmak için Sunucuyu durdur.")
+          ? translateString("Sunucu bu sayfayı yerel adresten sunuyor. Sunucu, son sekme kapandıktan sonra kendiliğinden durur.")
           : translateString("Yerel sunucu çalışmıyor. Sunucu modu için start.cmd çalıştır.");
       }
     }
 
     if(actions) actions.hidden = onboardingMode !== "server";
     if(openBtn) openBtn.hidden = !onboardingServerDetected();
-    if(stopBtn) stopBtn.hidden = !onboardingServerDetected();
 
     const toggle = $("#onboardExtensionToggle");
     if(toggle) toggle.checked = onboardingExtensionOn;
@@ -684,22 +429,21 @@
     if(status && text){
       status.classList.remove("is-on", "is-warn");
       if(!onboardingExtensionOn){
-        text.textContent = translateString("Uzantı yardımcısı kapalı.");
+        text.textContent = translateString("Eklenti yardımcısı kapalı.");
       }else if(onboardingExtensionState === "connected"){
         status.classList.add("is-on");
         text.textContent = translateString("Bağlı");
       }else if(onboardingExtensionState === "probing"){
-        text.textContent = translateString("Uzantı aranıyor…");
+        text.textContent = translateString("Eklenti aranıyor…");
       }else if(onboardingExtensionState === "blocked"){
         status.classList.add("is-warn");
-        text.textContent = translateString("Bu sayfa köprüye izin vermiyor; uzantıyı sunucu modunda dene.");
+        text.textContent = translateString("Bu sayfa köprüye izin vermiyor; eklentiyı sunucu modunda dene.");
       }else{
         status.classList.add("is-warn");
         text.textContent = translateString("Bulunamadı");
       }
     }
     updateRailMode();
-    updateServerStopNote();
   }
 
   function stopOnboardingProbe(){
@@ -818,9 +562,8 @@
   }
 
   function initOnboarding(){
-    /* A rebind navigates to the new port; carry the chosen port across the
-       origin boundary so the new page's Settings field shows it, and remember
-       where the data stayed so the new origin can prompt for a restore. */
+    /* A silent rebind navigates to the new port; carry the chosen port so the
+       Settings field shows it. No origin/moved prompt is involved. */
     try{
       const query = new URLSearchParams(window.location.search);
       const queryPort = query.get("rl-port");
@@ -828,13 +571,7 @@
         const parsedPort = normalisePort(queryPort);
         if(parsedPort != null) storePort(parsedPort);
       }
-      const moved = query.get("rl-moved");
-      if(moved != null){
-        const parsedMoved = normalisePort(moved);
-        if(parsedMoved != null && parsedMoved > 0) movedFromPort = parsedMoved;
-      }
     }catch(err){ /* ignore */ }
-    if(movedFromPort != null) onboardingStore(ONBOARDING_DONE_KEY, "1");
     onboardingExtensionOn = onboardingStored(ONBOARDING_EXT_KEY, "1") !== "0";
     const storedMode = onboardingStored(ONBOARDING_MODE_KEY, "");
     onboardingMode = storedMode === "server" || storedMode === "html" ? storedMode : onboardingDefaultMode();
@@ -864,8 +601,6 @@
         try{ window.open(onboardingServer.url, "_blank", "noopener"); }catch(err){ /* ignore */ }
       }
     });
-    const stopServer = $("#onboardStopServerBtn");
-    if(stopServer) stopServer.addEventListener("click", stopLocalServer);
     const toggle = $("#onboardExtensionToggle");
     if(toggle) toggle.addEventListener("change", function(){
       onboardingExtensionOn = toggle.checked;
@@ -878,8 +613,6 @@
     const settingsOpen = $("#openOnboardingBtn");
     if(settingsOpen) settingsOpen.addEventListener("click", openOnboarding);
 
-    const railStop = $("#railStopBtn");
-    if(railStop) railStop.addEventListener("click", stopLocalServer);
     const restartServerBtn = $("#restartServerBtn");
     if(restartServerBtn) restartServerBtn.addEventListener("click", restartServer);
     const applyPort = $("#applyPortBtn");
@@ -891,8 +624,6 @@
         if(event.key === "Enter"){ event.preventDefault(); applyPortSetting(); }
       });
     }
-    initPortMoveUi();
-
     if(!onboardingBridgeListener){
       onboardingBridgeListener = true;
       window.addEventListener("message", onOnboardingBridgeMessage);
@@ -901,16 +632,10 @@
 
     probeLocalServer().then(function(found){
       if(found){
-        serverStopNotice = false;
-        startServerHeartbeat();
+          startServerHeartbeat();
       }
       renderOnboarding();
       renderServerRuntimeUi();
-      if(movedFromPort != null){
-        openMovedPortPrompt(movedFromPort);
-        clearMoveQuery();
-        movedFromPort = null;
-      }
       if(onboardingStored(ONBOARDING_DONE_KEY, "") !== "1"){
         openOnboarding();
       }

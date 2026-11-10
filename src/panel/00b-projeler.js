@@ -584,7 +584,7 @@
     refreshProjectViews();
   }
 
-  function queueAppProjectCommand(type, projectId, name, ledgerId){
+  function queueAppProjectCommand(type, projectId, name, ledgerId, extra){
     var command = {
       id:"cmd_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       type:type,
@@ -593,6 +593,9 @@
       name:String(name || ""),
       at:nowISO()
     };
+    if(extra && typeof extra === "object"){
+      Object.keys(extra).forEach(function(key){ command[key] = extra[key]; });
+    }
     try{
       if(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local){
         chrome.storage.local.set({ "rl-app-command": command });
@@ -606,7 +609,8 @@
           projectId:command.projectId,
           ledgerId:command.ledgerId,
           name:command.name,
-          at:command.at
+          at:command.at,
+          keepBackup:command.keepBackup === true
         });
       }
     }catch(err){ /* cross-tab storage command is the fallback */ }

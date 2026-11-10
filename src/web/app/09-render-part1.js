@@ -228,7 +228,7 @@
               '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M11 2v3M11 17v3M2 11h3M17 11h3"/><path d="M19.5 19.5l2 2"/><rect x="15.5" y="15.5" width="5" height="4.5" rx="1"/></svg>' +
               '<span data-pick-label>Öğe + görüntü</span>' +
             '</button>' +
-            '<span class="field__hint">Sayfa ve konum, uzantının öğe seçicisiyle doldurulur.</span>' +
+            '<span class="field__hint">Sayfa ve konum, eklentinın öğe seçicisiyle doldurulur.</span>' +
           '</div></div>' +
           '<div class="field field--full" data-block="console"><label for="console-' + req.id + '">Console Hatası veya Sayfa Hatası <span class="muted">(opsiyonel)</span></label><textarea class="textarea" id="console-' + req.id + '" data-field="consoleError" rows="3" maxlength="2000" placeholder="Örn. Uncaught TypeError: … / 404 sayfa hatası…"></textarea></div>' +
           '<div class="field field--full" data-block="description"><label for="desc-' + req.id + '">Açıklama <span class="reqmark">*</span></label><textarea class="textarea" id="desc-' + req.id + '" data-field="description" rows="4" maxlength="5000"></textarea></div>' +

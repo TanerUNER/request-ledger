@@ -103,6 +103,39 @@ export const TYPE_TEMPLATES = {
 
 export const CHANGELOG = [
   {
+    version: "1.10.0",
+    area: "extension",
+    date: "2026-11-10",
+    tr: {
+      features: [
+        "Proje silme sunucudaki proje klasörünü de kaldırır; yedek saklama seçeneği deleted-projects/ altında ZIP oluşturur ve bu arşivler geri yüklenebilir.",
+        "Rail'de durdur düğmesi yerine durum noktası ve port gösterilir; port değişikliği sessizce yeni sunucuya geçer.",
+        "Dil ve tema sunucuda saklanır; port değişimi ve yeniden başlatmada korunur."
+      ],
+      updates: [
+        "Köprü arayüzünde 'Uzantı' yerine 'Eklenti' kullanılır.",
+        "Metin (JSON) yedeği kaldırıldı; yalnızca tam ZIP yedeği kalır."
+      ],
+      fixes: [
+        "Port değişikliği yeni sunucu yanıt verene kadar tamamlanmaz; başarısız olursa eski sunucu çalışmaya devam eder."
+      ]
+    },
+    en: {
+      features: [
+        "Deleting a project removes its server folder too; keeping a backup writes a ZIP under deleted-projects/ that can be restored later.",
+        "The rail shows a status dot and the port instead of a stop button; a port change moves to the new server silently.",
+        "Language and theme are stored on the server and survive a port change and a restart."
+      ],
+      updates: [
+        "The bridge UI says \"Eklenti\" instead of \"Uzantı\" in Turkish.",
+        "The text (JSON) backup was removed; only the full ZIP backup remains."
+      ],
+      fixes: [
+        "A port change only completes after the new server answers; on failure the old server keeps running."
+      ]
+    }
+  },
+  {
     version: "1.9.5",
     area: "extension",
     date: "2026-11-09",

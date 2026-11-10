@@ -163,6 +163,11 @@ function buildTestArchive(html, extFiles) {
   entries.push({ name: "scripts/serve.cjs", data: read(path.join(ROOT, "scripts", "serve.cjs")) });
   entries.push({ name: "README.md", data: read(path.join(ROOT, "README.md")) });
   entries.push({ name: "README.tr.md", data: read(path.join(ROOT, "README.tr.md")) });
+  /* Runtime user data must never ship in a test bundle. */
+  const userData = /^(?:projects|backups|deleted-projects)\/|^rl-config\.json$/;
+  for (const entry of entries) {
+    if (userData.test(entry.name)) fail("test bundle includes user data: " + entry.name);
+  }
   return {
     name: "request-ledger-test-" + testStamp() + ".zip",
     data: zipStore(entries),
@@ -286,8 +291,9 @@ function releaseNotes(webVersion, extVersion) {
     "",
     "1. Keep `start.cmd`, `stop.cmd` and `scripts/serve.cjs` next to `request-ledger.html`.",
     "2. Run `start.cmd`. It starts the server on a free port without a console window and opens the browser.",
-    "3. The app heartbeats while it is open; the server stays up while a tab is live and waits at least 5 minutes after the last page is gone.",
-    "4. Run `stop.cmd` to read `.rl-server.lock` and stop the server explicitly.",
+    "3. The app heartbeats while it is open; the server stays up while a tab is live and stops about 5 s after the last page closes.",
+    "4. User data stays next to the server and is never committed: `projects/`, `backups/`, `deleted-projects/` and `rl-config.json`.",
+    "5. `stop.cmd` still shuts the server down. A fully stopped server can only be started again with `start.cmd`; a browser page cannot spawn a process.",
     "",
     "## Extension (Chrome / Edge 114+)",
     "",
@@ -299,9 +305,8 @@ function releaseNotes(webVersion, extVersion) {
     "## Transfer between the two",
     "",
     "- Both products write the same backup format (web envelope v4; the extension also reads v3).",
-    "- In product A: Backup -> download ZIP (media included) or JSON.",
+    "- In product A: Backup -> download the full ZIP (media included).",
     "- In product B: Backup -> Restore, choose the file, confirm.",
-    "- Prefer ZIP when images or attachments matter.",
     "",
     "## Checks",
     "",

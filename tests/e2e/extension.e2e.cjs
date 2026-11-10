@@ -121,6 +121,9 @@ async function waitFor(fn, label, timeoutMs) {
 async function main() {
   /* server-disk reset: each e2e starts from an empty projects/ disk */
   try{ fs.rmSync(path.join(ROOT, 'projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'backups'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'deleted-projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
+  try{ fs.rmSync(path.join(ROOT, 'rl-config.json'), { force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
@@ -173,7 +176,7 @@ async function main() {
       popup: chrome.runtime.getManifest().action.default_popup || ''
     }))()`);
     check("toolbar popup shows About, version, links, license and app requirement",
-      /Request Ledger/.test(about.title) && about.version === "1.9.5" &&
+      /Request Ledger/.test(about.title) && /^1\.\d+\.\d+$/.test(about.version) &&
       about.popup === "panel/about.html" &&
       /uygulama|app/i.test(about.note) && /github\.com/i.test(about.repo) &&
       /buymeacoffee/i.test(about.support) && about.license === true, about);

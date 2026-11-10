@@ -178,6 +178,9 @@ async function pasteImage(cdp, sessionId) {
 async function main() {
   /* server-disk reset */
   try { fs.rmSync(path.join(ROOT, "projects"), { recursive: true, force: true }); } catch (error) { /* ignore */ }
+  try { fs.rmSync(path.join(ROOT, "backups"), { recursive: true, force: true }); } catch (error) { /* ignore */ }
+  try { fs.rmSync(path.join(ROOT, "deleted-projects"), { recursive: true, force: true }); } catch (error) { /* ignore */ }
+  try { fs.rmSync(path.join(ROOT, "rl-config.json"), { force: true }); } catch (error) { /* ignore */ }
   fs.mkdirSync(TMP, { recursive: true });
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
