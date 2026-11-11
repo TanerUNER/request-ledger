@@ -21,6 +21,8 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
@@ -151,8 +153,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -166,7 +167,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const value = await fn();
     if (value) return value;
     await sleep(200);
@@ -340,6 +341,7 @@ async function main() {
 
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
@@ -425,6 +427,8 @@ async function main() {
       after.ledger && after.ledger.requests.some((item) => item.title === "Request from Tab B") &&
       after.ledger.requests.some((item) => item.title === "Typed first request"),
       after.ledger && after.ledger.requests.map((item) => item.title));
+    const pageFailures = pageErrors.collect(cdp);
+    check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
 
     try { await cdp.send("Target.closeTarget", { targetId: otherTarget.targetId }); } catch (error) { /* ignore */ }
     try { await cdp.send("Target.closeTarget", { targetId: appTarget.targetId }); } catch (error) { /* ignore */ }
@@ -435,6 +439,7 @@ async function main() {
     }
     try { fs.rmSync(path.join(TMP, "real-tabs-conflict.lock"), { force: true }); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

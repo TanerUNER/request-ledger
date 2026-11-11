@@ -24,11 +24,13 @@ const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
-const TARGET_URL = "http://127.0.0.1:8080/tests/fixtures/picker-target.html";
+let WEB_URL = "";
+let TARGET_URL = "";
 /* 127.0.0.1 is a companion origin now; the negative probe uses a different
    loopback host served by a test-only HTTP server. */
 const EVIL_HOST = "127.0.0.2";
@@ -127,7 +129,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -145,7 +147,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const value = await fn();
     if (value) return value;
     await sleep(250);
@@ -227,8 +229,9 @@ async function main() {
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
-  const ping = await fetch(WEB_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080 (node scripts/serve.cjs 8080)");
+  const localServer = await harness.startServer(ROOT);
+  WEB_URL = localServer.base + "/index.html?rl-local=1";
+  TARGET_URL = "http://127.0.0.1:" + localServer.port + "/tests/fixtures/picker-target.html";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
   const evilServer = await startEvilServer();
@@ -254,6 +257,7 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
 
     /* ---------- 1. No extension: install guidance ------------------- */
 
@@ -445,14 +449,18 @@ async function main() {
     check("non-allowlisted request cannot inject a ledger", !appLedger.requests.some((req) => req.title === "EVIL SENTINEL"));
     await cdp.send("Target.closeTarget", { targetId: evilTarget.targetId });
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the picker flow", errors.length === 0, errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
 
     await cdp.send("Target.closeTarget", { targetId: targetTab.targetId });
   } finally {
     try { evilServer.close(); } catch (error) { /* ignore */ }
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try { chrome.kill(); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

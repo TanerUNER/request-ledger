@@ -27,10 +27,12 @@ const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
+let WEB_URL = "";
 /* 127.0.0.1 is now a companion origin, so the negative case uses a different
    loopback host. The product server binds only 127.0.0.1; this test-only server
    serves the same files on 127.0.0.2. */
@@ -131,7 +133,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -149,7 +151,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const value = await fn();
     if (value) return value;
     await sleep(300);
@@ -304,8 +306,8 @@ async function main() {
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
-  const ping = await fetch(WEB_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080 (node scripts/serve.cjs 8080)");
+  const localServer = await harness.startServer(ROOT);
+  WEB_URL = localServer.base + "/index.html?rl-local=1";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
   const evilServer = await startEvilServer();
@@ -331,6 +333,7 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === "hapajcbgcfllhkiohhkechekajencdod", loaded);
 
@@ -662,14 +665,18 @@ async function main() {
       afterChoicePage.requests.some((req) => req.title === "App One"),
       { ledgerId: appWins.ledgerId, project: appWins.project });
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the bridge flow", errors.length === 0, errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
 
     await screenshot(cdp, pageSession, "01-page-connected.png");
   } finally {
     try { evilServer.close(); } catch (error) { /* ignore */ }
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try { chrome.kill(); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

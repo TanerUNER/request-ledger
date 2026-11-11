@@ -7,6 +7,7 @@
       project: state.project,
       projectCreated: state.projectCreated === true,
       ledgerId: state.ledgerId,
+      rev: Number(state.rev) || 0,
       requests: state.requests.map(function(req){ return serializeRequest(req); }),
       agents: state.agents.map(function(agent){ return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath }; }),
       language: state.language,
@@ -14,10 +15,12 @@
       lastExport: state.lastExport
     };
   }
-  /* Dirty tracking compares ledger content, not the timestamp written by an
-     automatic save. `updatedAt` is therefore excluded here. */
+  /* Dirty tracking compares ledger content, not the automatic save stamp or
+     the monotonic revision. */
   function serializedLedger(){
-    return JSON.stringify(ledgerPayload());
+    const payload = ledgerPayload();
+    delete payload.rev;
+    return JSON.stringify(payload);
   }
   function resetLedgerState(projectName, fallbackLanguage){
     state = {
@@ -30,7 +33,8 @@
       language: fallbackLanguage === "tr" ? "tr" : "en",
       exportBehavior: "default",
       lastExport: null,
-      updatedAt: null
+      updatedAt: null,
+      rev: 0
     };
   }
   /* Write the current ledger payload for a project. Used when a project was
@@ -39,6 +43,7 @@
   function persistProjectLedger(projectId){
     if(!projectId) return;
     try{
+      state.rev = (Number(state.rev) || 0) + 1;
       const payload = ledgerPayload();
       payload.ledgerId = normalizeLedgerId(state.ledgerId) || payload.ledgerId;
       payload.updatedAt = nowISO();
@@ -51,6 +56,8 @@
   }
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
+    const traceBefore = rlTraceBegin();
+    rlAudit("project-load-before", { projectId: projectId || "", into: projectName || "" });
     resetLedgerState(projectName, fallbackLanguage);
     state.ledgerId = resolveProjectLedgerId(projectId);
     let raw = null;
@@ -78,10 +85,13 @@
         }
       });
       state.updatedAt = parsed.updatedAt || null;
+      state.rev = Math.max(0, Number(parsed.rev) || 0);
     }catch(err){
       console.warn("Kayıt okunamadı", err);
       showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");
     }
+    rlAudit("project-load-after", { projectId: projectId || "", loaded: rlAuditSnapshot(state.requests), stamp: state.updatedAt || "" });
+    rlTraceCommit("project-load", traceBefore);
   }
   function saveNow(){
     if(!activeProjectId){
@@ -92,12 +102,14 @@
        page reconnects. */
     if(typeof serverBlocked !== "undefined" && serverBlocked) return;
     try{
+      state.rev = (Number(state.rev) || 0) + 1;
       const payload = ledgerPayload();
       payload.updatedAt = nowISO();
       localStorage.setItem(projectLedgerKey(activeProjectId), JSON.stringify(payload));
       state.updatedAt = payload.updatedAt;
       syncActiveProjectRecord(payload.updatedAt);
       setSaveStatus("saved");
+      rlAudit("save", { ids: rlAuditSnapshot(state.requests), stamp: payload.updatedAt });
       bridgeNotifyChange();
       if(typeof scheduleServerDiskSave === "function") scheduleServerDiskSave();
     }catch(err){

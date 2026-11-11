@@ -1,6 +1,98 @@
   /* ============================================================
      Kısa yardımcılar
      ============================================================ */
+  /* Bounded request-state audit. Every add/remove/replace of the request list
+     records the surviving ids, the ledger stamp and the call site. Read-only
+     via window.__rlStateDebug; the buffer keeps the last 250 events. */
+  var rlRequestAudit = [];
+  function rlAudit(source, extra){
+    try{
+      var list = state && Array.isArray(state.requests) ? state.requests : [];
+      var entry = {
+        at: Date.now(),
+        source: String(source || ""),
+        ids: list.map(function(req){ return String(req && req.id || ""); }),
+        count: list.length,
+        updatedAt: (state && state.updatedAt) || "",
+        ledgerId: (state && state.ledgerId) || "",
+        projectId: typeof activeProjectId !== "undefined" ? (activeProjectId || "") : "",
+        extra: extra || null,
+        stack: String(new Error().stack || "").split("\n").slice(1, 7).join("\n")
+      };
+      rlRequestAudit.push(entry);
+      if(rlRequestAudit.length > 250) rlRequestAudit.shift();
+      if(typeof window !== "undefined") window.__rlStateAudit = rlRequestAudit;
+      return entry;
+    }catch(err){ return null; }
+  }
+  function rlAuditSnapshot(reqs){
+    return (Array.isArray(reqs) ? reqs : []).map(function(req){
+      return { id: String(req && req.id || ""), confirmed: !!(req && req.confirmed), updatedAt: String(req && req.updatedAt || "") };
+    });
+  }
+  /* Always-on request trace: per-id add/remove/ready events with the call site
+     and revision, capped at 300 entries (window.__rlTrace). */
+  var rlTrace = [];
+  function rlTraceBegin(){
+    var ids = [];
+    var confirmed = {};
+    (state && Array.isArray(state.requests) ? state.requests : []).forEach(function(req){
+      if(!req || !req.id) return;
+      ids.push(String(req.id));
+      confirmed[String(req.id)] = req.confirmed === true;
+    });
+    return { ids: ids, confirmed: confirmed, rev: Number(state && state.rev) || 0 };
+  }
+  function rlTraceCommit(source, before){
+    try{
+      var previous = before && Array.isArray(before.ids) ? before.ids : [];
+      var now = (state && Array.isArray(state.requests) ? state.requests : []).filter(function(req){ return req && req.id; });
+      var current = {};
+      var t = Date.now();
+      var stack = String(new Error().stack || "").split("\n").slice(1, 8).join("\n");
+      now.forEach(function(req){
+        var id = String(req.id);
+        current[id] = true;
+        if(previous.indexOf(id) < 0){
+          rlTrace.push({ t: t, op: "add", id: id, source: String(source || ""), rev: Number(state.rev) || 0, confirmed: req.confirmed === true, projectId: activeProjectId || "", stack: stack });
+        }else if(before.confirmed && before.confirmed[id] !== (req.confirmed === true)){
+          rlTrace.push({ t: t, op: "ready", id: id, source: String(source || ""), rev: Number(state.rev) || 0, confirmed: req.confirmed === true, projectId: activeProjectId || "", stack: stack });
+        }
+      });
+      previous.forEach(function(id){
+        if(current[id]) return;
+        rlTrace.push({ t: t, op: "remove", id: id, source: String(source || ""), rev: Number(state.rev) || 0,
+          confirmed: !!(before.confirmed && before.confirmed[id]), projectId: activeProjectId || "", stack: stack });
+      });
+      if(rlTrace.length > 300) rlTrace = rlTrace.slice(rlTrace.length - 300);
+      if(typeof window !== "undefined") window.__rlTrace = rlTrace;
+    }catch(err){ /* tracing never breaks the ledger */ }
+  }
+  function rlInstallStateDebug(){
+    try{
+      window.__rlStateDebug = Object.freeze({
+        requests: function(){
+          return (state.requests || []).map(function(req){
+            return { id:req.id, title:req.title, confirmed:req.confirmed === true,
+              updatedAt:req.updatedAt, rev:Number(state.rev) || 0, images:(req.images || []).length };
+          });
+        },
+        audit: function(){ return rlRequestAudit.slice(); },
+        trace: function(){ return rlTrace.slice(); },
+        ledger: function(){ return { projectId:activeProjectId || "", ledgerId:state.ledgerId || "",
+          updatedAt:state.updatedAt || "", rev:Number(state.rev) || 0 }; },
+        boot: function(){
+          return {
+            mode: typeof serverDiskMode !== "undefined" ? serverDiskMode === true : false,
+            ready: typeof serverDiskReady !== "undefined" ? serverDiskReady === true : false,
+            active: typeof serverDiskActive !== "undefined" ? serverDiskActive === true : false,
+            registry: !!projectRegistry,
+            projects: projectRegistry && Array.isArray(projectRegistry.projects) ? projectRegistry.projects.length : 0
+          };
+        }
+      });
+    }catch(err){ /* ignore */ }
+  }
   function $(sel, root){
     return (root || document).querySelector(sel);
   }

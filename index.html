@@ -2057,10 +2057,40 @@
   const PROJECT_LEDGER_PREFIX = "oz-istek-defteri-p-";
   const PROJECT_SCOPE_KEY = "oz-veri-kapsam-v1";
   const THEME_KEY = "gd-theme";
-  const APP_VERSION = "1.10.1";
+  const APP_VERSION = "1.10.2";
 /* Static <title> from <head>; kept for crawlers and restored whenever no project is open. */
 const SEO_TITLE = document.title;
   const CHANGELOG = [
+    {
+      version: "1.10.2",
+      date: "2026-11-11",
+      tr: {
+        features: [],
+        updates: [
+          "Hazır işaretlenen ve ardından yeni bir istek eklenen istekler artık kaybolmuyor; bellek yaşadığı sürece uygulama tek doğruluk kaynağıdır.",
+          "Her proje defteri artık tek yönlü artan bir revizyon taşır; eski bir kayıt veya eski eklenti anlık görüntüsü daha yeni veriyi ezemez.",
+          "Eklenti sürümü uygulamadan farklıysa tek seferlik, engellemeyen bir 'Eklenti sürümü eski — güncelleyin.' bildirimi gösterilir."
+        ],
+        fixes: [
+          "Sunucu modu açılışındaki projectRegistry ReferenceError düzeltildi; açılış artık atomiktir ve yalnızca tamamlanınca disk modu etkinleşir.",
+          "Sekme seçici ve ikinci pencereden öğe+görüntü alma akışındaki RL_APP_TABS_RESULT aktarımı düzeltildi.",
+          "dock.js yalnızca yüklenmiş eklenti iframe'ine hedef kaynakla, henüz yüklenmemiş pencerelere doğrulanan '*' ile mesaj gönderir."
+        ]
+      },
+      en: {
+        features: [],
+        updates: [
+          "A request marked Ready no longer disappears when another request is created next; memory is the single authority while the app is alive.",
+          "Each project ledger now carries a monotonic revision; an older save or a stale companion snapshot can no longer overwrite newer data.",
+          "When the extension build differs from the app, one non-blocking 'Extension build is outdated — update it.' notice is shown."
+        ],
+        fixes: [
+          "Fixed the projectRegistry ReferenceError in server-disk bootstrap; boot is atomic and enables disk mode only after full success.",
+          "Fixed the missing RL_APP_TABS_RESULT relay in the tab chooser and the cross-window element+screenshot flow.",
+          "dock.js now posts with the extension origin only to loaded panel iframes, and with a validated '*' to not-yet-loaded windows."
+        ]
+      }
+    },
     {
       version: "1.10.1",
       date: "2026-11-11",
@@ -3299,6 +3329,7 @@ const SEO_TITLE = document.title;
     "Komut kopyalandı.": "Command copied.",
     "Komut kopyalanamadı.": "Could not copy the command.",
     "Eklenti yardımcısı": "Extension companion",
+    "Eklenti sürümü eski — eklentiyi güncelleyin.": "Extension build is outdated — update it.",
     "Yedek bölümünden tam ZIP yedeği indir. Yedekler proje adı, dil, ajanlar, defter kimliği ve talepleri içerir; görseller ve dosyalar da ZIP içinde taşınır. Tema yedeğe dahil değildir.": "Download a full ZIP backup from the Backup section. Backups include the project name, language, agents, ledger ID and requests; images and files travel inside the ZIP. Theme is not included.",
     "Tüm projeler + talepler + Kayıtlar + görseller + dosya ekleri. Sunucu modunda backups/ klasörüne de yazılır.": "All projects + requests + Records + images + attachments. In server mode it is also written to the backups/ folder.",
     ".zip dosyası seç. Tüm projeler yedekteki verilerle değiştirilir.": "Choose a .zip file. Every project is replaced by the backup data.",
@@ -3396,7 +3427,10 @@ const SEO_TITLE = document.title;
     language: "en",
     exportBehavior: "default",
     lastExport: null,
-    updatedAt: null
+    updatedAt: null,
+    /* Monotonic ledger revision: every save increments it. It never goes
+       backwards, so a stale disk/bridge snapshot can be rejected. */
+    rev: 0
   };
   function newLedgerId(){
     return "ledger_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
@@ -3416,6 +3450,7 @@ const SEO_TITLE = document.title;
   /* Workspace state (Phase 1): one registry, one ledger per project. The
      startup screen stays visible until a project is opened. */
   let activeProjectId = null;
+  let projectRegistry = null;
   let projectSnapshot = null;
   let projectScreen = "picker";
   let migratedProjectId = null;
@@ -3464,6 +3499,98 @@ const SEO_TITLE = document.title;
   /* ============================================================
      Kısa yardımcılar
      ============================================================ */
+  /* Bounded request-state audit. Every add/remove/replace of the request list
+     records the surviving ids, the ledger stamp and the call site. Read-only
+     via window.__rlStateDebug; the buffer keeps the last 250 events. */
+  var rlRequestAudit = [];
+  function rlAudit(source, extra){
+    try{
+      var list = state && Array.isArray(state.requests) ? state.requests : [];
+      var entry = {
+        at: Date.now(),
+        source: String(source || ""),
+        ids: list.map(function(req){ return String(req && req.id || ""); }),
+        count: list.length,
+        updatedAt: (state && state.updatedAt) || "",
+        ledgerId: (state && state.ledgerId) || "",
+        projectId: typeof activeProjectId !== "undefined" ? (activeProjectId || "") : "",
+        extra: extra || null,
+        stack: String(new Error().stack || "").split("\n").slice(1, 7).join("\n")
+      };
+      rlRequestAudit.push(entry);
+      if(rlRequestAudit.length > 250) rlRequestAudit.shift();
+      if(typeof window !== "undefined") window.__rlStateAudit = rlRequestAudit;
+      return entry;
+    }catch(err){ return null; }
+  }
+  function rlAuditSnapshot(reqs){
+    return (Array.isArray(reqs) ? reqs : []).map(function(req){
+      return { id: String(req && req.id || ""), confirmed: !!(req && req.confirmed), updatedAt: String(req && req.updatedAt || "") };
+    });
+  }
+  /* Always-on request trace: per-id add/remove/ready events with the call site
+     and revision, capped at 300 entries (window.__rlTrace). */
+  var rlTrace = [];
+  function rlTraceBegin(){
+    var ids = [];
+    var confirmed = {};
+    (state && Array.isArray(state.requests) ? state.requests : []).forEach(function(req){
+      if(!req || !req.id) return;
+      ids.push(String(req.id));
+      confirmed[String(req.id)] = req.confirmed === true;
+    });
+    return { ids: ids, confirmed: confirmed, rev: Number(state && state.rev) || 0 };
+  }
+  function rlTraceCommit(source, before){
+    try{
+      var previous = before && Array.isArray(before.ids) ? before.ids : [];
+      var now = (state && Array.isArray(state.requests) ? state.requests : []).filter(function(req){ return req && req.id; });
+      var current = {};
+      var t = Date.now();
+      var stack = String(new Error().stack || "").split("\n").slice(1, 8).join("\n");
+      now.forEach(function(req){
+        var id = String(req.id);
+        current[id] = true;
+        if(previous.indexOf(id) < 0){
+          rlTrace.push({ t: t, op: "add", id: id, source: String(source || ""), rev: Number(state.rev) || 0, confirmed: req.confirmed === true, projectId: activeProjectId || "", stack: stack });
+        }else if(before.confirmed && before.confirmed[id] !== (req.confirmed === true)){
+          rlTrace.push({ t: t, op: "ready", id: id, source: String(source || ""), rev: Number(state.rev) || 0, confirmed: req.confirmed === true, projectId: activeProjectId || "", stack: stack });
+        }
+      });
+      previous.forEach(function(id){
+        if(current[id]) return;
+        rlTrace.push({ t: t, op: "remove", id: id, source: String(source || ""), rev: Number(state.rev) || 0,
+          confirmed: !!(before.confirmed && before.confirmed[id]), projectId: activeProjectId || "", stack: stack });
+      });
+      if(rlTrace.length > 300) rlTrace = rlTrace.slice(rlTrace.length - 300);
+      if(typeof window !== "undefined") window.__rlTrace = rlTrace;
+    }catch(err){ /* tracing never breaks the ledger */ }
+  }
+  function rlInstallStateDebug(){
+    try{
+      window.__rlStateDebug = Object.freeze({
+        requests: function(){
+          return (state.requests || []).map(function(req){
+            return { id:req.id, title:req.title, confirmed:req.confirmed === true,
+              updatedAt:req.updatedAt, rev:Number(state.rev) || 0, images:(req.images || []).length };
+          });
+        },
+        audit: function(){ return rlRequestAudit.slice(); },
+        trace: function(){ return rlTrace.slice(); },
+        ledger: function(){ return { projectId:activeProjectId || "", ledgerId:state.ledgerId || "",
+          updatedAt:state.updatedAt || "", rev:Number(state.rev) || 0 }; },
+        boot: function(){
+          return {
+            mode: typeof serverDiskMode !== "undefined" ? serverDiskMode === true : false,
+            ready: typeof serverDiskReady !== "undefined" ? serverDiskReady === true : false,
+            active: typeof serverDiskActive !== "undefined" ? serverDiskActive === true : false,
+            registry: !!projectRegistry,
+            projects: projectRegistry && Array.isArray(projectRegistry.projects) ? projectRegistry.projects.length : 0
+          };
+        }
+      });
+    }catch(err){ /* ignore */ }
+  }
   function $(sel, root){
     return (root || document).querySelector(sel);
   }
@@ -4104,6 +4231,7 @@ const SEO_TITLE = document.title;
       project: state.project,
       projectCreated: state.projectCreated === true,
       ledgerId: state.ledgerId,
+      rev: Number(state.rev) || 0,
       requests: state.requests.map(function(req){ return serializeRequest(req); }),
       agents: state.agents.map(function(agent){ return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath }; }),
       language: state.language,
@@ -4111,10 +4239,12 @@ const SEO_TITLE = document.title;
       lastExport: state.lastExport
     };
   }
-  /* Dirty tracking compares ledger content, not the timestamp written by an
-     automatic save. `updatedAt` is therefore excluded here. */
+  /* Dirty tracking compares ledger content, not the automatic save stamp or
+     the monotonic revision. */
   function serializedLedger(){
-    return JSON.stringify(ledgerPayload());
+    const payload = ledgerPayload();
+    delete payload.rev;
+    return JSON.stringify(payload);
   }
   function resetLedgerState(projectName, fallbackLanguage){
     state = {
@@ -4127,7 +4257,8 @@ const SEO_TITLE = document.title;
       language: fallbackLanguage === "tr" ? "tr" : "en",
       exportBehavior: "default",
       lastExport: null,
-      updatedAt: null
+      updatedAt: null,
+      rev: 0
     };
   }
   /* Write the current ledger payload for a project. Used when a project was
@@ -4136,6 +4267,7 @@ const SEO_TITLE = document.title;
   function persistProjectLedger(projectId){
     if(!projectId) return;
     try{
+      state.rev = (Number(state.rev) || 0) + 1;
       const payload = ledgerPayload();
       payload.ledgerId = normalizeLedgerId(state.ledgerId) || payload.ledgerId;
       payload.updatedAt = nowISO();
@@ -4148,6 +4280,8 @@ const SEO_TITLE = document.title;
   }
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
+    const traceBefore = rlTraceBegin();
+    rlAudit("project-load-before", { projectId: projectId || "", into: projectName || "" });
     resetLedgerState(projectName, fallbackLanguage);
     state.ledgerId = resolveProjectLedgerId(projectId);
     let raw = null;
@@ -4175,10 +4309,13 @@ const SEO_TITLE = document.title;
         }
       });
       state.updatedAt = parsed.updatedAt || null;
+      state.rev = Math.max(0, Number(parsed.rev) || 0);
     }catch(err){
       console.warn("Kayıt okunamadı", err);
       showToast("Önceki kayıtlar okunamadı. Yeni bir defterle devam ediliyor.", "error");
     }
+    rlAudit("project-load-after", { projectId: projectId || "", loaded: rlAuditSnapshot(state.requests), stamp: state.updatedAt || "" });
+    rlTraceCommit("project-load", traceBefore);
   }
   function saveNow(){
     if(!activeProjectId){
@@ -4189,12 +4326,14 @@ const SEO_TITLE = document.title;
        page reconnects. */
     if(typeof serverBlocked !== "undefined" && serverBlocked) return;
     try{
+      state.rev = (Number(state.rev) || 0) + 1;
       const payload = ledgerPayload();
       payload.updatedAt = nowISO();
       localStorage.setItem(projectLedgerKey(activeProjectId), JSON.stringify(payload));
       state.updatedAt = payload.updatedAt;
       syncActiveProjectRecord(payload.updatedAt);
       setSaveStatus("saved");
+      rlAudit("save", { ids: rlAuditSnapshot(state.requests), stamp: payload.updatedAt });
       bridgeNotifyChange();
       if(typeof scheduleServerDiskSave === "function") scheduleServerDiskSave();
     }catch(err){
@@ -4426,7 +4565,7 @@ const SEO_TITLE = document.title;
      neutral translated "Imported project" label is used. */
   function initProjectRegistry(){
     let registry = readRegistry();
-    if(registry) return registry;
+    if(registry){ projectRegistry = registry; return registry; }
     let legacyRaw = null;
     try{ legacyRaw = localStorage.getItem(STORAGE_KEY); }catch(err){ legacyRaw = null; }
     if(legacyRaw){
@@ -4451,10 +4590,13 @@ const SEO_TITLE = document.title;
         try{ localStorage.setItem(projectLedgerKey(id), legacyRaw); }catch(err){ /* quota: keep legacy */ }
         writeRegistry(registry);
         migratedProjectId = id;
+        projectRegistry = registry;
         return registry;
       }
     }
-    return emptyProjectRegistry();
+    const empty = emptyProjectRegistry();
+    projectRegistry = empty;
+    return empty;
   }
   function syncActiveProjectRecord(updatedAt){
     if(!activeProjectId) return;
@@ -4779,16 +4921,22 @@ const SEO_TITLE = document.title;
     };
   }
 
-  async function serverHydrateProject(meta){
+  async function serverHydrateProject(meta, force){
     var data = await serverJson("/__rl/load?projectId=" + encodeURIComponent(meta.projectId));
     if(!data || data.ok !== true) return;
     var ledger = data.ledger && typeof data.ledger === "object" ? data.ledger : null;
-    if(ledger){
+    var localLedger = null;
+    try{ localLedger = JSON.parse(localStorage.getItem(projectLedgerKey(meta.projectId)) || "null"); }catch(err){ localLedger = null; }
+    var localRev = Number(localLedger && localLedger.rev) || 0;
+    var incomingRev = Number(ledger && ledger.rev) || 0;
+    rlAudit("server-load-before", { projectId:meta.projectId, incoming: ledger ? rlAuditSnapshot(ledger.requests) : null, stamp: ledger && ledger.updatedAt || "", localRev:localRev, incomingRev:incomingRev });
+    if(ledger && (force || incomingRev > localRev || !localLedger)){
       ledger.project = ledger.project || meta.name;
       ledger.projectCreated = true;
       ledger.ledgerId = ledger.ledgerId || meta.ledgerId || "";
       localStorage.setItem(projectLedgerKey(meta.projectId), JSON.stringify(ledger));
     }
+    rlAudit("server-load-after", { projectId:meta.projectId, source:"hydrate", stamp: ledger && ledger.updatedAt || "", keptLocal: !!(ledger && !(force || incomingRev > localRev || !localLedger)) });
     var archive = data.archive && typeof data.archive === "object"
       ? data.archive : { records:[], drafts:[], history:[] };
     serverArchives[meta.projectId] = archive;
@@ -4813,7 +4961,7 @@ const SEO_TITLE = document.title;
     }
   }
 
-  async function serverMigrateProject(project){
+  async function serverMigrateProject(project, forcedRev){
     if(!project || !project.id) return false;
     var raw = null;
     try{ raw = localStorage.getItem(projectLedgerKey(project.id)); }catch(err){ raw = null; }
@@ -4821,6 +4969,7 @@ const SEO_TITLE = document.title;
     var ledger = null;
     try{ ledger = JSON.parse(raw); }catch(err){ ledger = null; }
     if(!ledger || !Array.isArray(ledger.requests)) return false;
+    ledger.rev = Math.max(Number(forcedRev) || 0, Number(ledger.rev) || 0, 1);
     var created = await serverJson("/__rl/projects", {
       method:"POST",
       body:{ projectId:project.id, name:project.name, slug:project.folder || project.name }
@@ -4891,10 +5040,18 @@ const SEO_TITLE = document.title;
 
   async function serverDiskBootstrap(){
     if(!serverDiskEnabled()) return false;
+    /* Atomic boot: stay in browser-local mode until the whole hydration
+       finished. A throw must never leave disk mode half-enabled. */
+    serverDiskMode = false;
+    serverDiskReady = false;
+    serverDiskActive = false;
+    rlAudit("bootstrap-before", {});
     var boot = null;
     try{ boot = await serverJson("/__rl/bootstrap"); }catch(err){ boot = null; }
-    if(!boot || boot.ok !== true) return false;
-    serverDiskMode = true;
+    if(!boot || boot.ok !== true){
+      try{ window.__rlServerBoot = { mode:false, ready:false, active:false, error:"bootstrap unavailable" }; }catch(err){ /* ignore */ }
+      return false;
+    }
     var serverProjects = Array.isArray(boot.projects) ? boot.projects : [];
     var localRegistry = readRegistry();
     var localById = {};
@@ -4926,11 +5083,16 @@ const SEO_TITLE = document.title;
         }
       }
       if(server){
-        var serverStamp = String(server.updatedAt || "");
-        var localStamp = local ? String(local.updatedAt || "") : "";
-        if(local && localStamp && localStamp > serverStamp){
-          await serverMigrateProject(local);
-        }else{
+        var localLedger = null;
+        try{ localLedger = JSON.parse(localStorage.getItem(projectLedgerKey(id)) || "null"); }catch(err){ localLedger = null; }
+        var localRev = Number(localLedger && localLedger.rev) || 0;
+        var serverRev = Number(server.rev) || 0;
+        var localHas = !!(localLedger && Array.isArray(localLedger.requests) && localLedger.requests.length);
+        /* Revision decides. Equal revisions keep the local copy: memory/local
+           storage is the newest state while the page is alive. */
+        if(localLedger && localHas && (localRev >= serverRev || !serverRev)){
+          await serverMigrateProject(local, localRev > serverRev ? localRev : serverRev + 1);
+        }else if(serverRev > localRev){
           await serverHydrateProject(server);
         }
         merged.push(serverProjectFromMeta(server));
@@ -4950,8 +5112,11 @@ const SEO_TITLE = document.title;
     try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(nextRegistry)); }catch(err){ /* quota */ }
     projectRegistry = nextRegistry;
     activeProjectId = preferred;
+    serverDiskMode = true;
     serverDiskReady = true;
     serverDiskActive = true;
+    try{ window.__rlServerBoot = { mode:true, ready:true, active:true, error:"", projects:merged.length }; }catch(err){ /* ignore */ }
+    rlAudit("bootstrap-after", { projectId:preferred, projects:merged.length });
     return true;
   }
 
@@ -4983,12 +5148,14 @@ const SEO_TITLE = document.title;
     if(serverSaveBusy){ serverSaveQueued = true; return false; }
     serverSaveBusy = true;
     var projectId = activeProjectId;
+    rlAudit("server-save-start", { projectId:projectId, snapshot: rlAuditSnapshot(state.requests), stamp: state.updatedAt || "" });
     try{
       var saved = await serverSaveProject(projectId);
       if(saved){
         var project = findProjectRecord(projectId);
         if(project && serverDiskSlug(projectId)) updateProjectRecord(projectId, { folder:serverDiskSlug(projectId) });
       }
+      rlAudit(saved ? "server-save-done" : "server-save-failed", { projectId:projectId });
       return saved;
     }catch(err){ return false; }
     finally{
@@ -7593,6 +7760,7 @@ const SEO_TITLE = document.title;
     const loaded = currentSnapshot.requests.map(function(raw, index){
       return normalizeRequest(JSON.parse(JSON.stringify(raw)), index);
     });
+    rlAudit("archive-before", { snapshotId: currentSnapshot.id || "", incoming: rlAuditSnapshot(loaded) });
     loaded.forEach(function(req){ req.collapsed = true; });
     state.project = currentSnapshot.project || state.project;
     state.projectCreated = true;
@@ -7608,6 +7776,7 @@ const SEO_TITLE = document.title;
     renderList();
     updateProjectLabels();
     refreshGlobal();
+    rlAudit("archive-after", { snapshotId: currentSnapshot.id || "" });
     closeModal($("#historyModal"));
     showToast("Yüklendi: " + formatDateTime(snapshotDate(currentSnapshot)));
   }
@@ -7912,10 +8081,12 @@ const SEO_TITLE = document.title;
       }
       return;
     }
+    const traceBefore = rlTraceBegin();
     req.confirmed = !req.confirmed;
     req._showErrors = false;
     req.updatedAt = nowISO();
     if(req.confirmed) req.collapsed = true;
+    rlTraceCommit("ready", traceBefore);
     scheduleSave();
     updateAllRows();
     refreshGlobal();
@@ -8022,9 +8193,12 @@ const SEO_TITLE = document.title;
        registry. Adding the first request must never rotate it: that produced a
        second ledger for the same project and opened "Two ledgers found". */
     const req = makeNewRequest(typeId);
+    const traceBefore = rlTraceBegin();
     state.requests.forEach(function(item){ item.collapsed = true; });
     req.collapsed = false;
     state.requests.push(req);
+    rlTraceCommit("create", traceBefore);
+    rlAudit("create", { id:req.id, type:typeId });
     activeRowId = req.id;
     lastExpandedId = req.id;
     barDismissed = false;
@@ -11899,6 +12073,9 @@ const SEO_TITLE = document.title;
      it cannot detect a ledger conflict on its own. These flags make the page
      re-announce itself once per empty-panel state and once per conflict. */
   let bridgePeerEmptyAsked = false;
+  let bridgePeerOutdated = false;
+  let bridgeOutdatedNotified = false;
+  let bridgeOutdatedSeen = false;
   const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0, media:0 };
   /* Rejected envelopes and the exact conflict evidence are kept in memory so
      the UI/E2E can explain a prompt instead of silently diverging. */
@@ -12220,6 +12397,8 @@ const SEO_TITLE = document.title;
         source:"request-ledger-web",
         type:"RL_APP_MEDIA",
         v:BRIDGE_VERSION,
+        appVersion:APP_VERSION,
+        rev:Number(state.rev) || 0,
         ledgerId:state.ledgerId,
         projectId:activeProjectId || "",
         requestId:req.id,
@@ -12273,6 +12452,8 @@ const SEO_TITLE = document.title;
       source:"request-ledger-web",
       type:"RL_APP_MEDIA_REQUEST",
       v:BRIDGE_VERSION,
+      appVersion:APP_VERSION,
+      rev:Number(state.rev) || 0,
       ledgerId:state.ledgerId,
       projectId:activeProjectId || "",
       ids:ids.slice(0, 100)
@@ -12281,6 +12462,7 @@ const SEO_TITLE = document.title;
 
   async function handleBridgeMedia(data){
     if(!data || !activeProjectId) return;
+    if(bridgePeerOutdated) return;
     if(bridgeEnvelopeProjectId(data) && bridgeEnvelopeProjectId(data) !== activeProjectId){
       bridgeRecordReject("media-project-mismatch", data);
       return;
@@ -12349,6 +12531,8 @@ const SEO_TITLE = document.title;
       source:"request-ledger-web",
       type:type,
       v:BRIDGE_VERSION,
+      appVersion:APP_VERSION,
+      rev:Number(state.rev) || 0,
       ledgerId:state.ledgerId,
       updatedAt:state.updatedAt || nowISO(),
       project:state.project,
@@ -12521,6 +12705,8 @@ const SEO_TITLE = document.title;
   /* mode: "merge" (item-level) or "replace" (the user chose this ledger) */
   function bridgeApply(data, mode){
     const incomingProjectId = bridgeEnvelopeProjectId(data);
+    const traceBefore = rlTraceBegin();
+    rlAudit("bridge-before", { mode: mode, incoming: Array.isArray(data && data.requests) ? rlAuditSnapshot(data.requests) : null, stamp: data && data.updatedAt || "" });
     /* Never apply another project's ledger to the open project. An empty id is
        also refused while a project is open; the panel re-announces its identity
        on the next HELLO. */
@@ -12530,6 +12716,17 @@ const SEO_TITLE = document.title;
     }
     const incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     const stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
+    const incomingRev = Number(data.rev);
+    const localRev = Number(state.rev) || 0;
+    /* The app is authoritative while alive: an older snapshot must never
+       replace the whole local ledger. Item-level merges stay allowed because
+       they are id-keyed and keep the newer copy; only "replace" drops rows.
+       An explicit conflict choice (bridgeForceApply) always wins. */
+    if(mode === "replace" && !bridgeForceApply && Number.isFinite(incomingRev) && incoming.length &&
+       (incomingRev < localRev || (incomingRev === localRev && state.requests.length > 0))){
+      bridgeRecordReject("stale-revision", data, { incomingRev: incomingRev, localRev: localRev });
+      return false;
+    }
     const signature = bridgeSignatureFromData(data);
     if(mode !== "replace" && signature && signature === bridgeStateHash()){
       bridgeStats.echoes++;
@@ -12581,6 +12778,7 @@ const SEO_TITLE = document.title;
           state.ledgerId = data.ledgerId;
         }
       }
+      if(Number.isFinite(incomingRev)) state.rev = Math.max(Number(state.rev) || 0, incomingRev);
       saveNow();
       /* Bridge data was just persisted; it must not look like an unsaved local
          edit when the user switches projects. */
@@ -12611,6 +12809,8 @@ const SEO_TITLE = document.title;
     refreshGlobal();
     updateBridgeIndicator();
     bridgeStats.applied++;
+    rlTraceCommit("bridge-" + mode, traceBefore);
+    rlAudit("bridge-after", { mode: mode, requests: rlAuditSnapshot(state.requests) });
     setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
     return true;
   }
@@ -12738,6 +12938,8 @@ const SEO_TITLE = document.title;
         source:"request-ledger-web",
         type:"RL_APP_ACK",
         v:BRIDGE_VERSION,
+        appVersion:APP_VERSION,
+        rev:Number(state.rev) || 0,
         ledgerId:state.ledgerId,
         projectId:activeProjectId || "",
         projectName:state.project
@@ -12817,10 +13019,37 @@ const SEO_TITLE = document.title;
       return;
     }
     chip.hidden = false;
-    chip.classList.toggle("is-off", bridgeProjectMismatch);
-    const label = bridgeProjectMismatch ? "Eklenti farklı projede" : "Eklenti bağlı";
+    chip.classList.toggle("is-off", bridgeProjectMismatch || bridgePeerOutdated);
+    const label = bridgePeerOutdated
+      ? "Eklenti sürümü eski — eklentiyi güncelleyin."
+      : (bridgeProjectMismatch ? "Eklenti farklı projede" : "Eklenti bağlı");
     chip.title = translateString(label);
     if(text) text.textContent = translateString(label);
+  }
+
+  function bridgeVersionKey(value){
+    const match = /^(\d+)\.(\d+)/.exec(String(value || ""));
+    return match ? match[1] + "." + match[2] : "";
+  }
+  /* Only these envelopes carry ledger state that a stale companion could
+     overwrite. Control replies are request/response and stay live. */
+  const BRIDGE_STATE_TYPES = {
+    RL_APP_HELLO: true, RL_APP_SNAPSHOT: true, RL_APP_PATCH: true,
+    RL_APP_ACK: true, RL_APP_MEDIA: true, RL_APP_MEDIA_REQUEST: true
+  };
+  function bridgePeerVersionMismatch(data){
+    const peer = data && typeof data.appVersion === "string" ? data.appVersion : "";
+    /* A peer without a version is an older build. */
+    if(!peer) return true;
+    return bridgeVersionKey(peer) !== bridgeVersionKey(APP_VERSION);
+  }
+  function bridgeNoteOutdated(){
+    bridgePeerOutdated = true;
+    bridgeOutdatedSeen = true;
+    if(bridgeOutdatedNotified) return;
+    bridgeOutdatedNotified = true;
+    try{ showToast(translateString("Eklenti sürümü eski — eklentiyi güncelleyin.")); }catch(err){ /* ignore */ }
+    updateBridgeIndicator();
   }
 
   function onBridgeMessage(event){
@@ -12832,7 +13061,11 @@ const SEO_TITLE = document.title;
     if(data.source !== "request-ledger-host") return;
     if(typeof data.pageOrigin === "string" && data.pageOrigin !== bridgeEventOrigin()) return;
     if(typeof data.type !== "string" || data.type.indexOf("RL_APP_") !== 0){ return; }
-    if(typeof data.v !== "number" || data.v !== BRIDGE_VERSION) return;
+    if(typeof data.v !== "number") return;
+    if(data.v !== BRIDGE_VERSION){
+      bridgeNoteOutdated();
+      return;
+    }
 
     bridgeStats.received++;
     if(data.type === "RL_APP_BYE"){
@@ -12846,6 +13079,15 @@ const SEO_TITLE = document.title;
       return;
     }
     bridgeMarkConnected();
+    /* An older companion may carry a ledger that predates the app's current
+       request. Never apply its state; keep the app authoritative locally.
+       Control replies (tabs/pick/capture results) only answer a request the
+       live app just made and must not be dropped by the version gate. */
+    if(BRIDGE_STATE_TYPES[data.type] && bridgePeerVersionMismatch(data)){
+      bridgeNoteOutdated();
+      return;
+    }
+    if(BRIDGE_STATE_TYPES[data.type]) bridgePeerOutdated = false;
     if(data.type === "RL_APP_ACK"){ bridgeHandleAck(data); return; }
     if(data.type === "RL_APP_PATCH"){
       const peerProjectId = bridgeEnvelopeProjectId(data);
@@ -13063,6 +13305,8 @@ const SEO_TITLE = document.title;
           source:"request-ledger-web",
           type:"RL_APP_ACK",
           v:BRIDGE_VERSION,
+          appVersion:APP_VERSION,
+          rev:Number(state.rev) || 0,
           ledgerId:state.ledgerId,
           projectId:activeProjectId || "",
           projectName:state.project,
@@ -13080,6 +13324,10 @@ const SEO_TITLE = document.title;
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes, media:bridgeStats.media }; },
+        outdated:function(){ return bridgePeerOutdated; },
+        outdatedSeen:function(){ return bridgeOutdatedSeen; },
+        rev:function(){ return Number(state.rev) || 0; },
+        version:function(){ return APP_VERSION; },
         conflict:function(){ return bridgeConflictOpen; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },
@@ -14158,6 +14406,8 @@ const SEO_TITLE = document.title;
         source: "request-ledger-web",
         type: "RL_APP_ACK",
         v: 1,
+        appVersion: APP_VERSION,
+        rev: Number(state.rev) || 0,
         ledgerId: state.ledgerId,
         projectId: "",
         projectName: "",
@@ -14366,8 +14616,12 @@ const SEO_TITLE = document.title;
     }
     /* In server mode the disk is the source of truth: hydrate the browser
        cache (registry, ledgers, archive) before opening the last project. */
-    try{ await serverDiskBootstrap(); }catch(err){ console.warn("Sunucu verisi yüklenemedi", err); }
+    try{ await serverDiskBootstrap(); }catch(err){
+      console.warn("Sunucu verisi yüklenemedi", err);
+      try{ window.__rlServerBoot = { mode:false, ready:false, active:false, error:String(err && err.message || err) }; }catch(ignore){ /* ignore */ }
+    }
     initProjectRegistry();
+    rlInstallStateDebug();
     if(!state.ledgerId) state.ledgerId = newLedgerId();
     /* One-time Phase 1 → Phase 2 media/snapshot scope migration. */
     const registry = readRegistry();

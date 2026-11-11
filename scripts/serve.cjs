@@ -495,6 +495,7 @@ function ensureProjectFolder(projectId, name, requestedSlug) {
     ledgerId: previous.ledgerId || "",
     archiveCollapsed: previous.archiveCollapsed === true,
     requestCount: Number(previous.requestCount) || 0,
+    rev: Number(previous.rev) || 0,
   };
   writeProjectMeta(slug, meta);
   return { slug, folder, meta };
@@ -1431,6 +1432,21 @@ const server = http.createServer(function (request, response) {
       try {
         const result = ensureProjectFolder(body.projectId, body.name, body.slug);
         const snapshot = body.snapshot && typeof body.snapshot === "object" ? body.snapshot : {};
+        const previousLedger = readProjectLedger(result.slug);
+        const previousRev = Number(previousLedger && previousLedger.rev) || 0;
+        const incomingRev = Number(snapshot.rev) || 0;
+        /* A late/older save must never overwrite a newer ledger. */
+        if (previousRev > 0 && incomingRev > 0 && incomingRev < previousRev) {
+          sendJson(response, 200, {
+            ok: true, stale: true, slug: result.slug, rev: previousRev,
+            requestCount: Array.isArray(previousLedger.requests) ? previousLedger.requests.length : 0,
+          });
+          return;
+        }
+        if (previousRev > 0 && incomingRev === 0 && Array.isArray(previousLedger.requests) && previousLedger.requests.length) {
+          sendJson(response, 200, { ok: true, stale: true, slug: result.slug, rev: previousRev });
+          return;
+        }
         fs.writeFileSync(path.join(result.folder, "ledger.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
         if (body.archive && typeof body.archive === "object") {
           writeProjectArchive(result.slug, body.archive);
@@ -1442,9 +1458,10 @@ const server = http.createServer(function (request, response) {
           ledgerId: String(snapshot.ledgerId || result.meta.ledgerId || ""),
           archiveCollapsed: body.archiveCollapsed === true,
           requestCount: Array.isArray(snapshot.requests) ? snapshot.requests.length : 0,
+          rev: Math.max(previousRev, incomingRev),
         });
         writeProjectMeta(result.slug, meta);
-        sendJson(response, 200, { ok: true, slug: result.slug, folder: path.relative(root, result.folder).split(path.sep).join("/") });
+        sendJson(response, 200, { ok: true, slug: result.slug, rev: meta.rev, folder: path.relative(root, result.folder).split(path.sep).join("/") });
       } catch (error) {
         sendJson(response, 500, { ok: false, error: error.message });
       }

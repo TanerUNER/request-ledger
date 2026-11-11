@@ -15,6 +15,8 @@ const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const TMP = path.resolve(ROOT, "..", ".opencode", "workspace", "tmp", "bridge-fixes");
@@ -104,8 +106,7 @@ class CDP {
 }
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 async function evaluate(cdp, sessionId, expression) {
@@ -115,14 +116,9 @@ async function evaluate(cdp, sessionId, expression) {
   if (result.exceptionDetails) throw new Error("evaluate failed: " + result.exceptionDetails.text);
   return result.result ? result.result.value : null;
 }
+let activeCdp = null;
 async function waitFor(fn, label, timeoutMs) {
-  const started = Date.now();
-  const limit = timeoutMs || 15000;
-  while (Date.now() - started < limit) {
-    try { const value = await fn(); if (value) return value; } catch (error) { /* retry */ }
-    await sleep(180);
-  }
-  throw new Error("timeout: " + label);
+  return harness.waitFor(activeCdp, fn, label, timeoutMs);
 }
 async function waitServer(port) {
   return waitFor(async () => {
@@ -292,9 +288,22 @@ async function main() {
     ], { stdio: "ignore" });
     const version = await waitEndpoint(CDP_PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    activeCdp = cdp;
+    harness.install(cdp);
 
     const target = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html" });
     let session = await attach(cdp, target.targetId);
+    harness.setDiagnostics(cdp, async () => {
+      const shot = await harness.screenshot(cdp, session, "data-lifecycle-app");
+      let trace = "";
+      try {
+        trace = JSON.stringify(await harness.evaluate(cdp, session,
+          "(window.__rlStateDebug ? { boot:window.__rlStateDebug.boot(), ledger:window.__rlStateDebug.ledger(), trace:window.__rlStateDebug.trace(), audit:window.__rlStateDebug.audit() } : null)"));
+      } catch (error) {
+        trace = "trace failed: " + error.message;
+      }
+      return "screenshot: " + shot + "\ntrace: " + trace.slice(0, 6000);
+    });
     await sleep(1200);
     await dismissOnboarding(cdp, session);
     await waitFor(() => evaluate(cdp, session, "!!document.getElementById('projectCreateInput')"), "project creator");
@@ -539,7 +548,9 @@ async function main() {
     check("the project, request and image survive a full server restart",
       !!afterRestart && afterRestart.ledger.requests[0].images.length >= 1);
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the data lifecycle flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
   } finally {

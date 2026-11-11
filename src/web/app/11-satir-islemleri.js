@@ -63,10 +63,12 @@
       }
       return;
     }
+    const traceBefore = rlTraceBegin();
     req.confirmed = !req.confirmed;
     req._showErrors = false;
     req.updatedAt = nowISO();
     if(req.confirmed) req.collapsed = true;
+    rlTraceCommit("ready", traceBefore);
     scheduleSave();
     updateAllRows();
     refreshGlobal();
@@ -173,9 +175,12 @@
        registry. Adding the first request must never rotate it: that produced a
        second ledger for the same project and opened "Two ledgers found". */
     const req = makeNewRequest(typeId);
+    const traceBefore = rlTraceBegin();
     state.requests.forEach(function(item){ item.collapsed = true; });
     req.collapsed = false;
     state.requests.push(req);
+    rlTraceCommit("create", traceBefore);
+    rlAudit("create", { id:req.id, type:typeId });
     activeRowId = req.id;
     lastExpandedId = req.id;
     barDismissed = false;

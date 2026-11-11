@@ -19,6 +19,8 @@ const net = require("node:net");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const TMP = path.resolve(ROOT, "..", ".opencode", "workspace", "tmp", "bridge-fixes");
@@ -108,8 +110,7 @@ class CDP {
 }
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 async function evaluate(cdp, sessionId, expression) {
@@ -121,7 +122,7 @@ async function evaluate(cdp, sessionId, expression) {
 }
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  const limit = timeoutMs || 15000;
+  const limit = Math.min(timeoutMs || 8000, 10000);
   while (Date.now() - started < limit) {
     try { const value = await fn(); if (value) return value; } catch (error) { /* retry */ }
     await sleep(180);
@@ -206,6 +207,7 @@ async function main() {
     ], { stdio: "ignore" });
     const version = await waitEndpoint(CDP_PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
 
     const target = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html" });
     let session = await attach(cdp, target.targetId);
@@ -349,6 +351,12 @@ async function main() {
         return value.ledger && value.ledger.requests.some((req) => req.title === "Disk truth request" && req.images.length >= 1) ? value : null;
       }, "fallback app data", 25000);
       check("free-port fallback loads the same disk data", !!appC);
+      const boot = await evaluate(cdp, session, "window.__rlStateDebug && window.__rlStateDebug.boot ? window.__rlStateDebug.boot() : null");
+      check("server disk bootstrap is complete (mode, ready, registry)",
+        !!boot && boot.mode === true && boot.ready === true && boot.active === true &&
+        boot.registry === true && boot.projects >= 1, boot);
+      const pageFailures = pageErrors.collect(cdp);
+      check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
     } finally {
       await closeBusy();
     }

@@ -23,11 +23,13 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
-const TARGET_URL = "http://127.0.0.1:8080/tests/fixtures/picker-target.html";
+let WEB_URL = "";
+let TARGET_URL = "";
 const SHOT_DIR = path.resolve(ROOT, "..", ".opencode", "workspace", "reports", "capture-tools");
 const CHROME_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -103,8 +105,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* non-page target */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -122,7 +123,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 20000)) {
+  while (Date.now() - started < Math.min(timeoutMs || 8000, 10000)) {
     const value = await fn();
     if (value) return value;
     await sleep(250);
@@ -266,8 +267,9 @@ async function main() {
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
-  const ping = await fetch(WEB_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080 (node scripts/serve.cjs 8080)");
+  const localServer = await harness.startServer(ROOT);
+  WEB_URL = localServer.base + "/index.html?rl-local=1";
+  TARGET_URL = "http://127.0.0.1:" + localServer.port + "/tests/fixtures/picker-target.html";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
@@ -292,6 +294,7 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
 
     const pageTarget = await cdp.send("Target.createTarget", { url: WEB_URL });
     let pageSession = await attach(cdp, pageTarget.targetId);
@@ -492,14 +495,18 @@ async function main() {
     check("unnamed legacy install uses the translated label",
       Boolean(migratedTr && migratedTr.projects && migratedTr.projects[0] && migratedTr.projects[0].name === "İçe aktarılan proje"), migratedTr);
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the capture tools flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
 
     await cdp.send("Target.closeTarget", { targetId: targetTab.targetId });
   } finally {
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try { chrome.kill(); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

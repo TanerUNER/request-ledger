@@ -1,11 +1,39 @@
 # Release notes — 2026-11-11
 
-Versions: **web app 1.10.1**, **extension 1.10.1**
+Versions: **web app 1.10.2**, **extension 1.10.2**
 
 Artifacts: `dist/request-ledger.html`, `dist/extension/`,
-`dist/request-ledger-extension-1.10.1.zip`, `dist/request-ledger-extension.zip`,
+`dist/request-ledger-extension-1.10.2.zip`, `dist/request-ledger-extension.zip`,
 `dist/request-ledger-test-2026-11-11.zip`, `dist/CHECKSUMS.txt`, `dist/RELEASE.md`.
 Rebuild with `node scripts/build.cjs`; verify with `node scripts/build.cjs --check`.
+
+## 1.10.2 — request loss, atomic boot and a version handshake
+
+- Fixed the P0 boot bug behind the disappearing request: `projectRegistry` was assigned but never
+  declared, so `serverDiskBootstrap` threw `ReferenceError` after flipping `serverDiskMode = true` and
+  before `serverDiskReady = true`. The registry is now declared once, populated from
+  `initProjectRegistry()`, and boot is atomic: disk mode and readiness flip only after the whole
+  hydration succeeds, otherwise both stay off and the app remains in browser-local mode.
+- Each project ledger now carries a monotonic `rev`. Saves increment it; the server rejects a save
+  with a lower revision; loads never replace memory with a lower revision; full-ledger replacements
+  (adoption/conflict choice) are the only path guarded by it, while item-level merges keep the newer
+  row. An explicit conflict choice still wins.
+- The app and companion exchange `appVersion` and `rev` in HELLO/SNAPSHOT/PATCH/ACK/MEDIA envelopes.
+  A missing or different major.minor version marks the peer as outdated: its ledger state is not
+  applied, and one non-blocking "Extension build is outdated — update it." /
+  "Eklenti sürümü eski — güncelleyin." notice is shown. Control replies (tabs/pick/capture) stay live.
+- Fixed the cross-window capture/tab chooser: the dock now relays `RL_APP_TABS_RESULT` back to the
+  page, and panel control replies carry `appVersion`, so the tab list and pick/capture results are
+  not dropped by the version gate.
+- `dock.js` posts with the extension origin only to a loaded panel iframe and with a validated `"*"`
+  to windows that have not navigated yet, ending the target-origin console error.
+- Added real-browser regressions: `request-loss` (A Ready, create B and keep typing, stale companion
+  snapshot/save, reload, project switch, server restart) and `capture-loss` (element+screenshot from a
+  second window, 20 s of description typing, reload, switch, panel).
+- Hardened the E2E harness: every target enables `Page`, intercepts native file choosers, stubs
+  File System Access pickers, auto-accepts `beforeunload`/`confirm`, uses per-suite server ports and
+  profiles, caps UI waits at 10 s with screenshot/trace diagnostics, and removes runtime folders,
+  `.rl-port`, locks and child processes on exit.
 
 ## 1.10.1 — companion presence after a browser restart
 

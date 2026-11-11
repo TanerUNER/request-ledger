@@ -22,13 +22,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const APP_FILE = path.join(ROOT, "index.html");
 const EXT = path.join(ROOT, "dist", "extension");
 const FILE_URL = pathToFileURL(APP_FILE).href;
-const LOOPBACK_URL = "http://127.0.0.1:8080/index.html";
-const TARGET_URL = "http://127.0.0.1:8080/tests/fixtures/picker-target.html";
+let LOOPBACK_URL = "";
+let TARGET_URL = "";
 const SHOT_DIR = path.resolve(ROOT, "..", ".opencode", "workspace", "reports", "capture-tools");
 const CHROME_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -99,8 +101,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* non-page target */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -118,7 +119,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 20000)) {
+  while (Date.now() - started < Math.min(timeoutMs || 8000, 10000)) {
     const value = await fn();
     if (value) return value;
     await sleep(250);
@@ -236,7 +237,7 @@ async function runMode(cdp, mode, url, name, ledgerId, screenshotName) {
   await sleep(900);
 
   await evaluate(cdp, pageSession,
-    "localStorage.setItem('rl-local-mode','1'); localStorage.setItem('oz-istek-defteri-v1', " + JSON.stringify(seedLedger(name, ledgerId, name + " request")) + "); location.reload();");
+    "localStorage.setItem('rl-local-mode','1'); localStorage.removeItem('oz-projeler-v1'); localStorage.setItem('oz-istek-defteri-v1', " + JSON.stringify(seedLedger(name, ledgerId, name + " request")) + "); location.reload();");
   await sleep(2200);
   pageSession = await attach(cdp, target.targetId);
   await openActiveProject(cdp, pageSession);
@@ -448,8 +449,9 @@ async function main() {
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
-  const ping = await fetch(LOOPBACK_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080 (node scripts/serve.cjs 8080)");
+  const localServer = await harness.startServer(ROOT);
+  LOOPBACK_URL = "http://127.0.0.1:" + localServer.port + "/index.html";
+  TARGET_URL = "http://127.0.0.1:" + localServer.port + "/tests/fixtures/picker-target.html";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
@@ -475,18 +477,23 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === "hapajcbgcfllhkiohhkechekajencdod", loaded);
 
     await runMode(cdp, "file://", FILE_URL, "File Bridge App", "ledger_file_bridge", "07-file-bridge-connected.png");
     await runMode(cdp, "127.0.0.1", LOOPBACK_URL, "Loopback Bridge App", "ledger_loopback_bridge", "08-loopback-bridge-connected.png");
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in file/loopback bridge flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
   } finally {
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try { chrome.kill(); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

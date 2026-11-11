@@ -48,6 +48,9 @@
      it cannot detect a ledger conflict on its own. These flags make the page
      re-announce itself once per empty-panel state and once per conflict. */
   let bridgePeerEmptyAsked = false;
+  let bridgePeerOutdated = false;
+  let bridgeOutdatedNotified = false;
+  let bridgeOutdatedSeen = false;
   const bridgeStats = { sent:0, patches:0, received:0, applied:0, echoes:0, media:0 };
   /* Rejected envelopes and the exact conflict evidence are kept in memory so
      the UI/E2E can explain a prompt instead of silently diverging. */
@@ -369,6 +372,8 @@
         source:"request-ledger-web",
         type:"RL_APP_MEDIA",
         v:BRIDGE_VERSION,
+        appVersion:APP_VERSION,
+        rev:Number(state.rev) || 0,
         ledgerId:state.ledgerId,
         projectId:activeProjectId || "",
         requestId:req.id,
@@ -422,6 +427,8 @@
       source:"request-ledger-web",
       type:"RL_APP_MEDIA_REQUEST",
       v:BRIDGE_VERSION,
+      appVersion:APP_VERSION,
+      rev:Number(state.rev) || 0,
       ledgerId:state.ledgerId,
       projectId:activeProjectId || "",
       ids:ids.slice(0, 100)
@@ -430,6 +437,7 @@
 
   async function handleBridgeMedia(data){
     if(!data || !activeProjectId) return;
+    if(bridgePeerOutdated) return;
     if(bridgeEnvelopeProjectId(data) && bridgeEnvelopeProjectId(data) !== activeProjectId){
       bridgeRecordReject("media-project-mismatch", data);
       return;
@@ -498,6 +506,8 @@
       source:"request-ledger-web",
       type:type,
       v:BRIDGE_VERSION,
+      appVersion:APP_VERSION,
+      rev:Number(state.rev) || 0,
       ledgerId:state.ledgerId,
       updatedAt:state.updatedAt || nowISO(),
       project:state.project,
@@ -670,6 +680,8 @@
   /* mode: "merge" (item-level) or "replace" (the user chose this ledger) */
   function bridgeApply(data, mode){
     const incomingProjectId = bridgeEnvelopeProjectId(data);
+    const traceBefore = rlTraceBegin();
+    rlAudit("bridge-before", { mode: mode, incoming: Array.isArray(data && data.requests) ? rlAuditSnapshot(data.requests) : null, stamp: data && data.updatedAt || "" });
     /* Never apply another project's ledger to the open project. An empty id is
        also refused while a project is open; the panel re-announces its identity
        on the next HELLO. */
@@ -679,6 +691,17 @@
     }
     const incoming = Array.isArray(data.requests) ? data.requests : (Array.isArray(data.upserts) ? data.upserts : []);
     const stamp = typeof data.updatedAt === "string" ? data.updatedAt : "";
+    const incomingRev = Number(data.rev);
+    const localRev = Number(state.rev) || 0;
+    /* The app is authoritative while alive: an older snapshot must never
+       replace the whole local ledger. Item-level merges stay allowed because
+       they are id-keyed and keep the newer copy; only "replace" drops rows.
+       An explicit conflict choice (bridgeForceApply) always wins. */
+    if(mode === "replace" && !bridgeForceApply && Number.isFinite(incomingRev) && incoming.length &&
+       (incomingRev < localRev || (incomingRev === localRev && state.requests.length > 0))){
+      bridgeRecordReject("stale-revision", data, { incomingRev: incomingRev, localRev: localRev });
+      return false;
+    }
     const signature = bridgeSignatureFromData(data);
     if(mode !== "replace" && signature && signature === bridgeStateHash()){
       bridgeStats.echoes++;
@@ -730,6 +753,7 @@
           state.ledgerId = data.ledgerId;
         }
       }
+      if(Number.isFinite(incomingRev)) state.rev = Math.max(Number(state.rev) || 0, incomingRev);
       saveNow();
       /* Bridge data was just persisted; it must not look like an unsaved local
          edit when the user switches projects. */
@@ -760,6 +784,8 @@
     refreshGlobal();
     updateBridgeIndicator();
     bridgeStats.applied++;
+    rlTraceCommit("bridge-" + mode, traceBefore);
+    rlAudit("bridge-after", { mode: mode, requests: rlAuditSnapshot(state.requests) });
     setTimeout(function(){ bridgeSendPendingMedia(false); bridgeRequestMissingMedia(); }, 0);
     return true;
   }
@@ -887,6 +913,8 @@
         source:"request-ledger-web",
         type:"RL_APP_ACK",
         v:BRIDGE_VERSION,
+        appVersion:APP_VERSION,
+        rev:Number(state.rev) || 0,
         ledgerId:state.ledgerId,
         projectId:activeProjectId || "",
         projectName:state.project
@@ -966,10 +994,37 @@
       return;
     }
     chip.hidden = false;
-    chip.classList.toggle("is-off", bridgeProjectMismatch);
-    const label = bridgeProjectMismatch ? "Eklenti farklı projede" : "Eklenti bağlı";
+    chip.classList.toggle("is-off", bridgeProjectMismatch || bridgePeerOutdated);
+    const label = bridgePeerOutdated
+      ? "Eklenti sürümü eski — eklentiyi güncelleyin."
+      : (bridgeProjectMismatch ? "Eklenti farklı projede" : "Eklenti bağlı");
     chip.title = translateString(label);
     if(text) text.textContent = translateString(label);
+  }
+
+  function bridgeVersionKey(value){
+    const match = /^(\d+)\.(\d+)/.exec(String(value || ""));
+    return match ? match[1] + "." + match[2] : "";
+  }
+  /* Only these envelopes carry ledger state that a stale companion could
+     overwrite. Control replies are request/response and stay live. */
+  const BRIDGE_STATE_TYPES = {
+    RL_APP_HELLO: true, RL_APP_SNAPSHOT: true, RL_APP_PATCH: true,
+    RL_APP_ACK: true, RL_APP_MEDIA: true, RL_APP_MEDIA_REQUEST: true
+  };
+  function bridgePeerVersionMismatch(data){
+    const peer = data && typeof data.appVersion === "string" ? data.appVersion : "";
+    /* A peer without a version is an older build. */
+    if(!peer) return true;
+    return bridgeVersionKey(peer) !== bridgeVersionKey(APP_VERSION);
+  }
+  function bridgeNoteOutdated(){
+    bridgePeerOutdated = true;
+    bridgeOutdatedSeen = true;
+    if(bridgeOutdatedNotified) return;
+    bridgeOutdatedNotified = true;
+    try{ showToast(translateString("Eklenti sürümü eski — eklentiyi güncelleyin.")); }catch(err){ /* ignore */ }
+    updateBridgeIndicator();
   }
 
   function onBridgeMessage(event){
@@ -981,7 +1036,11 @@
     if(data.source !== "request-ledger-host") return;
     if(typeof data.pageOrigin === "string" && data.pageOrigin !== bridgeEventOrigin()) return;
     if(typeof data.type !== "string" || data.type.indexOf("RL_APP_") !== 0){ return; }
-    if(typeof data.v !== "number" || data.v !== BRIDGE_VERSION) return;
+    if(typeof data.v !== "number") return;
+    if(data.v !== BRIDGE_VERSION){
+      bridgeNoteOutdated();
+      return;
+    }
 
     bridgeStats.received++;
     if(data.type === "RL_APP_BYE"){
@@ -995,6 +1054,15 @@
       return;
     }
     bridgeMarkConnected();
+    /* An older companion may carry a ledger that predates the app's current
+       request. Never apply its state; keep the app authoritative locally.
+       Control replies (tabs/pick/capture results) only answer a request the
+       live app just made and must not be dropped by the version gate. */
+    if(BRIDGE_STATE_TYPES[data.type] && bridgePeerVersionMismatch(data)){
+      bridgeNoteOutdated();
+      return;
+    }
+    if(BRIDGE_STATE_TYPES[data.type]) bridgePeerOutdated = false;
     if(data.type === "RL_APP_ACK"){ bridgeHandleAck(data); return; }
     if(data.type === "RL_APP_PATCH"){
       const peerProjectId = bridgeEnvelopeProjectId(data);
@@ -1212,6 +1280,8 @@
           source:"request-ledger-web",
           type:"RL_APP_ACK",
           v:BRIDGE_VERSION,
+          appVersion:APP_VERSION,
+          rev:Number(state.rev) || 0,
           ledgerId:state.ledgerId,
           projectId:activeProjectId || "",
           projectName:state.project,
@@ -1229,6 +1299,10 @@
         mismatch:function(){ return bridgeProjectMismatch; },
         ledgerId:function(){ return state.ledgerId; },
         stats:function(){ return { sent:bridgeStats.sent, patches:bridgeStats.patches, received:bridgeStats.received, applied:bridgeStats.applied, echoes:bridgeStats.echoes, media:bridgeStats.media }; },
+        outdated:function(){ return bridgePeerOutdated; },
+        outdatedSeen:function(){ return bridgeOutdatedSeen; },
+        rev:function(){ return Number(state.rev) || 0; },
+        version:function(){ return APP_VERSION; },
         conflict:function(){ return bridgeConflictOpen; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },

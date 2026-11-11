@@ -148,16 +148,22 @@
     };
   }
 
-  async function serverHydrateProject(meta){
+  async function serverHydrateProject(meta, force){
     var data = await serverJson("/__rl/load?projectId=" + encodeURIComponent(meta.projectId));
     if(!data || data.ok !== true) return;
     var ledger = data.ledger && typeof data.ledger === "object" ? data.ledger : null;
-    if(ledger){
+    var localLedger = null;
+    try{ localLedger = JSON.parse(localStorage.getItem(projectLedgerKey(meta.projectId)) || "null"); }catch(err){ localLedger = null; }
+    var localRev = Number(localLedger && localLedger.rev) || 0;
+    var incomingRev = Number(ledger && ledger.rev) || 0;
+    rlAudit("server-load-before", { projectId:meta.projectId, incoming: ledger ? rlAuditSnapshot(ledger.requests) : null, stamp: ledger && ledger.updatedAt || "", localRev:localRev, incomingRev:incomingRev });
+    if(ledger && (force || incomingRev > localRev || !localLedger)){
       ledger.project = ledger.project || meta.name;
       ledger.projectCreated = true;
       ledger.ledgerId = ledger.ledgerId || meta.ledgerId || "";
       localStorage.setItem(projectLedgerKey(meta.projectId), JSON.stringify(ledger));
     }
+    rlAudit("server-load-after", { projectId:meta.projectId, source:"hydrate", stamp: ledger && ledger.updatedAt || "", keptLocal: !!(ledger && !(force || incomingRev > localRev || !localLedger)) });
     var archive = data.archive && typeof data.archive === "object"
       ? data.archive : { records:[], drafts:[], history:[] };
     serverArchives[meta.projectId] = archive;
@@ -182,7 +188,7 @@
     }
   }
 
-  async function serverMigrateProject(project){
+  async function serverMigrateProject(project, forcedRev){
     if(!project || !project.id) return false;
     var raw = null;
     try{ raw = localStorage.getItem(projectLedgerKey(project.id)); }catch(err){ raw = null; }
@@ -190,6 +196,7 @@
     var ledger = null;
     try{ ledger = JSON.parse(raw); }catch(err){ ledger = null; }
     if(!ledger || !Array.isArray(ledger.requests)) return false;
+    ledger.rev = Math.max(Number(forcedRev) || 0, Number(ledger.rev) || 0, 1);
     var created = await serverJson("/__rl/projects", {
       method:"POST",
       body:{ projectId:project.id, name:project.name, slug:project.folder || project.name }
@@ -260,10 +267,18 @@
 
   async function serverDiskBootstrap(){
     if(!serverDiskEnabled()) return false;
+    /* Atomic boot: stay in browser-local mode until the whole hydration
+       finished. A throw must never leave disk mode half-enabled. */
+    serverDiskMode = false;
+    serverDiskReady = false;
+    serverDiskActive = false;
+    rlAudit("bootstrap-before", {});
     var boot = null;
     try{ boot = await serverJson("/__rl/bootstrap"); }catch(err){ boot = null; }
-    if(!boot || boot.ok !== true) return false;
-    serverDiskMode = true;
+    if(!boot || boot.ok !== true){
+      try{ window.__rlServerBoot = { mode:false, ready:false, active:false, error:"bootstrap unavailable" }; }catch(err){ /* ignore */ }
+      return false;
+    }
     var serverProjects = Array.isArray(boot.projects) ? boot.projects : [];
     var localRegistry = readRegistry();
     var localById = {};
@@ -295,11 +310,16 @@
         }
       }
       if(server){
-        var serverStamp = String(server.updatedAt || "");
-        var localStamp = local ? String(local.updatedAt || "") : "";
-        if(local && localStamp && localStamp > serverStamp){
-          await serverMigrateProject(local);
-        }else{
+        var localLedger = null;
+        try{ localLedger = JSON.parse(localStorage.getItem(projectLedgerKey(id)) || "null"); }catch(err){ localLedger = null; }
+        var localRev = Number(localLedger && localLedger.rev) || 0;
+        var serverRev = Number(server.rev) || 0;
+        var localHas = !!(localLedger && Array.isArray(localLedger.requests) && localLedger.requests.length);
+        /* Revision decides. Equal revisions keep the local copy: memory/local
+           storage is the newest state while the page is alive. */
+        if(localLedger && localHas && (localRev >= serverRev || !serverRev)){
+          await serverMigrateProject(local, localRev > serverRev ? localRev : serverRev + 1);
+        }else if(serverRev > localRev){
           await serverHydrateProject(server);
         }
         merged.push(serverProjectFromMeta(server));
@@ -319,8 +339,11 @@
     try{ localStorage.setItem(PROJECTS_KEY, JSON.stringify(nextRegistry)); }catch(err){ /* quota */ }
     projectRegistry = nextRegistry;
     activeProjectId = preferred;
+    serverDiskMode = true;
     serverDiskReady = true;
     serverDiskActive = true;
+    try{ window.__rlServerBoot = { mode:true, ready:true, active:true, error:"", projects:merged.length }; }catch(err){ /* ignore */ }
+    rlAudit("bootstrap-after", { projectId:preferred, projects:merged.length });
     return true;
   }
 
@@ -352,12 +375,14 @@
     if(serverSaveBusy){ serverSaveQueued = true; return false; }
     serverSaveBusy = true;
     var projectId = activeProjectId;
+    rlAudit("server-save-start", { projectId:projectId, snapshot: rlAuditSnapshot(state.requests), stamp: state.updatedAt || "" });
     try{
       var saved = await serverSaveProject(projectId);
       if(saved){
         var project = findProjectRecord(projectId);
         if(project && serverDiskSlug(projectId)) updateProjectRecord(projectId, { folder:serverDiskSlug(projectId) });
       }
+      rlAudit(saved ? "server-save-done" : "server-save-failed", { projectId:projectId });
       return saved;
     }catch(err){ return false; }
     finally{

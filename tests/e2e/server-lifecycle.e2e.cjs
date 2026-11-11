@@ -24,6 +24,8 @@ const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
@@ -177,8 +179,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -192,7 +193,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 30000))) {
     const value = await fn();
     if (value) return value;
     await sleep(250);
@@ -328,6 +329,7 @@ async function main() {
 
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
     const appTarget = await cdp.send("Target.createTarget", { url: "http://localhost:" + portA + "/index.html?rl-local=1" });
@@ -620,7 +622,9 @@ async function main() {
     const stoppedByClose = await fetch("http://127.0.0.1:" + portA + "/__rl/status").then((response) => response.ok).catch(() => false);
     check("closing the last app tab stops the server", stoppedByClose === false);
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in server lifecycle flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
   } finally {
@@ -636,13 +640,17 @@ async function main() {
     }
     try { await waitPortFree(portA); } catch (error) { /* ignore */ }
     try {
-      if (previousPortFile) fs.writeFileSync(portFile, previousPortFile);
-      else fs.rmSync(portFile, { force: true });
+      fs.rmSync(portFile, { force: true });
     } catch (error) { /* ignore */ }
     for (const name of ["lifecycle-a.lock", "lifecycle-b.lock", "lifecycle-c.lock", "lifecycle-d.lock"]) {
       try { fs.rmSync(path.join(TMP, name), { force: true }); } catch (error) { /* ignore */ }
     }
+    for (const dir of ["projects", "backups", "deleted-projects"]) {
+      try { fs.rmSync(path.join(ROOT, dir), { recursive: true, force: true }); } catch (error) { /* ignore */ }
+    }
+    try { fs.rmSync(path.join(ROOT, "rl-config.json"), { force: true }); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

@@ -8,10 +8,40 @@
   const PROJECT_LEDGER_PREFIX = "oz-istek-defteri-p-";
   const PROJECT_SCOPE_KEY = "oz-veri-kapsam-v1";
   const THEME_KEY = "gd-theme";
-  const APP_VERSION = "1.10.1";
+  const APP_VERSION = "1.10.2";
 /* Static <title> from <head>; kept for crawlers and restored whenever no project is open. */
 const SEO_TITLE = document.title;
   const CHANGELOG = [
+    {
+      version: "1.10.2",
+      date: "2026-11-11",
+      tr: {
+        features: [],
+        updates: [
+          "Hazır işaretlenen ve ardından yeni bir istek eklenen istekler artık kaybolmuyor; bellek yaşadığı sürece uygulama tek doğruluk kaynağıdır.",
+          "Her proje defteri artık tek yönlü artan bir revizyon taşır; eski bir kayıt veya eski eklenti anlık görüntüsü daha yeni veriyi ezemez.",
+          "Eklenti sürümü uygulamadan farklıysa tek seferlik, engellemeyen bir 'Eklenti sürümü eski — güncelleyin.' bildirimi gösterilir."
+        ],
+        fixes: [
+          "Sunucu modu açılışındaki projectRegistry ReferenceError düzeltildi; açılış artık atomiktir ve yalnızca tamamlanınca disk modu etkinleşir.",
+          "Sekme seçici ve ikinci pencereden öğe+görüntü alma akışındaki RL_APP_TABS_RESULT aktarımı düzeltildi.",
+          "dock.js yalnızca yüklenmiş eklenti iframe'ine hedef kaynakla, henüz yüklenmemiş pencerelere doğrulanan '*' ile mesaj gönderir."
+        ]
+      },
+      en: {
+        features: [],
+        updates: [
+          "A request marked Ready no longer disappears when another request is created next; memory is the single authority while the app is alive.",
+          "Each project ledger now carries a monotonic revision; an older save or a stale companion snapshot can no longer overwrite newer data.",
+          "When the extension build differs from the app, one non-blocking 'Extension build is outdated — update it.' notice is shown."
+        ],
+        fixes: [
+          "Fixed the projectRegistry ReferenceError in server-disk bootstrap; boot is atomic and enables disk mode only after full success.",
+          "Fixed the missing RL_APP_TABS_RESULT relay in the tab chooser and the cross-window element+screenshot flow.",
+          "dock.js now posts with the extension origin only to loaded panel iframes, and with a validated '*' to not-yet-loaded windows."
+        ]
+      }
+    },
     {
       version: "1.10.1",
       date: "2026-11-11",
@@ -1250,6 +1280,7 @@ const SEO_TITLE = document.title;
     "Komut kopyalandı.": "Command copied.",
     "Komut kopyalanamadı.": "Could not copy the command.",
     "Eklenti yardımcısı": "Extension companion",
+    "Eklenti sürümü eski — eklentiyi güncelleyin.": "Extension build is outdated — update it.",
     "Yedek bölümünden tam ZIP yedeği indir. Yedekler proje adı, dil, ajanlar, defter kimliği ve talepleri içerir; görseller ve dosyalar da ZIP içinde taşınır. Tema yedeğe dahil değildir.": "Download a full ZIP backup from the Backup section. Backups include the project name, language, agents, ledger ID and requests; images and files travel inside the ZIP. Theme is not included.",
     "Tüm projeler + talepler + Kayıtlar + görseller + dosya ekleri. Sunucu modunda backups/ klasörüne de yazılır.": "All projects + requests + Records + images + attachments. In server mode it is also written to the backups/ folder.",
     ".zip dosyası seç. Tüm projeler yedekteki verilerle değiştirilir.": "Choose a .zip file. Every project is replaced by the backup data.",

@@ -370,6 +370,8 @@
     bridgeConflictShort:{ tr:"Defter seçimi bekliyor", en:"Ledger choice pending" },
     bridgeDifferentProject:{ tr:"Farklı proje açık", en:"Different project open" },
     bridgeServerStopped:{ tr:"Uygulama sunucusu durduruldu", en:"App server stopped" },
+    bridgeOutdated:{ tr:"Uygulama sürümü eski", en:"App build is outdated" },
+    bridgeOutdatedToast:{ tr:"Uygulama sürümü eski — güncelleyin.", en:"App build is outdated — update it." },
     companionLockTitle:{ tr:"Eklentiyı kullanmak için Request Ledger uygulamasını aç", en:"Open the Request Ledger app to use the extension" },
     companionLockBody:{ tr:"Eklenti uygulamayla birlikte çalışır. Uygulama kapalıyken düzenleme, dışa aktarma ve yedekleme kilitlidir.", en:"The extension works with the app. Editing, export and backup are locked while the app is closed." },
     companionChecking:{ tr:"Uygulama aranıyor…", en:"Looking for the Request Ledger app…" },

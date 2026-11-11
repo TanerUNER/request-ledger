@@ -47,6 +47,9 @@
   var bridgeLastHeard = 0;
   var bridgeConflict = false;
   var bridgePeerHello = null;
+  var bridgePeerOutdated = false;
+  var bridgeOutdatedNotified = false;
+  var bridgePeerVersionSeen = "";
   var bridgeLedgerSynced = false;
   var bridgeSuppress = 0;
   var bridgeSendTimer = null;
@@ -394,11 +397,35 @@
     return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath };
   }
 
+  function bridgePanelVersion(){
+    try{ return String(chrome.runtime.getManifest().version || ""); }catch(err){ return ""; }
+  }
+  function bridgeVersionKey(value){
+    var match = /^(\d+)\.(\d+)/.exec(String(value || ""));
+    return match ? match[1] + "." + match[2] : "";
+  }
+  function bridgePeerVersionMismatch(data){
+    var peer = data && typeof data.appVersion === "string" ? data.appVersion : "";
+    bridgePeerVersionSeen = peer;
+    var mine = bridgePanelVersion();
+    /* A peer without a version is an older build. */
+    if(!peer) return true;
+    return bridgeVersionKey(peer) !== bridgeVersionKey(mine);
+  }
+
+  function bridgeNoteOutdated(){
+    if(bridgeOutdatedNotified) return;
+    bridgeOutdatedNotified = true;
+    try{ toast(lx("bridgeOutdatedToast"), "error"); }catch(err){ /* ignore */ }
+  }
+
   function bridgeEnvelope(type, extra){
     var message = {
       source:"request-ledger-panel",
       type:type,
       v:BRIDGE_VERSION,
+      appVersion:bridgePanelVersion(),
+      rev:Number(app && app.rev) || 0,
       ledgerId:app && app.ledgerId ? String(app.ledgerId) : "",
       updatedAt:app && app.updatedAt ? String(app.updatedAt) : bridgeNow(),
       project:app && typeof app.project === "string" ? app.project : "",
@@ -468,6 +495,7 @@
       source:"request-ledger-panel",
       type:type,
       v:BRIDGE_VERSION,
+      appVersion:bridgePanelVersion(),
       ledgerId:app && app.ledgerId ? String(app.ledgerId) : "",
       pageOrigin:bridgePageIdentity()
     };
@@ -949,6 +977,13 @@
   /* mode: "merge" (item-level) or "replace" (the user chose this ledger) */
   function bridgeApply(data, mode){
     if(!app) return false;
+    var incomingRev = Number(data && data.rev);
+    /* Only a full replacement can drop requests; item-level merges are
+       id-keyed and keep the newer copy, so a live panel edit must pass. */
+    if(mode === "replace" && Number.isFinite(incomingRev) && incomingRev < (Number(app.rev) || 0)){
+      bridgeRecordReject("stale-revision", data, { incomingRev: incomingRev, localRev: Number(app.rev) || 0 });
+      return false;
+    }
     var incomingProjectId = bridgeEnvelopeProjectId(data);
     if(activeProjectId && incomingProjectId !== activeProjectId){
       bridgeRecordReject("project-mismatch", data, { incomingProjectId: incomingProjectId });
@@ -1025,6 +1060,7 @@
       if(typeof resetProjectSnapshot === "function") resetProjectSnapshot();
       bridgeApplyLanguage(app.language);
       bridgeResetKnownIds();
+      if(Number.isFinite(incomingRev)) app.rev = Math.max(Number(app.rev) || 0, incomingRev);
       bridgeLastAppliedHash = bridgeStateSignature();
     }finally{
       bridgeSuppress--;
@@ -1374,6 +1410,17 @@
       handleBridgeServerStop(false);
       return;
     }
+    if(data.type === "RL_APP_HELLO" || data.type === "RL_APP_SNAPSHOT" ||
+       data.type === "RL_APP_PATCH" || data.type === "RL_APP_ACK" ||
+       data.type === "RL_APP_MEDIA" || data.type === "RL_APP_MEDIA_REQUEST"){
+      if(bridgePeerVersionMismatch(data)){
+        bridgePeerOutdated = true;
+        bridgeNoteOutdated();
+        updateBridgeUI();
+        return;
+      }
+      bridgePeerOutdated = false;
+    }
     if(data.type === "RL_APP_MEDIA"){
       bridgeHandleMedia(data);
       return;
@@ -1472,6 +1519,7 @@
         ? lx("bridgeServerStopped")
         : bridgeConflict
           ? lx("bridgeConflictShort")
+          : bridgePeerOutdated ? lx("bridgeOutdated")
           : mismatch ? lx("bridgeDifferentProject")
           : bridgeConnected ? lx("bridgeConnected") : lx("bridgeOffline");
     }
@@ -1616,6 +1664,9 @@
       window.__rlBridgePanel = Object.freeze({
         connected:function(){ return bridgeConnected; },
         serverStopped:function(){ return bridgeServerStopped; },
+        outdated:function(){ return bridgePeerOutdated; },
+        version:function(){ return bridgePanelVersion(); },
+        versions:function(){ return { peer:bridgePeerVersionSeen, mine:bridgePanelVersion(), own:bridgeVersionKey(bridgePanelVersion()), peerKey:bridgeVersionKey(bridgePeerVersionSeen) }; },
         conflict:function(){ return bridgeConflict; },
         conflictInfo:function(){ return bridgeConflictInfo; },
         rejects:function(){ return bridgeRejects.slice(); },

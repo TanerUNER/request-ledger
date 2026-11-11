@@ -201,7 +201,7 @@
      neutral translated "Imported project" label is used. */
   function initProjectRegistry(){
     let registry = readRegistry();
-    if(registry) return registry;
+    if(registry){ projectRegistry = registry; return registry; }
     let legacyRaw = null;
     try{ legacyRaw = localStorage.getItem(STORAGE_KEY); }catch(err){ legacyRaw = null; }
     if(legacyRaw){
@@ -226,10 +226,13 @@
         try{ localStorage.setItem(projectLedgerKey(id), legacyRaw); }catch(err){ /* quota: keep legacy */ }
         writeRegistry(registry);
         migratedProjectId = id;
+        projectRegistry = registry;
         return registry;
       }
     }
-    return emptyProjectRegistry();
+    const empty = emptyProjectRegistry();
+    projectRegistry = empty;
+    return empty;
   }
   function syncActiveProjectRecord(updatedAt){
     if(!activeProjectId) return;

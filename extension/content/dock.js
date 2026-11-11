@@ -666,6 +666,7 @@
   var currentSection = null;
   var pendingSection = null;
   var flyoutLoaded = false;
+  var dockLoaded = false;
   var anchorTop = 0;
   var anchorHeight = 0;
   var flyoutTop = 0;
@@ -727,7 +728,14 @@
 
   function postTo(frame, message) {
     if (!frame || !frame.contentWindow) { return; }
-    try { frame.contentWindow.postMessage(message, extOrigin); } catch (error) { /* ignore */ }
+    /* Before an iframe has navigated to the extension URL its window still
+       carries the page origin; a targeted postMessage then throws. Use the
+       validated wildcard until the extension document has loaded. */
+    var loaded = frame === flyoutFrame ? flyoutLoaded : (frame === dockFrame ? dockLoaded : false);
+    var target = loaded ? extOrigin : "*";
+    try { frame.contentWindow.postMessage(message, target); } catch (error) {
+      try { frame.contentWindow.postMessage(message, "*"); } catch (retryError) { /* ignore */ }
+    }
   }
 
   function postToDock(type, payload) {
@@ -3258,6 +3266,7 @@
     if (isCompanionOrigin()) { hostEl.setAttribute("data-companion", "1"); }
 
     dockFrame = buildFrame(DOCK_ID, "dock", "Request Ledger", DOCK_CSS);
+    dockFrame.addEventListener("load", function () { dockLoaded = true; });
     flyoutFrame = buildFrame(FLYOUT_ID, "flyout", "Request Ledger panel", FLYOUT_CSS);
     flyoutFrame.addEventListener("load", onFlyoutLoad);
 

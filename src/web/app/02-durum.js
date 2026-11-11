@@ -11,7 +11,10 @@
     language: "en",
     exportBehavior: "default",
     lastExport: null,
-    updatedAt: null
+    updatedAt: null,
+    /* Monotonic ledger revision: every save increments it. It never goes
+       backwards, so a stale disk/bridge snapshot can be rejected. */
+    rev: 0
   };
   function newLedgerId(){
     return "ledger_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
@@ -31,6 +34,7 @@
   /* Workspace state (Phase 1): one registry, one ledger per project. The
      startup screen stays visible until a project is opened. */
   let activeProjectId = null;
+  let projectRegistry = null;
   let projectSnapshot = null;
   let projectScreen = "picker";
   let migratedProjectId = null;

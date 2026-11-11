@@ -24,11 +24,13 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
-const TARGET_URL = "http://localhost:8080/tests/fixtures/picker-target.html";
+let WEB_URL = "";
+let TARGET_URL = "";
 const SHOT_DIR = path.resolve(ROOT, "..", ".opencode", "workspace", "reports", "bridge-fixes");
 const EXT_ID = "hapajcbgcfllhkiohhkechekajencdod";
 const CHROME_CANDIDATES = [
@@ -106,8 +108,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -121,7 +122,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const value = await fn();
     if (value) return value;
     await sleep(250);
@@ -349,8 +350,9 @@ async function main() {
   try{ fs.rmSync(path.join(ROOT, 'deleted-projects'), { recursive: true, force: true }); }catch(error){ /* ignore */ }
   try{ fs.rmSync(path.join(ROOT, 'rl-config.json'), { force: true }); }catch(error){ /* ignore */ }
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) throw new Error("dist/extension missing");
-  const ping = await fetch(WEB_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080");
+  const localServer = await harness.startServer(ROOT);
+  WEB_URL = localServer.base + "/index.html?rl-local=1";
+  TARGET_URL = "http://localhost:" + localServer.port + "/tests/fixtures/picker-target.html";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
   const chrome = spawn(chromePath(), [
@@ -370,6 +372,7 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
@@ -666,14 +669,18 @@ async function main() {
       extensionAdoptsApp.test.ledgerId === appAfterAdoption.test.ledgerId &&
       extensionAdoptsApp.test.requests.some((item) => item.title === "Adopted extension request"), extensionAdoptsApp.test);
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in project consistency flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
 
     await cdp.send("Target.closeTarget", { targetId: pageTarget.targetId });
   } finally {
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try { chrome.kill(); } catch (error) { /* ignore */ }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

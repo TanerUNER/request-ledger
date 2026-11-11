@@ -459,6 +459,8 @@
         source: "request-ledger-web",
         type: "RL_APP_ACK",
         v: 1,
+        appVersion: APP_VERSION,
+        rev: Number(state.rev) || 0,
         ledgerId: state.ledgerId,
         projectId: "",
         projectName: "",

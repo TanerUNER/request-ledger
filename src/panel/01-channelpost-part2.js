@@ -352,7 +352,8 @@
       agents: [],
       language: "en",
       exportBehavior: "default",
-      lastExport: null
+      lastExport: null,
+      rev: 0
     };
   }
 

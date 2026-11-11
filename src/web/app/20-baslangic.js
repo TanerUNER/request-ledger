@@ -23,8 +23,12 @@
     }
     /* In server mode the disk is the source of truth: hydrate the browser
        cache (registry, ledgers, archive) before opening the last project. */
-    try{ await serverDiskBootstrap(); }catch(err){ console.warn("Sunucu verisi yüklenemedi", err); }
+    try{ await serverDiskBootstrap(); }catch(err){
+      console.warn("Sunucu verisi yüklenemedi", err);
+      try{ window.__rlServerBoot = { mode:false, ready:false, active:false, error:String(err && err.message || err) }; }catch(ignore){ /* ignore */ }
+    }
     initProjectRegistry();
+    rlInstallStateDebug();
     if(!state.ledgerId) state.ledgerId = newLedgerId();
     /* One-time Phase 1 → Phase 2 media/snapshot scope migration. */
     const registry = readRegistry();

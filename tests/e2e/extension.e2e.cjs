@@ -19,10 +19,12 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrorHelpers = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
-const WEB_URL = "http://localhost:8080/index.html?rl-local=1";
+let WEB_URL = "";
 const CHROME_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -92,7 +94,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -110,7 +112,7 @@ async function evaluate(cdp, sessionId, expression) {
 
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const value = await fn();
     if (value) return value;
     await sleep(300);
@@ -127,8 +129,8 @@ async function main() {
   if (!fs.existsSync(path.join(EXT, "manifest.json"))) {
     throw new Error("dist/extension missing; run node scripts/build.cjs first");
   }
-  const ping = await fetch(WEB_URL).catch(() => null);
-  if (!ping || !ping.ok) throw new Error("local server not running on :8080 (node scripts/serve.cjs 8080)");
+  const localServer = await harness.startServer(ROOT);
+  WEB_URL = localServer.base + "/index.html?rl-local=1";
 
   fs.rmSync(PROFILE, { recursive: true, force: true });
   fs.rmSync(DOWNLOADS, { recursive: true, force: true });
@@ -155,6 +157,7 @@ async function main() {
   try {
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === "hapajcbgcfllhkiohhkechekajencdod", loaded);
     await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: DOWNLOADS });
@@ -638,10 +641,7 @@ async function main() {
     if (!zipFiles.length) throw new Error("no backup zip");
     const zipPath = path.join(DOWNLOADS, zipFiles[0]);
 
-    await cdp.send("DOM.enable", {}, pageSession);
-    const document = await cdp.send("DOM.getDocument", {}, pageSession);
-    const inputNode = await cdp.send("DOM.querySelector", { nodeId: document.root.nodeId, selector: "#restoreInput" }, pageSession);
-    await cdp.send("DOM.setFileInputFiles", { files: [zipPath], nodeId: inputNode.nodeId }, pageSession);
+    await harness.setInputFiles(cdp, pageSession, "#restoreInput", [zipPath]);
     await sleep(1200);
 
     const confirmOpen = await evaluate(cdp, pageSession, "!!document.querySelector('#confirmModal.is-open')");
@@ -670,29 +670,39 @@ async function main() {
     const backupModalOpen = await evaluate(cdp, pageSession, `!!document.querySelector('#backupModal.is-open')`);
     check("web app opens the backup modal", backupModalOpen === true, backupModalOpen);
     await evaluate(cdp, pageSession, `document.getElementById('backupZipBtn').click()`);
+    const findWebZips = () => {
+      const found = fs.readdirSync(DOWNLOADS)
+        .filter((name) => name.endsWith(".zip"))
+        .map((name) => path.join(DOWNLOADS, name));
+      const projectsRoot = path.join(ROOT, "projects");
+      if (fs.existsSync(projectsRoot)) {
+        fs.readdirSync(projectsRoot, { withFileTypes: true }).forEach((entry) => {
+          if (!entry.isDirectory()) return;
+          [path.join(projectsRoot, entry.name), path.join(projectsRoot, entry.name, "exports")].forEach((folder) => {
+            if (!fs.existsSync(folder)) return;
+            fs.readdirSync(folder)
+              .filter((name) => /^istek-defteri-yedek-.*\.zip$/i.test(name))
+              .forEach((name) => found.push(path.join(folder, name)));
+          });
+        });
+      }
+      return found;
+    };
     const webZips = await waitFor(
       () => {
-        const found = fs.readdirSync(DOWNLOADS).filter((name) => name.endsWith(".zip"));
+        const found = findWebZips();
         return found.length ? found : null;
       },
       "web app backup zip",
       20000
     );
-    check("web app produces a backup ZIP", webZips.length === 1, webZips);
+    check("web app produces a backup ZIP", webZips.length >= 1, webZips);
     if (!webZips.length) throw new Error("no web app backup zip");
-    const webZipPath = path.join(DOWNLOADS, webZips[0]);
+    const webZipPath = webZips[0];
 
     await evaluate(cdp, dockSession, `document.querySelector('[data-section="backup"]').click()`);
     await sleep(900);
-    await cdp.send("DOM.enable", {}, flyoutSession);
-    const panelDoc = await cdp.send("DOM.getDocument", {}, flyoutSession);
-    const backupInput = await cdp.send(
-      "DOM.querySelector",
-      { nodeId: panelDoc.root.nodeId, selector: "#rl-backup-input" },
-      flyoutSession
-    );
-    check("extension exposes a backup file input", backupInput.nodeId > 0, backupInput);
-    await cdp.send("DOM.setFileInputFiles", { files: [webZipPath], nodeId: backupInput.nodeId }, flyoutSession);
+    await harness.setInputFiles(cdp, flyoutSession, "#rl-backup-input", [webZipPath]);
     await sleep(1500);
     const restoreReady = await evaluate(cdp, flyoutSession, `!!document.querySelector('[data-act="backup-confirm"]')`);
     check("extension opens the restore confirmation", restoreReady === true, restoreReady);
@@ -713,13 +723,17 @@ async function main() {
       (event) => event.method === "Runtime.exceptionThrown" && (event.sessionId === pageSession || event.sessionId === flyoutSession)
     );
     check("no uncaught errors in the page or panel", pageErrors.length === 0, pageErrors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
+    const pageFailures = pageErrorHelpers.collect(cdp);
+    check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
   } finally {
+    try { localServer.stop(); } catch (error) { /* ignore */ }
     try {
       chrome.kill();
     } catch (error) {
       /* ignore */
     }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

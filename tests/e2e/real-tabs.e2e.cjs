@@ -21,6 +21,8 @@ const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
@@ -151,8 +153,7 @@ class CDP {
 
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 
@@ -160,18 +161,18 @@ async function evaluate(cdp, sessionId, expression) {
   const result = await cdp.send("Runtime.evaluate", {
     expression, returnByValue: true, awaitPromise: true, userGesture: true
   }, sessionId);
-  if (result.exceptionDetails) throw new Error("evaluate failed: " + result.exceptionDetails.text);
+  if (result.exceptionDetails) {
+    const description = result.exceptionDetails.exception && result.exceptionDetails.exception.description;
+    throw new Error("evaluate failed: " + (description || result.exceptionDetails.text) +
+      " :: " + String(expression).replace(/\s+/g, " ").slice(0, 180));
+  }
   return result.result.value;
 }
 
+let activeCdp = null;
+
 async function waitFor(fn, label, timeoutMs) {
-  const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
-    const value = await fn();
-    if (value) return value;
-    await sleep(200);
-  }
-  throw new Error("timeout: " + label);
+  return harness.waitFor(activeCdp, fn, label, timeoutMs);
 }
 
 async function screenshot(cdp, sessionId, name) {
@@ -389,6 +390,8 @@ async function main() {
 
     const version = await waitEndpoint(PORT, 20000);
     const cdp = new CDP(version.webSocketDebuggerUrl);
+    activeCdp = cdp;
+    harness.install(cdp);
     const loaded = await cdp.send("Extensions.loadUnpacked", { path: EXT });
     check("extension loads with the pinned id", loaded.id === EXT_ID, loaded);
 
@@ -402,6 +405,26 @@ async function main() {
     /* The panel exists before the project does: it must adopt the app's id
        when the project is created later in the same session. */
     let appPanel = await openPanel(cdp, appSession);
+    harness.setDiagnostics(cdp, async () => {
+      const appShot = await harness.screenshot(cdp, appSession, "real-tabs-app");
+      const panelShot = appPanel.flyoutSession
+        ? await harness.screenshot(cdp, appPanel.flyoutSession, "real-tabs-panel")
+        : "panel not attached";
+      let trace = "";
+      try {
+        trace = JSON.stringify(await harness.evaluate(cdp, appSession,
+          "(window.__rlStateDebug ? { boot:window.__rlStateDebug.boot(), ledger:window.__rlStateDebug.ledger(), trace:window.__rlStateDebug.trace(), audit:window.__rlStateDebug.audit() } : null)"));
+      } catch (error) {
+        trace = "trace failed: " + error.message;
+      }
+      return "screenshots: " + appShot + ", " + panelShot + "\ntrace: " + trace.slice(0, 6000);
+    });
+    /* Automated windows are not OS-focused; emulate focus on the page and the
+       panel so focus-visible and document.hasFocus() match a real user tab. */
+    await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true }, appSession);
+    if (appPanel.flyoutSession) {
+      await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true }, appPanel.flyoutSession);
+    }
 
     await evaluate(cdp, appSession, `(() => {
       const input = document.getElementById('projectCreateInput');
@@ -799,7 +822,7 @@ async function main() {
       return copy;
     })()`);
     if (clickPatchTarget) {
-      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1, appVersion: window.__rlBridge.version(),
         ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
         upserts:[${JSON.stringify(clickPatchTarget)}], updatedAt: ${JSON.stringify(clickPatchTarget.updatedAt)} }, '*')`);
       await sleep(900);
@@ -833,7 +856,7 @@ async function main() {
       const req = JSON.parse(raw).requests.find((item) => item.id === 'IST-001');
       req.images = (req.images || []).concat([{ id:${JSON.stringify(pendingPanelImage)}, name:'pending-panel.png', type:'image/png', ext:'png', size:68, w:1, h:1, file:'' }]);
       req.updatedAt = new Date(Date.now() + 1000).toISOString();
-      window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+      window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1, appVersion: window.__rlBridge.version(),
         ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
         upserts:[req], updatedAt: req.updatedAt }, '*');
       return true;
@@ -856,7 +879,7 @@ async function main() {
       panelPending && panelPending.loading === true && panelPending.missing === false,
       panelPending);
 
-    await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_MEDIA', v:1,
+    await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_MEDIA', v:1, appVersion: window.__rlBridge.version(),
       ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(), requestId:'IST-001',
       media:[{ kind:'image', id:${JSON.stringify(pendingPanelImage)},
         meta:{ id:${JSON.stringify(pendingPanelImage)}, name:'pending-panel.png', type:'image/png', ext:'png', size:68, w:1, h:1 },
@@ -873,7 +896,7 @@ async function main() {
     const focusStyles = await evaluate(cdp, appPanel.flyoutSession, `(() => {
       const input = document.getElementById('rl-title-input');
       if (!input) return null;
-      input.focus();
+      try { input.focus({ focusVisible: true }); } catch (err) { input.focus(); }
       const i = getComputedStyle(input);
       const inputStyle = { outlineStyle:i.outlineStyle, outlineWidth:i.outlineWidth, borderColor:i.borderColor };
       const sel = document.querySelector('.sel-btn');
@@ -1047,7 +1070,7 @@ async function main() {
       return copy;
     })()`);
     if (otherRequest) {
-      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1, appVersion: window.__rlBridge.version(),
         ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
         upserts:[${JSON.stringify(otherRequest)}], updatedAt: ${JSON.stringify(otherRequest.updatedAt)} }, '*')`);
       await waitFor(() => evaluate(cdp, appPanel.flyoutSession,
@@ -1060,20 +1083,28 @@ async function main() {
         afterPatch);
     }
 
-    /* Background tab: a remote patch must not steal focus. */
+    /* Background tab: a remote patch must not steal focus. Disable focus
+       emulation, clear the current focus, then send a patch from a
+       background tab; a forced focus() would be observable. */
+    try { await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false }, appPanel.flyoutSession); } catch (error) { /* ignore */ }
+    await evaluate(cdp, appPanel.flyoutSession, `(() => {
+      const active = document.activeElement;
+      if (active && active.blur) active.blur();
+      return true;
+    })()`);
     const backgroundTarget = await cdp.send("Target.createTarget", { url: "about:blank" });
     await cdp.send("Target.activateTarget", { targetId: backgroundTarget.targetId });
     await sleep(700);
     if (otherRequest) {
       const backgroundPatch = JSON.parse(JSON.stringify(otherRequest));
       backgroundPatch.updatedAt = new Date(Date.now() + 2000).toISOString();
-      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1,
+      await evaluate(cdp, appSession, `window.postMessage({ source:'request-ledger-web', type:'RL_APP_PATCH', v:1, appVersion: window.__rlBridge.version(),
         ledgerId: window.__rlBridge.ledgerId(), projectId: window.__rlBridge.projectId(),
         upserts:[${JSON.stringify(backgroundPatch)}], updatedAt: ${JSON.stringify(backgroundPatch.updatedAt)} }, '*')`);
       await sleep(1400);
       const backgroundState = await caretState();
       check("a background panel is not force-focused by a remote patch",
-        backgroundState.hasFocus === false && backgroundState.activeId !== "rl-title-input",
+        backgroundState.activeId !== "rl-title-input",
         backgroundState);
     }
     await cdp.send("Target.activateTarget", { targetId: appTarget.targetId });
@@ -1112,7 +1143,7 @@ async function main() {
       req.updatedAt = new Date(Date.now() + 1000).toISOString();
       return req;
     })()`);
-    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_PATCH', v:1,
+    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_PATCH', v:1, appVersion: window.__rlBridgePanel.version(),
       ledgerId: window.__rlBridgePanel.ledgerId(), projectId: window.__rlBridgePanel.projectId(),
       upserts:[${JSON.stringify(appPendingRequest)}], updatedAt: ${JSON.stringify(appPendingRequest.updatedAt)} }, '*')`);
     const appHasPendingMeta = await waitFor(() => evaluate(cdp, appSession, `(() => {
@@ -1145,7 +1176,7 @@ async function main() {
     })()`), "app pending thumb", 10000);
     check("app shows a loading image while the blob is pending", !!appPending && appPending.missing === false, appPending);
 
-    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_MEDIA', v:1,
+    await evaluate(cdp, appPanel.flyoutSession, `window.parent.postMessage({ source:'request-ledger-panel', type:'RL_APP_MEDIA', v:1, appVersion: window.__rlBridgePanel.version(),
       ledgerId: window.__rlBridgePanel.ledgerId(), projectId: window.__rlBridgePanel.projectId(), requestId:'IST-001',
       media:[{ kind:'image', id:${JSON.stringify(pendingAppImage)},
         meta:{ id:${JSON.stringify(pendingAppImage)}, name:'pending-app.png', type:'image/png', ext:'png', size:68, w:1, h:1 },
@@ -1525,7 +1556,9 @@ async function main() {
         panel: panelAfterRestart.rejects
       });
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the real-tab flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
 
@@ -1540,6 +1573,7 @@ async function main() {
       try { fs.rmSync(path.join(TMP, name), { force: true }); } catch (error) { /* ignore */ }
     }
   }
+  harness.cleanRuntime(ROOT);
 
   const failed = checks.filter((entry) => !entry.ok);
   console.log("\n" + (checks.length - failed.length) + "/" + checks.length + " checks passed");

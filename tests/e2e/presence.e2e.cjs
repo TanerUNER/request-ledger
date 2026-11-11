@@ -21,6 +21,8 @@ const http = require("node:http");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const pageErrors = require("./_page-errors.cjs");
+const harness = require("./_harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const EXT = path.join(ROOT, "dist", "extension");
@@ -84,7 +86,7 @@ async function waitEndpoint(port, timeoutMs) {
 }
 async function waitPortFree(port, timeoutMs) {
   const started = Date.now();
-  while (Date.now() - started < (timeoutMs || 15000)) {
+  while (Date.now() - started < (Math.min(timeoutMs || 8000, 10000))) {
     const free = await new Promise((resolve) => {
       const probe = net.createServer();
       probe.once("error", () => resolve(false));
@@ -127,8 +129,7 @@ class CDP {
 }
 async function attach(cdp, targetId) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.send("Runtime.enable", {}, sessionId);
-  try { await cdp.send("Page.enable", {}, sessionId); } catch (error) { /* ignore */ }
+  await harness.prepareSession(cdp, sessionId);
   return sessionId;
 }
 async function evaluate(cdp, sessionId, expression) {
@@ -140,7 +141,7 @@ async function evaluate(cdp, sessionId, expression) {
 }
 async function waitFor(fn, label, timeoutMs) {
   const started = Date.now();
-  const limit = timeoutMs || 15000;
+  const limit = Math.min(timeoutMs || 8000, 10000);
   while (Date.now() - started < limit) {
     try { const value = await fn(); if (value) return value; } catch (error) { /* retry */ }
     await sleep(150);
@@ -178,6 +179,7 @@ function startPlainServer(port) {
 async function connect() {
   const version = await waitEndpoint(CDP_PORT, 20000);
   const cdp = new CDP(version.webSocketDebuggerUrl);
+    harness.install(cdp);
   /* Unpacked extensions are not persisted across a browser relaunch; load the
      same pinned id into the existing profile so chrome.storage.local survives. */
   try { await cdp.send("Extensions.loadUnpacked", { path: EXT }); } catch (error) { /* already loaded */ }
@@ -368,7 +370,9 @@ async function main() {
     check("closing the file:// app page hides the dock without a reload",
       plainAfterFile.host === false, plainAfterFile);
 
-    const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
+    const pageFailures = pageErrors.collect(cdp);
+check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
+const errors = cdp.events.filter((event) => event.method === "Runtime.exceptionThrown");
     check("no uncaught errors in the presence flow", errors.length === 0,
       errors.slice(0, 3).map((event) => (event.params.exceptionDetails || {}).text));
   } finally {
