@@ -61,6 +61,44 @@ function callApi(fn) {
   });
 }
 
+/* chrome.storage areas are receiver-checked (`Illegal invocation` when called
+   with another `this`), so they need their own bound caller. */
+function callStorage(area, method) {
+  var args = Array.prototype.slice.call(arguments, 2);
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    function done(result) {
+      if (settled) { return; }
+      settled = true;
+      var error = chrome.runtime && chrome.runtime.lastError;
+      if (error) reject(new Error(error.message || String(error)));
+      else resolve(result);
+    }
+    try {
+      area[method].apply(area, args.concat(done));
+    } catch (error) {
+      if (!settled) { settled = true; reject(error instanceof Error ? error : new Error(String(error))); }
+    }
+  });
+}
+
+function storageLocalGet(keys) {
+  return callStorage(chrome.storage.local, "get", keys);
+}
+function storageLocalSet(items) {
+  return callStorage(chrome.storage.local, "set", items);
+}
+function storageSessionGet(keys) {
+  return chrome.storage.session
+    ? callStorage(chrome.storage.session, "get", keys)
+    : Promise.resolve({});
+}
+function storageSessionSet(items) {
+  return chrome.storage.session
+    ? callStorage(chrome.storage.session, "set", items)
+    : Promise.resolve();
+}
+
 function isTabId(value) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -289,6 +327,23 @@ function pingTabPresence(tab) {
 }
 
 async function probeAppPresence(message) {
+  /* Probe real ports first - the page's own port plus the last known app port.
+     This is a live /__rl/status check, never a trusted storage flag. */
+  var stored = {};
+  try { stored = await storageLocalGet(["rl-app-port", "rl-port"]); } catch (error) { stored = {}; }
+  var candidates = [];
+  [message && message.port, stored["rl-app-port"], stored["rl-port"]].forEach(function (value) {
+    var port = Number(value);
+    if (Number.isInteger(port) && port > 0 && candidates.indexOf(port) < 0) candidates.push(port);
+  });
+  for (var c = 0; c < candidates.length; c += 1) {
+    var direct = await probePortStatus(candidates[c]);
+    if (direct) {
+      try { await storageLocalSet({ "rl-app-port": candidates[c] }); } catch (error) { /* ignore */ }
+      return { open: true, mode: "server", port: candidates[c], origin: "http://localhost:" + candidates[c], at: Date.now() };
+    }
+  }
+
   var tabs = [];
   try { tabs = await callApi(chrome.tabs.query, {}); } catch (error) { tabs = []; }
   var sawStoppedApp = false;
@@ -300,7 +355,15 @@ async function probeAppPresence(message) {
     if (response.stopped === true) { sawStoppedApp = true; continue; }
     var fileMode = response.file === true || /^file:/i.test(String(response.url || tab.url || ""));
     if (fileMode) {
-      return { open: true, mode: "file", url: response.url || tab.url || "" };
+      /* The file app page refreshes rl-app-file-at while it is open. */
+      try {
+        var fileStored = await storageLocalGet(["rl-app-file-at"]);
+        if (Number(fileStored && fileStored["rl-app-file-at"]) > Date.now() - 12000) {
+          return { open: true, mode: "file", url: response.url || tab.url || "", at: Date.now() };
+        }
+      } catch (error) { /* ignore */ }
+      sawStoppedApp = true;
+      continue;
     }
     var tabPort = Number(response.port);
     if (!(tabPort > 0)) {
@@ -309,14 +372,14 @@ async function probeAppPresence(message) {
     if (tabPort > 0) {
       var tabStatus = await probePortStatus(tabPort);
       if (tabStatus) {
-        try { await callApi(chrome.storage.local.set, { "rl-app-port": tabPort }); } catch (error) { /* ignore */ }
-        return { open: true, mode: "server", port: tabPort, origin: "http://localhost:" + tabPort };
+        try { await storageLocalSet({ "rl-app-port": tabPort }); } catch (error) { /* ignore */ }
+        return { open: true, mode: "server", port: tabPort, origin: "http://localhost:" + tabPort, at: Date.now() };
       }
       sawStoppedApp = true;
     }
   }
-  if (sawStoppedApp) return { open: false, mode: "", reason: "app-stopped" };
-  return { open: false, mode: "", reason: "no-app" };
+  if (sawStoppedApp) return { open: false, mode: "", reason: "app-stopped", at: Date.now() };
+  return { open: false, mode: "", reason: "no-app", at: Date.now() };
 }
 
 /* Message first; if the tab has no content script, inject and retry once. */
@@ -757,9 +820,28 @@ function handleContentMessage(message, sender, sendResponse) {
       sendResponse({ ok: true, tabId: typeof tabId === "number" ? tabId : 0 });
       return false;
     }
+    case "RL_APP_PRESENCE": {
+      respondAppPresence(message, sendResponse);
+      return true;
+    }
     default:
       return false;
   }
+}
+
+/* Shared by content scripts and extension pages: both may ask whether the app
+   is live before mounting/unmounting UI. */
+function respondAppPresence(message, sendResponse) {
+  probeAppPresence(message).then(function (result) {
+    var open = !!(result && result.open);
+    writeAppAlive(open, result && result.port
+      ? { "rl-app-port": result.port, "rl-app-mode": "server" }
+      : (open && result.mode === "file" ? { "rl-app-mode": "file" } : { "rl-app-mode": "" }));
+    sendResponse(Object.assign({ at: Date.now() }, result || { open: false }));
+  }, function () {
+    writeAppAlive(false, { "rl-app-mode": "" });
+    sendResponse({ open: false, at: Date.now() });
+  });
 }
 
 function handlePanelMessage(message, sendResponse) {
@@ -780,14 +862,7 @@ function handlePanelMessage(message, sendResponse) {
     }
 
     case "RL_APP_PRESENCE": {
-      probeAppPresence(message).then(function (result) {
-        var open = !!(result && result.open);
-        writeAppAlive(open, result && result.port ? { "rl-app-port": result.port } : null);
-        sendResponse(result || { open: false });
-      }, function () {
-        writeAppAlive(false);
-        sendResponse({ open: false });
-      });
+      respondAppPresence(message, sendResponse);
       return true;
     }
 
@@ -928,39 +1003,83 @@ if (chrome.tabs.onUpdated) {
 /* ---- app alive poll -------------------------------------------------- */
 var appAliveTimer = null;
 var appAliveInFlight = false;
+var appSessionBootChecked = false;
 
 async function writeAppAlive(alive, extra) {
-  var payload = { "rl-app-alive": alive === true };
+  var payload = { "rl-app-alive": alive === true, "rl-app-alive-at": Date.now() };
   if (extra) {
     Object.keys(extra).forEach(function (key) { payload[key] = extra[key]; });
   }
-  try { await callApi(chrome.storage.local.set, payload); } catch (error) { /* ignore */ }
+  try { await storageLocalSet(payload); } catch (error) { /* ignore */ }
+}
+
+/* Pessimistic browser start: chrome.storage.session is empty after a browser
+   restart, so the first worker wake clears any stale `rl-app-alive:true`
+   before a probe can read it. Same-session wakes keep the live flag. */
+async function resetAppPresence() {
+  try {
+    await storageLocalSet({
+      "rl-app-alive": false,
+      "rl-app-alive-at": 0,
+      "rl-app-mode": ""
+    });
+  } catch (error) { /* ignore */ }
+}
+
+async function ensureSessionPresenceReset() {
+  if (appSessionBootChecked) return;
+  appSessionBootChecked = true;
+  try {
+    if (!chrome.storage.session) { await resetAppPresence(); return; }
+    var stored = await storageSessionGet(["rl-presence-boot"]);
+    if (!stored || !stored["rl-presence-boot"]) {
+      await resetAppPresence();
+      await storageSessionSet({ "rl-presence-boot": Date.now() });
+    }
+  } catch (error) {
+    await resetAppPresence();
+  }
 }
 
 async function pollAppAlive() {
   if (appAliveInFlight) return false;
   appAliveInFlight = true;
   try {
+    await ensureSessionPresenceReset();
     var stored = {};
-    try { stored = await callApi(chrome.storage.local.get, ["rl-app-port", "rl-port", "rl-app-mode", "rl-app-file-at"]); } catch (error) { stored = {}; }
+    try { stored = await storageLocalGet(["rl-app-port", "rl-port", "rl-app-mode", "rl-app-file-at"]); } catch (error) { stored = {}; }
     var fileRecent = stored["rl-app-mode"] === "file" &&
       Number(stored["rl-app-file-at"] || 0) > Date.now() - 12000;
     var ports = [];
-    [stored["rl-app-port"], stored["rl-port"], 8080].forEach(function (value) {
+    [stored["rl-app-port"], stored["rl-port"]].forEach(function (value) {
       var port = Number(value);
       if (Number.isInteger(port) && port > 0 && ports.indexOf(port) < 0) ports.push(port);
     });
+    /* Only a legacy profile without a known port falls back to 8080. */
+    if (!ports.length) ports.push(8080);
     var alive = fileRecent;
     var livePort = 0;
     for (var i = 0; i < ports.length && !alive; i += 1) {
       var status = await probePortStatus(ports[i]);
       if (status) { alive = true; livePort = Number(status.port) || ports[i]; }
     }
-    await writeAppAlive(alive, livePort ? { "rl-app-port": livePort, "rl-app-mode": "server" } : null);
+    if (alive) {
+      await writeAppAlive(true, livePort
+        ? { "rl-app-port": livePort, "rl-app-mode": "server" }
+        : { "rl-app-mode": "file" });
+    } else {
+      await writeAppAlive(false, { "rl-app-mode": "" });
+    }
     return alive;
   } finally {
     appAliveInFlight = false;
   }
+}
+
+function stopAppAlivePoll() {
+  if (!appAliveTimer) return;
+  try { clearInterval(appAliveTimer); } catch (error) { /* ignore */ }
+  appAliveTimer = null;
 }
 
 function startAppAlivePoll() {
@@ -970,12 +1089,17 @@ function startAppAlivePoll() {
   if (appAliveTimer && typeof appAliveTimer.unref === "function") appAliveTimer.unref();
 }
 
+async function restartAppAlivePoll(reset) {
+  stopAppAlivePoll();
+  appSessionBootChecked = false;
+  if (reset) await resetAppPresence();
+  startAppAlivePoll();
+}
+
 try {
   if (chrome.runtime.onStartup) {
     chrome.runtime.onStartup.addListener(function () {
-      try { if (appAliveTimer) clearInterval(appAliveTimer); } catch (error) { /* ignore */ }
-      appAliveTimer = null;
-      startAppAlivePoll();
+      restartAppAlivePoll(true);
     });
   }
   startAppAlivePoll();
@@ -985,7 +1109,5 @@ try {
 chrome.runtime.onInstalled.addListener(function (details) {
   var reason = details && details.reason ? details.reason : "unknown";
   console.log("[Request Ledger] installed (" + reason + ") v" + VERSION);
-  try { if (appAliveTimer) clearInterval(appAliveTimer); } catch (error) { /* ignore */ }
-  appAliveTimer = null;
-  startAppAlivePoll();
+  restartAppAlivePoll(true);
 });

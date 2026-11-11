@@ -192,6 +192,13 @@ async function main() {
 
     await waitFor(() => evaluate(cdp, pageSession, "!!document.getElementById('rl-host')"), "dock mount");
     check("dock host mounts on an http page", true);
+    const presence = await evaluate(cdp, pageSession, `(() => {
+      try { return JSON.parse(document.documentElement.getAttribute('data-rl-presence') || 'null'); }
+      catch (error) { return null; }
+    })()`);
+    check("presence carries a fresh timestamp and one mount",
+      !!presence && presence.alive === true && presence.mounts === 1 && presence.host === true &&
+      presence.at > Date.now() - 12000, presence);
 
     /* The app is the project authority. Create its project before using the
        panel; the extension has no project creation UI. */

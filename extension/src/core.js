@@ -117,6 +117,29 @@ const TYPE_TEMPLATES = {
 
 const CHANGELOG = [
   {
+    version: "1.10.1",
+    area: "extension",
+    date: "2026-11-11",
+    tr: {
+      features: [],
+      updates: [
+        "Eklenti tarayıcı yeniden başlatıldığında uygulamayı doğrulamadan görünmez; önceki oturumun bağlantı durumu artık kalıcı değildir."
+      ],
+      fixes: [
+        "Uygulama kapalıyken tarayıcı yeniden başlatıldığında eklentinin sayfalarda görünmesine neden olan eski varlık kaydı düzeltildi."
+      ]
+    },
+    en: {
+      features: [],
+      updates: [
+        "The extension stays hidden after a browser restart until it verifies the app; a previous session's connection state is no longer trusted."
+      ],
+      fixes: [
+        "Fixed stale presence making the companion appear on pages after a browser restart with the app closed."
+      ]
+    }
+  },
+  {
     version: "1.10.0",
     area: "extension",
     date: "2026-11-10",

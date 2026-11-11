@@ -1,11 +1,27 @@
-# Release notes — 2026-11-10
+# Release notes — 2026-11-11
 
-Versions: **web app 1.10.0**, **extension 1.10.0**
+Versions: **web app 1.10.1**, **extension 1.10.1**
 
 Artifacts: `dist/request-ledger.html`, `dist/extension/`,
-`dist/request-ledger-extension-1.10.0.zip`, `dist/request-ledger-extension.zip`,
-`dist/request-ledger-test-2026-11-10.zip`, `dist/CHECKSUMS.txt`, `dist/RELEASE.md`.
+`dist/request-ledger-extension-1.10.1.zip`, `dist/request-ledger-extension.zip`,
+`dist/request-ledger-test-2026-11-11.zip`, `dist/CHECKSUMS.txt`, `dist/RELEASE.md`.
 Rebuild with `node scripts/build.cjs`; verify with `node scripts/build.cjs --check`.
+
+## 1.10.1 — companion presence after a browser restart
+
+- The companion no longer trusts a persisted `rl-app-alive:true` from a previous browser session.
+  The worker clears presence at the start of a browser session and only reports the app as alive
+  after a real `/__rl/status` probe (or a live tab check for `file://`).
+- Presence writes now carry `rl-app-alive-at`. The content script mounts only for a fresh value
+  (≤ 12 s), asks the worker for a live answer at boot, and ignores stale state; a local watchdog
+  unmounts if updates stop.
+- A stale value no longer creates a host, iframe, launcher or lock card. With the app closed nothing
+  appears on any page after a restart; with the app running the dock appears automatically within
+  about 2 s. Closing/starting the server still hides/returns the UI without a page reload, in one or
+  several tabs.
+- `file://` app mode keeps a fresh timestamp while the app page is open and clears it on `pagehide`.
+- Fixed worker storage calls that used the wrong receiver (`Illegal invocation`), which had prevented
+  the 5 s presence poll from persisting its result.
 
 ## 1.10.0 — disk truth, safer backups and a silent port handoff
 

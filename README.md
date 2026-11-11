@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img alt="Web app 1.10.0" src="https://img.shields.io/badge/web%20app-1.10.0-d13e27?style=for-the-badge">
-  <img alt="Extension 1.10.0" src="https://img.shields.io/badge/extension-1.10.0-4f614b?style=for-the-badge">
+  <img alt="Web app 1.10.1" src="https://img.shields.io/badge/web%20app-1.10.1-d13e27?style=for-the-badge">
+  <img alt="Extension 1.10.1" src="https://img.shields.io/badge/extension-1.10.1-4f614b?style=for-the-badge">
   <img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-bilingual-1d2328?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
@@ -151,7 +151,7 @@ bottom-right of pages and a 360 px flyout; it does not reflow the page.
 
 | Capability | What it does |
 |---|---|
-| **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** — no rail, launcher, iframe or lock card. It returns automatically when the app starts. |
+| **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** — no rail, launcher, iframe or lock card. It returns automatically when the app starts. On a browser restart it verifies the app before showing anything: a previously connected state never survives a restart, and with the app closed nothing appears on any page. |
 | **App-owned projects** | Projects are created, renamed, switched and deleted only in the app. The extension always follows the app’s active project; it has no project list, picker or creation UI. |
 | **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. A thumbnail whose blob is still in transit shows a neutral “Loading image…” state instead of “Image not found”. |
 | **Element picker** | Pick an element on the current page or on a tab chosen from the app. Repeated picks append selectors with `" | "` on both surfaces (deduped, 200-character cap). |
@@ -163,7 +163,9 @@ bottom-right of pages and a 360 px flyout; it does not reflow the page.
 
 The extension cannot enable or disable itself from `chrome://extensions`. If you disable it there, it
 cannot come back by itself; re-enable it manually. When the app is closed, the extension is simply
-invisible, not disabled.
+invisible, not disabled. Presence is verified, not assumed: every presence write carries a timestamp,
+a value older than ~12 s is ignored, and the dock mounts only after a live check of the app or its
+server. A stale `true` from a previous browser session therefore never mounts the UI at startup.
 
 Install it from `chrome://extensions` → **Developer mode** → **Load unpacked** → select `extension/`
 (or the unzipped `request-ledger-extension.zip`). The pinned extension id is
@@ -271,8 +273,10 @@ extension page is an iframe on an untrusted page; treat screenshots on untrusted
   (1024 px).
 - The single HTML file cannot start the local server. The extension bridge can still connect when the
   extension is allowed to access file URLs, but there are no server project-folder writes.
-- A web page cannot spawn a process. Restart works only while the server is alive; after a hard stop,
-  run `start.cmd` (the app reconnects on its own when it returns).
+- A web page cannot spawn a process. Restart and port changes work only while the server is alive;
+  after a hard stop, run `start.cmd` and reload the page — the app does not silently reconnect.
+- The companion re-checks presence after a browser restart. A connection from the previous session
+  never makes it appear, and no UI mounts until the app (or its server) answers.
 - Live media sync is capped at **8 MB per item**. Larger images/attachments and all media in a
   portable archive still travel with a backup ZIP.
 - The extension is a companion: with no app running, it shows no UI on any page. It cannot re-enable

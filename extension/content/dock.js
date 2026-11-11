@@ -3246,6 +3246,7 @@
   }
 
   function mount() {
+    mountAttempts += 1;
     if (teardown || hostSuspended) { return; }
     if (hostEl || document.getElementById(HOST_ID)) { return; }
     var root = document.documentElement;
@@ -3377,9 +3378,21 @@
   }
 
   var appAliveNow = false;
+  var appAliveAt = 0;
   var appAliveListenerOn = false;
   var appPresenceTimer = null;
+  var appPresenceSweep = null;
+  var appFileHeartbeat = null;
+  var appPresenceProbePending = false;
+  var mountAttempts = 0;
+
   var tabId = 0;
+
+  /* A persisted true value is only trusted while it is fresh. The worker
+     refreshes it every 5 s; 12 s tolerates one missed beat. */
+  var APP_ALIVE_MAX_AGE_MS = 12000;
+
+  var APP_PRESENCE_WAIT_MS = 4000;
 
   /* The content script cannot call chrome.tabs. Ask the worker for the sender
      tab id once, then mount the panel iframes with it so pin/theme preferences
@@ -3404,8 +3417,25 @@
     } catch (error) { finish(); }
   }
 
-  function applyAppAlive(alive) {
-    appAliveNow = alive === true;
+  function publishPresence() {
+    try {
+      document.documentElement.setAttribute("data-rl-presence", JSON.stringify({
+        alive: appAliveNow === true,
+        at: Number(appAliveAt) || 0,
+        mounts: mountAttempts,
+        host: !!hostEl
+      }));
+    } catch (error) { /* ignore */ }
+  }
+
+  function appAliveIsFresh(alive, at) {
+    return alive === true && Number(at) > 0 && Date.now() - Number(at) <= APP_ALIVE_MAX_AGE_MS;
+  }
+
+  function applyAppAlive(alive, at) {
+    var fresh = appAliveIsFresh(alive, at);
+    appAliveNow = fresh;
+    appAliveAt = fresh ? Number(at) : 0;
     if (teardown || hostSuspended) return;
     if (appAliveNow) {
       if (!hostEl) mount();
@@ -3414,25 +3444,106 @@
         sideReady = true;
         commitSide(nextSide, { persist: false, notify: false });
       });
-    } else if (hostEl) {
-      unmountHost();
+      startPresenceSweep();
+    } else {
+      if (hostEl) unmountHost();
+      stopPresenceSweep();
     }
+    publishPresence();
+  }
+
+  /* Local watchdog: even if the worker stops updating storage, an old true
+     value cannot keep a dock mounted forever. */
+  function startPresenceSweep() {
+    if (appPresenceSweep) return;
+    appPresenceSweep = setInterval(function () {
+      if (!appAliveNow) { stopPresenceSweep(); return; }
+      if (!appAliveIsFresh(true, appAliveAt)) applyAppAlive(false, 0);
+    }, 4000);
+  }
+
+  function stopPresenceSweep() {
+    if (!appPresenceSweep) return;
+    try { clearInterval(appPresenceSweep); } catch (error) { /* ignore */ }
+    appPresenceSweep = null;
+  }
+
+  function readStoredPresence(done) {
+    try {
+      chrome.storage.local.get(["rl-app-alive", "rl-app-alive-at"], function (values) {
+        if (chrome.runtime && chrome.runtime.lastError) { done(false, 0); return; }
+        done(values && values["rl-app-alive"] === true, values && values["rl-app-alive-at"]);
+      });
+    } catch (error) { done(false, 0); }
   }
 
   function onAppAliveChanged(changes, area) {
-    if (area !== "local" || !changes["rl-app-alive"]) return;
-    applyAppAlive(changes["rl-app-alive"].newValue === true);
+    if (area !== "local") return;
+    if (!changes["rl-app-alive"] && !changes["rl-app-alive-at"]) return;
+    readStoredPresence(function (alive, at) { applyAppAlive(alive, at); });
+  }
+
+  /* Never mount from persisted state alone: ask the worker for a live answer.
+     A warm worker answers in tens of milliseconds; a cold one gets a short
+     grace period. If nothing answers, stay hidden and let the next storage
+     change (or the 5 s ping) decide. */
+  function requestPresence(done) {
+    var settled = false;
+    var attempts = 0;
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      done(null);
+    }, APP_PRESENCE_WAIT_MS);
+    function finish(response) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(response);
+    }
+    function attempt() {
+      if (settled) return;
+      attempts += 1;
+      try {
+        chrome.runtime.sendMessage({ type: "RL_APP_PRESENCE", port: Number(window.location.port) || 0 }, function (response) {
+          var error = chrome.runtime && chrome.runtime.lastError;
+          if (settled) return;
+          if (error || !response || typeof response.open !== "boolean") {
+            /* The worker may still be starting after a browser restart. */
+            if (attempts < 3) { setTimeout(attempt, 250); return; }
+            finish(null);
+            return;
+          }
+          finish(response);
+        });
+      } catch (error) {
+        if (attempts < 3) { setTimeout(attempt, 250); return; }
+        finish(null);
+      }
+    }
+    attempt();
   }
 
   function watchAppAlive() {
     try {
       if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
-      chrome.storage.local.get(["rl-app-alive"], function (values) {
-        applyAppAlive(values && values["rl-app-alive"] === true);
+      /* A stale persisted true must not mount before verification. */
+      readStoredPresence(function (alive, at) {
+        if (!appAliveIsFresh(alive, at) && hostEl) applyAppAlive(false, 0);
       });
       if (!appAliveListenerOn && chrome.storage.onChanged) {
         chrome.storage.onChanged.addListener(onAppAliveChanged);
         appAliveListenerOn = true;
+      }
+      if (!appPresenceProbePending) {
+        appPresenceProbePending = true;
+        requestPresence(function (response) {
+          appPresenceProbePending = false;
+          if (!response) return; /* stay hidden; the next storage change mounts */
+          applyAppAlive(response.open === true, response.open === true
+            ? (Number(response.at) || Date.now())
+            : 0);
+        });
       }
       if (!appPresenceTimer && chrome.runtime && chrome.runtime.sendMessage) {
         var ping = function () {
@@ -3440,26 +3551,58 @@
             chrome.runtime.sendMessage({ type:"RL_APP_PRESENCE", port:Number(window.location.port) || 0 }, function (response) {
               var error = chrome.runtime && chrome.runtime.lastError;
               if (error || !response) return;
-              applyAppAlive(response.open === true);
+              applyAppAlive(response.open === true, response.open === true
+                ? (Number(response.at) || Date.now())
+                : 0);
             });
           } catch (error) { /* ignore */ }
         };
-        ping();
         appPresenceTimer = setInterval(ping, 5000);
+        setTimeout(ping, 1200);
       }
     } catch (error) { /* ignore */ }
   }
 
-  function markAppPageAlive() {
-    try {
+  /* Presence QA hook: available even before the host is mounted. */
+  try {
+    window.__rlPresence = Object.freeze({
+      loaded: function () { return true; },
+      alive: function () { return appAliveNow; },
+      at: function () { return appAliveAt; },
+      mountAttempts: function () { return mountAttempts; },
+      host: function () { return !!hostEl; }
+    });
+  } catch (error) { /* ignore */ }
+
+  function markAppPageAlive() {    try {
       if (document.documentElement.getAttribute("data-request-ledger-app") !== "1") return;
       if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
       var fileMode = window.location.protocol === "file:";
       chrome.storage.local.set({
         "rl-app-alive": true,
+        "rl-app-alive-at": Date.now(),
         "rl-app-mode": fileMode ? "file" : "server",
         "rl-app-file-at": fileMode ? Date.now() : 0,
         "rl-app-port": fileMode ? 0 : (Number(window.location.port) || 0)
+      });
+    } catch (error) { /* ignore */ }
+  }
+
+  /* A file:// app has no server to probe, so its open page keeps the file
+     timestamp fresh; pagehide clears it immediately. */
+  function watchAppFilePresence() {
+    try {
+      if (window.location.protocol !== "file:") return;
+      if (document.documentElement.getAttribute("data-request-ledger-app") !== "1") return;
+      if (appFileHeartbeat) return;
+      appFileHeartbeat = setInterval(function () {
+        if (document.visibilityState === "hidden") return;
+        markAppPageAlive();
+      }, 4000);
+      window.addEventListener("pagehide", function () {
+        try {
+          chrome.storage.local.set({ "rl-app-alive": false, "rl-app-alive-at": Date.now(), "rl-app-mode": "" });
+        } catch (error) { /* ignore */ }
       });
     } catch (error) { /* ignore */ }
   }
@@ -3471,11 +3614,13 @@
       var observer = new MutationObserver(function () {
         var stopped = document.documentElement.getAttribute("data-rl-server-stopped") === "1";
         try {
-          if (stopped) chrome.storage.local.set({ "rl-app-alive": false });
-          else {
+          if (stopped) {
+            chrome.storage.local.set({ "rl-app-alive": false, "rl-app-alive-at": Date.now(), "rl-app-mode": "" });
+          } else {
             var fileMode = window.location.protocol === "file:";
             chrome.storage.local.set({
               "rl-app-alive": true,
+              "rl-app-alive-at": Date.now(),
               "rl-app-mode": fileMode ? "file" : "server",
               "rl-app-file-at": fileMode ? Date.now() : 0,
               "rl-app-port": fileMode ? 0 : (Number(window.location.port) || 0)
@@ -3496,7 +3641,9 @@
       return;
     }
     markAppPageAlive();
+    watchAppFilePresence();
     watchAppStopMarker();
+    publishPresence();
     requestTabId(function () {
       if (teardown || hostSuspended) { return; }
       watchAppAlive();

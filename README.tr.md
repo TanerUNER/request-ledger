@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img alt="Web uygulaması 1.9.2" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.9.2-d13e27?style=for-the-badge">
-  <img alt="Uzantı 1.9.5" src="https://img.shields.io/badge/uzant%C4%B1-1.9.5-4f614b?style=for-the-badge">
+  <img alt="Web uygulaması 1.10.1" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.10.1-d13e27?style=for-the-badge">
+  <img alt="Uzantı 1.10.1" src="https://img.shields.io/badge/uzant%C4%B1-1.10.1-4f614b?style=for-the-badge">
   <img alt="Tek dosya" src="https://img.shields.io/badge/tek%20dosya-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-%C3%A7ift%20dilli-1d2328?style=for-the-badge">
   <img alt="MIT lisansı" src="https://img.shields.io/badge/lisans-MIT-444?style=for-the-badge">
@@ -154,7 +154,7 @@ bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
 
 | Yetenek | Ne yapar? |
 |---|---|
-| **Canlı yardımcı** | Uygulama gerekir. Açıkken istekler, medya ve etkin proje iki yönde eşitlenir. Uygulama kapalıyken **hiçbir uzantı arayüzü görünmez** — ray, açıcı, iframe veya kilit kartı yoktur. Uygulama açılınca kendiliğinden geri gelir. |
+| **Canlı yardımcı** | Uygulama gerekir. Açıkken istekler, medya ve etkin proje iki yönde eşitlenir. Uygulama kapalıyken **hiçbir uzantı arayüzü görünmez** - ray, açıcı, iframe veya kilit kartı yoktur. Uygulama açılınca kendiliğinden geri gelir. Tarayıcı yeniden başlatıldığında hiçbir şey göstermeden önce uygulamayı doğrular: önceki oturumdan kalan bağlantı durumu yeniden başlatmayı atlatmaz ve uygulama kapalıyken hiçbir sayfada arayüz görünmez. |
 | **Uygulama sahipli projeler** | Projeler yalnızca uygulamada oluşturulur, yeniden adlandırılır, değiştirilir ve silinir. Uzantı her zaman uygulamanın etkin projesini izler; proje listesi, seçici veya oluşturma arayüzü yoktur. |
 | **Medya eşitleme** | Yapıştırma, dosya yükleme, ekran görüntüsü ve öğe+ekran görüntüsü görselleri köprüden geçer. Öğe başına sınır 8 MB'tır; daha büyük öğeler yalnızca yedek ZIP ile taşınır. Blob'u henüz gelmeyen küçük resim “Görsel bulunamadı” yerine “Görsel yükleniyor…” durumu gösterir. |
 | **Öğe seçici** | Geçerli sayfada veya uygulamadan seçilen başka bir sekmede öğe seçin. Tekrarlanan seçimler iki yüzeyde de `" | "` ile eklenir (yinelenenler ayıklanır, 200 karakter sınırı). |
@@ -166,7 +166,10 @@ bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
 
 Uzantı `chrome://extensions` üzerinden kendini etkinleştirip devre dışı bırakamaz. Orada devre dışı
 bırakırsanız kendiliğinden geri gelemez; elle yeniden etkinleştirin. Uygulama kapalıyken uzantı
-devre dışı değil, yalnızca görünmezdir.
+devre dışı değil, yalnızca görünmezdir. Varlık doğrulanır, varsayılmaz: her varlık yazımı bir zaman
+damgası taşır, ~12 saniyeden eski değer yok sayılır ve panel ancak uygulama veya sunucusu canlı bir
+kontrolle yanıt verdikten sonra bağlanır. Bu nedenle önceki tarayıcı oturumundan kalan `true` değeri
+başlangıçta arayüzü açamaz.
 
 Kurulum: `chrome://extensions` → **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension/`
 klasörünü seçin (veya `request-ledger-extension.zip` dosyasını açıp klasörü seçin). Sabit uzantı
@@ -276,8 +279,11 @@ sayfalardaki ekran görüntülerini herkese açık kabul edin.
   genişliklerini hedefler.
 - Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL'lerine erişim izni varsa köprü yine
   bağlanabilir; ancak sunucu proje klasörüne yazım yoktur.
-- Bir web sayfası süreç başlatamaz. Sunucu açıkken yeniden başlatma ve port değişikliği çalışır;
-  tamamen durmuş bir sunucu yalnızca `start.cmd` ile yeniden başlatılır.
+- Bir web sayfası süreç başlatamaz. Yeniden başlatma ve port değişikliği yalnızca sunucu açıkken
+  çalışır; tamamen durmuş bir sunucu için `start.cmd` çalıştırıp sayfayı yenileyin — uygulama sessizce
+  kendiliğinden bağlanmaz.
+- Yardımcı, tarayıcı yeniden başlatıldığında varlığı yeniden kontrol eder. Önceki oturumun bağlantısı
+  arayüzü açmaz; uygulama (veya sunucusu) yanıt verene kadar hiçbir şey bağlanmaz.
 - Canlı medya eşitleme **öğe başına 8 MB** ile sınırlıdır. Daha büyük görseller/ekler ve taşınabilir
   arşivdeki tüm medya yedek ZIP ile taşınır.
 - Uzantı bir yardımcıdır: uygulama çalışmıyorken hiçbir sayfada arayüz göstermez. `chrome://extensions`

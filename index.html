@@ -2057,10 +2057,34 @@
   const PROJECT_LEDGER_PREFIX = "oz-istek-defteri-p-";
   const PROJECT_SCOPE_KEY = "oz-veri-kapsam-v1";
   const THEME_KEY = "gd-theme";
-  const APP_VERSION = "1.10.0";
+  const APP_VERSION = "1.10.1";
 /* Static <title> from <head>; kept for crawlers and restored whenever no project is open. */
 const SEO_TITLE = document.title;
   const CHANGELOG = [
+    {
+      version: "1.10.1",
+      date: "2026-11-11",
+      tr: {
+        features: [],
+        updates: [
+          "Eklenti, tarayıcı yeniden başlatıldığında hiçbir şey göstermeden önce uygulamanın çalıştığını doğrular; önceki oturumdan kalan bağlantı durumu artık arayüzü açmaz."
+        ],
+        fixes: [
+          "Uygulama kapalıyken tarayıcı yeniden başlatıldığında eklentinin sayfalarda görünmesine yol açan eski varlık kaydı düzeltildi.",
+          "Varlık kaydı artık zaman damgası taşır; 12 saniyeden eski değerler yok sayılır."
+        ]
+      },
+      en: {
+        features: [],
+        updates: [
+          "After a browser restart the extension verifies the app before showing anything; a connection state from the previous session no longer mounts the UI."
+        ],
+        fixes: [
+          "Fixed stale presence making the companion appear on pages after a browser restart with the app closed.",
+          "Presence records now carry a timestamp; values older than 12 seconds are ignored."
+        ]
+      }
+    },
     {
       version: "1.10.0",
       date: "2026-11-10",
