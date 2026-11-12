@@ -334,6 +334,135 @@ async function main() {
     check("a server restart keeps both requests and A Ready",
       afterRestart.some((r) => r.id === idA && r.confirmed === true) && afterRestart.some((r) => r.id === idB), afterRestart);
 
+    /* Root cause guard: nextId() reuses max+1, so deleting the highest request
+       and creating a new one re-creates its id. The persisted tombstone for the
+       deleted id used to travel in the same envelope as the new row, which made
+       the companion drop it and echo the deletion back. */
+    await evaluate(cdp, app, `(() => {
+      window.__rlOutEnvelopes = [];
+      window.addEventListener('message', function(event){
+        const d = event.data;
+        if(!d || d.source !== 'request-ledger-web') return;
+        if(!/^RL_APP_(PATCH|SNAPSHOT|HELLO)$/.test(String(d.type))) return;
+        window.__rlOutEnvelopes.push({
+          type: d.type,
+          ids: (Array.isArray(d.requests) ? d.requests : (Array.isArray(d.upserts) ? d.upserts : [])).map(function(r){ return r && r.id; }),
+          deletedIds: Array.isArray(d.deletedIds) ? d.deletedIds.slice() : []
+        });
+        if(window.__rlOutEnvelopes.length > 100) window.__rlOutEnvelopes.shift();
+      }, true);
+      return true;
+    })()`);
+    await evaluate(cdp, app, `(() => {
+      const row = document.querySelector('.req[data-id="' + ${JSON.stringify(idB)} + '"]');
+      const menu = row && row.querySelector('details.reqmenu summary');
+      if (menu) menu.click();
+      return !!menu;
+    })()`);
+    await sleep(250);
+    await evaluate(cdp, app, `(() => {
+      const row = document.querySelector('.req[data-id="' + ${JSON.stringify(idB)} + '"]');
+      const del = row && row.querySelector('[data-action="delete"]');
+      if (del) del.click();
+      return !!del;
+    })()`);
+    await waitFor(() => evaluate(cdp, app, "document.getElementById('confirmModal').classList.contains('is-open')"), "delete confirm", 5000);
+    await evaluate(cdp, app, "document.getElementById('confirmOkBtn').click()");
+    await waitFor(() => evaluate(cdp, app, `!window.__rlStateDebug.requests().some(function(r){ return r.id === ${JSON.stringify(idB)}; })`), "request deleted", 5000);
+    const reusedId = await createRequest(cdp, app, "Request B again");
+    check("the re-created request reuses the deleted id", reusedId === idB, { deleted: idB, recreated: reusedId });
+    await evaluate(cdp, app, "document.getElementById('saveRecordBtn').click()");
+    await sleep(2600);
+    const afterReuse = await evaluate(cdp, app, "window.__rlStateDebug.requests()");
+    const reuseTrace = await evaluate(cdp, app, `window.__rlStateDebug.trace().filter(function(e){ return e.id === ${JSON.stringify(reusedId)} && e.op === 'remove'; })`);
+    check("a request re-created with a deleted id survives the save",
+      afterReuse.some((r) => r.id === reusedId), { reusedId, afterReuse, reuseTrace });
+    const liveInDeleted = await evaluate(cdp, app, `window.__rlOutEnvelopes.filter(function(envelope){
+      return envelope.ids.some(function(id){ return envelope.deletedIds.indexOf(id) >= 0; });
+    })`);
+    check("no outgoing envelope lists a live request as deleted",
+      liveInDeleted.length === 0, liveInDeleted.slice(0, 3));
+    const panelAfterReuse = await openPanel(cdp, app);
+    if (panelAfterReuse.flyout) {
+      const panelReuse = await waitFor(async () => {
+        const list = await evaluate(cdp, panelAfterReuse.flyout, "window.__rlBridgePanel ? window.__rlBridgePanel.requests() : null");
+        return Array.isArray(list) && list.some((r) => r.id === reusedId) ? list : null;
+      }, "panel re-created request", 15000).catch(() => null);
+      check("the panel mirrors a request re-created with a deleted id",
+        !!panelReuse, panelReuse && panelReuse.map((r) => r.id));
+    } else {
+      check("the panel mirrors a request re-created with a deleted id", false, "no flyout target");
+    }
+
+    /* Owner sequence: Kaydet once, then New request left completely blank.
+       The blank row must survive autosave (server disk save is 700 ms) and a
+       project switch back. */
+    await evaluate(cdp, app, "document.getElementById('saveRecordBtn').click()");
+    await sleep(2600);
+    const savedRecordToast = await evaluate(cdp, app, "(document.getElementById('toastText')||{}).textContent || ''");
+    await evaluate(cdp, app, "document.getElementById('addBtn').click()");
+    await waitFor(() => evaluate(cdp, app, "document.getElementById('typeModal').classList.contains('is-open')"), "type modal after Kaydet", 5000);
+    await evaluate(cdp, app, "document.querySelector('#typeChoices .typechoice').click()");
+    await waitFor(() => evaluate(cdp, app, "!!document.querySelector('.req.is-open [data-field=\"description\"]')"), "blank request form after Kaydet", 8000);
+    const blankId = await evaluate(cdp, app, "window.__rlStateDebug.requests().slice(-1)[0].id");
+    console.log("blank request after Kaydet", blankId, "toast", JSON.stringify(savedRecordToast));
+    let blankLostAt = 0;
+    for (let second = 0; second < 40; second += 1) {
+      await sleep(250);
+      const alive = await evaluate(cdp, app, `(() => {
+        const list = window.__rlStateDebug.requests();
+        const row = document.querySelector('.req[data-id=${JSON.stringify(blankId)}]');
+        return { present: list.some(function(r){ return r.id === ${JSON.stringify(blankId)}; }), row: !!row, hidden: !!(row && row.hidden) };
+      })()`);
+      if (!alive.present || !alive.row || alive.hidden) { blankLostAt = (second + 1) * 250; break; }
+      if ((second + 1) * 250 >= 10000) break;
+    }
+    const afterSaveState = await evaluate(cdp, app, "window.__rlStateDebug.requests()");
+    const blankTrace = await evaluate(cdp, app, `window.__rlStateDebug.trace().filter(function(e){ return e.id === ${JSON.stringify(blankId)}; })`);
+    const blankAudit = await evaluate(cdp, app, "window.__rlStateDebug.audit().slice(-12)");
+    check("a blank request created after Kaydet survives 10 s of autosave",
+      !blankLostAt && afterSaveState.some((r) => r.id === blankId), { blankLostAt, blankId, afterSaveState, blankTrace, blankAudit });
+
+    const slugNow = await waitFor(() => projectSlugFor(projectId) || null, "project slug after blank", 10000);
+    const diskBlank = readDiskLedger(slugNow);
+    check("the blank request reaches the disk ledger",
+      !!diskBlank && diskBlank.requests.some((r) => r.id === blankId), { ids: diskBlank && diskBlank.requests.map((r) => r.id) });
+
+    /* A normal project switch away and back must not drop the blank row. */
+    await evaluate(cdp, app, "document.getElementById('projectsBtn').click()");
+    await sleep(300);
+    await evaluate(cdp, app, "document.getElementById('projectPickerNewBtn').click()");
+    await waitFor(() => evaluate(cdp, app, "!!document.getElementById('projectCreateInput')"), "second create screen", 5000);
+    await evaluate(cdp, app, `(() => {
+      const input = document.getElementById('projectCreateInput');
+      input.value = 'Loss Third'; input.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('projectCreateBtn').click(); return true;
+    })()`);
+    await sleep(1400);
+    await evaluate(cdp, app, "document.getElementById('projectsBtn').click()");
+    await sleep(300);
+    await evaluate(cdp, app, `(() => {
+      const row = document.querySelector('#projectPickerList [data-project-id="' + ${JSON.stringify(projectId)} + '"]');
+      if (row) row.click();
+      return !!row;
+    })()`);
+    const afterBlankSwitch = await waitFor(() => evaluate(cdp, app, "window.__rlStateDebug && window.__rlStateDebug.requests().length >= 3 ? window.__rlStateDebug.requests() : null"), "switch back with blank", 12000);
+    check("the blank request survives a project switch back",
+      afterBlankSwitch.some((r) => r.id === blankId), afterBlankSwitch);
+
+    /* Both surfaces must hold the blank row. Reopen the panel after the reload. */
+    const panelAfterSave = await openPanel(cdp, app);
+    if (panelAfterSave.flyout) {
+      const panelBlank = await waitFor(async () => {
+        const list = await evaluate(cdp, panelAfterSave.flyout, "window.__rlBridgePanel ? window.__rlBridgePanel.requests() : null");
+        return Array.isArray(list) && list.some((r) => r.id === blankId) ? list : null;
+      }, "panel blank request", 15000).catch(() => null);
+      check("the panel also holds the blank request created after Kaydet",
+        !!panelBlank, panelBlank && panelBlank.map((r) => r.id));
+    } else {
+      check("the panel also holds the blank request created after Kaydet", false, "no flyout target");
+    }
+
     const pageFailures = require("./_page-errors.cjs").collect(cdp);
     check("no page reference/console errors", pageFailures.length === 0, pageFailures.slice(0, 3));
     const exceptions = cdp.events.filter((e) => e.method === "Runtime.exceptionThrown");

@@ -161,6 +161,18 @@
       ledger.project = ledger.project || meta.name;
       ledger.projectCreated = true;
       ledger.ledgerId = ledger.ledgerId || meta.ledgerId || "";
+      /* A hydrate may finish while the user already created a new request in
+         this project. Merge instead of overwriting so a local draft newer than
+         the disk snapshot survives (older local-only rows were deleted). */
+      var incomingRows = Array.isArray(ledger.requests)
+        ? ledger.requests.map(function(raw, index){ return normalizeRequest(raw, index); })
+        : [];
+      var localRows = localLedger && Array.isArray(localLedger.requests)
+        ? localLedger.requests.map(function(raw, index){ return normalizeRequest(raw, index); })
+        : [];
+      if(localRows.length){
+        ledger.requests = mergeRequestsById(localRows, incomingRows, ledger.updatedAt || "");
+      }
       localStorage.setItem(projectLedgerKey(meta.projectId), JSON.stringify(ledger));
     }
     rlAudit("server-load-after", { projectId:meta.projectId, source:"hydrate", stamp: ledger && ledger.updatedAt || "", keptLocal: !!(ledger && !(force || incomingRev > localRev || !localLedger)) });

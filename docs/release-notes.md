@@ -1,11 +1,23 @@
-# Release notes — 2026-11-11
+# Release notes — 2026-11-12
 
-Versions: **web app 1.10.2**, **extension 1.10.2**
+Versions: **web app 1.10.3**, **extension 1.10.3**
 
 Artifacts: `dist/request-ledger.html`, `dist/extension/`,
-`dist/request-ledger-extension-1.10.2.zip`, `dist/request-ledger-extension.zip`,
-`dist/request-ledger-test-2026-11-11.zip`, `dist/CHECKSUMS.txt`, `dist/RELEASE.md`.
+`dist/request-ledger-extension-1.10.3.zip`, `dist/request-ledger-extension.zip`,
+`dist/request-ledger-test-2026-11-12.zip`, `dist/CHECKSUMS.txt`, `dist/RELEASE.md`.
 Rebuild with `node scripts/build.cjs`; verify with `node scripts/build.cjs --check`.
+
+## 1.10.3 - draft survival and tombstone hygiene
+
+- Deleting a request freed its id (`max + 1`), and the deletion tombstone was sent in the same envelope
+  as the re-created row. Both sides applied `deletedIds` before upserts, so the new row was deleted one
+  round trip later and the panel echoed the tombstone back - the "new request disappears after save" report.
+- A live id never keeps or sends a tombstone, and a same-envelope deletion is ignored for ids present in
+  `requests`/`upserts`; creating a request clears any tombstone for that id.
+- Snapshot paths (adoption/conflict replace, server hydrate, archive load) now merge by id and keep the
+  newer row instead of replacing the array, so an unsaved draft cannot be wiped by a late snapshot.
+- Regression: `request-loss` covers id reuse, a blank request created right after Save (10 s, disk,
+  project switch, panel mirror) - 23 checks.
 
 ## 1.10.2 — request loss, atomic boot and a version handshake
 

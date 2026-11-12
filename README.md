@@ -8,25 +8,25 @@
 </p>
 
 <p align="center">
-  <a href="README.tr.md">Türkçe</a> · English
+  <a href="README.tr.md">TÃ¼rkÃ§e</a> Â· English
 </p>
 
 <p align="center">
-  <img alt="Web app 1.10.1" src="https://img.shields.io/badge/web%20app-1.10.1-d13e27?style=for-the-badge">
-  <img alt="Extension 1.10.1" src="https://img.shields.io/badge/extension-1.10.1-4f614b?style=for-the-badge">
+  <img alt="Web app 1.10.3" src="https://img.shields.io/badge/web%20app-1.10.3-d13e27?style=for-the-badge">
+  <img alt="Extension 1.10.3" src="https://img.shields.io/badge/extension-1.10.3-4f614b?style=for-the-badge">
   <img alt="Single file" src="https://img.shields.io/badge/single--file-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-bilingual-1d2328?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-444?style=for-the-badge">
 </p>
 
 <p align="center">
-  <a href="#what-it-is">What it is</a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="#workspace-and-projects">Projects</a> ·
-  <a href="#two-run-modes">Run modes</a> ·
-  <a href="#chrome-companion">Extension</a> ·
-  <a href="#backups">Backups</a> ·
-  <a href="#privacy">Privacy</a> ·
+  <a href="#what-it-is">What it is</a> Â·
+  <a href="#how-it-works">How it works</a> Â·
+  <a href="#workspace-and-projects">Projects</a> Â·
+  <a href="#two-run-modes">Run modes</a> Â·
+  <a href="#chrome-companion">Extension</a> Â·
+  <a href="#backups">Backups</a> Â·
+  <a href="#privacy">Privacy</a> Â·
   <a href="#limitations">Limitations</a>
 </p>
 
@@ -45,7 +45,7 @@ requires an explicit approval, and exports **AI-ready Markdown**.
 No account. No telemetry. No remote code. Your data stays in your browser profile. A local server is
 optional and only adds the server mode and convenience around the Chrome companion.
 
-> Scattered notes, chat messages and screenshots → one organised ledger → one clear plan → one
+> Scattered notes, chat messages and screenshots â†’ one organised ledger â†’ one clear plan â†’ one
 > handoff-ready Markdown file.
 
 ### The problem it solves
@@ -72,15 +72,15 @@ optional and only adds the server mode and convenience around the Chrome compani
 
 ## How it works
 
-1. **Collect** — add each request as its own row. Choose one of six types; each type shows the fields
+1. **Collect** â€” add each request as its own row. Choose one of six types; each type shows the fields
    that matter. Attach screenshots with `Ctrl+V`, drag and drop, or the file picker.
-2. **Plan** — choose a full, light or custom run, select agents and tests, and decide how the runtime
+2. **Plan** â€” choose a full, light or custom run, select agents and tests, and decide how the runtime
    package travels.
-3. **Approve** — when the required fields are complete, click the row's checkmark. The row locks;
+3. **Approve** â€” when the required fields are complete, click the row's checkmark. The row locks;
    editing resumes only after the approval is revoked.
-4. **Export** — get a ZIP with Markdown and media, a single `.md` with embedded images, or a plain
+4. **Export** â€” get a ZIP with Markdown and media, a single `.md` with embedded images, or a plain
    Markdown file. Save your choices once and later exports reuse them with **Instant export**.
-5. **Archive** — keep records, drafts and export history, then take a backup regularly.
+5. **Archive** â€” keep records, drafts and export history, then take a backup regularly.
 
 ## Workspace and projects
 
@@ -118,7 +118,7 @@ shuts the server down.
 Reloading, navigating or a hidden app tab keeps the server alive. Closing the last app tab sends a
 close signal and the server stops after a **5-second grace**, releasing the port and removing the lock
 file; another open tab or a reload in that window cancels the shutdown. If no close signal arrives (for
-example a crashed tab), the launcher’s 300-second idle stop is the fallback. `stop.cmd` still shuts it
+example a crashed tab), the launcherâ€™s 300-second idle stop is the fallback. `stop.cmd` still shuts it
 down immediately. Stopping is not a page action: a browser cannot spawn a process, so a fully stopped
 server is started again with **`start.cmd`**.
 
@@ -133,9 +133,9 @@ Runtime user data lives next to `scripts/serve.cjs` and is never committed to gi
 
 In server mode, each app project owns a folder under `projects/<project-slug>/` in the app directory.
 **Save** writes the current ledger snapshot there (`ledger.json`); **Export** writes to the chosen
-target folder when one is set, otherwise to the project folder’s `exports/` directory. The archive
+target folder when one is set, otherwise to the project folderâ€™s `exports/` directory. The archive
 project list/records read this folder metadata. In `file://` mode there is no server folder write:
-Save/Export show a clear “server mode required for folder saves” message and fall back to browser
+Save/Export show a clear â€œserver mode required for folder savesâ€ message and fall back to browser
 downloads.
 
 While the server is alive, Settings offers **Restart server** and **Port**. Both spawn a replacement
@@ -151,9 +151,9 @@ bottom-right of pages and a 360 px flyout; it does not reflow the page.
 
 | Capability | What it does |
 |---|---|
-| **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** — no rail, launcher, iframe or lock card. It returns automatically when the app starts. On a browser restart it verifies the app before showing anything: a previously connected state never survives a restart, and with the app closed nothing appears on any page. |
-| **App-owned projects** | Projects are created, renamed, switched and deleted only in the app. The extension always follows the app’s active project; it has no project list, picker or creation UI. |
-| **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. A thumbnail whose blob is still in transit shows a neutral “Loading image…” state instead of “Image not found”. |
+| **Live companion** | The app is required. While it is open, requests, media and the active project sync both ways. If the app is not running, **no extension UI is shown at all** â€” no rail, launcher, iframe or lock card. It returns automatically when the app starts. On a browser restart it verifies the app before showing anything: a previously connected state never survives a restart, and with the app closed nothing appears on any page. |
+| **App-owned projects** | Projects are created, renamed, switched and deleted only in the app. The extension always follows the appâ€™s active project; it has no project list, picker or creation UI. |
+| **Media sync** | Paste, file upload, screenshot and element+screenshot images cross the bridge. Each item is capped at 8 MB; larger items travel only with a backup ZIP. A thumbnail whose blob is still in transit shows a neutral â€œLoading imageâ€¦â€ state instead of â€œImage not foundâ€. |
 | **Element picker** | Pick an element on the current page or on a tab chosen from the app. Repeated picks append selectors with `" | "` on both surfaces (deduped, 200-character cap). |
 | **Screenshot** | Choose a tab, crop the region you need, and attach the image to the active request. The page path fills automatically. |
 | **Request desk in the dock** | Create, edit, search, reorder and approve requests without leaving the page. Ready/locked requests still allow image preview, never editing. |
@@ -167,7 +167,7 @@ invisible, not disabled. Presence is verified, not assumed: every presence write
 a value older than ~12 s is ignored, and the dock mounts only after a live check of the app or its
 server. A stale `true` from a previous browser session therefore never mounts the UI at startup.
 
-Install it from `chrome://extensions` → **Developer mode** → **Load unpacked** → select `extension/`
+Install it from `chrome://extensions` â†’ **Developer mode** â†’ **Load unpacked** â†’ select `extension/`
 (or the unzipped `request-ledger-extension.zip`). The pinned extension id is
 `hapajcbgcfllhkiohhkechekajencdod`; changing the `key` in `manifest.json` creates a new origin with
 empty storage.
@@ -188,7 +188,7 @@ project data** is a full reset: it removes every live project and every deleted-
 keeps `backups/`, and it offers to take a backup first.
 
 Restore validates the bundle before touching your data and never deletes media up front. A v4 backup
-restores every project; a v3 backup restores into one project. Backups are plaintext files — treat
+restores every project; a v3 backup restores into one project. Backups are plaintext files â€” treat
 them as sensitive documents.
 
 ## Screenshots
@@ -196,7 +196,7 @@ them as sensitive documents.
 The interface is built for desktop, laptop and tablet widths. Mobile is intentionally out of scope
 for this release.
 
-| Desktop · 1440 px | Laptop · 1280 px | Tablet · 1024 px |
+| Desktop Â· 1440 px | Laptop Â· 1280 px | Tablet Â· 1024 px |
 |---|---|---|
 | ![Desktop dashboard](README-assets/en/screens/01-dashboard-desktop.png) | ![Laptop dashboard](README-assets/en/screens/02-dashboard-laptop.png) | ![Tablet dashboard](README-assets/en/screens/03-dashboard-tablet.png) |
 
@@ -211,9 +211,9 @@ for this release.
 ## Markdown output
 
 ```md
-# Nova Dashboard — Development Requests
+# Nova Dashboard â€” Development Requests
 
-> Sunday, November 08, 2026 · 6 requests · 4 images · 1 file
+> Sunday, November 08, 2026 Â· 6 requests Â· 4 images Â· 1 file
 
 ## Summary
 
@@ -225,7 +225,7 @@ for this release.
 
 **Run type:** Full run
 
-## IST-001 — Add bulk actions toolbar to the orders table
+## IST-001 â€” Add bulk actions toolbar to the orders table
 
 - **Type:** New Feature
 - **Priority:** High
@@ -236,9 +236,9 @@ for this release.
 Let users change status, export CSV and apply tags to selected orders.
 ```
 
-- **ZIP + `.md`** — Markdown in a separate file; media in `gorseller/` and `dosyalar/`.
-- **Single `.md`** — images embedded as base64; attachments require ZIP.
-- **TR / EN** — system labels follow the interface language. User content is never translated.
+- **ZIP + `.md`** â€” Markdown in a separate file; media in `gorseller/` and `dosyalar/`.
+- **Single `.md`** â€” images embedded as base64; attachments require ZIP.
+- **TR / EN** â€” system labels follow the interface language. User content is never translated.
 
 ## Privacy
 
@@ -274,7 +274,7 @@ extension page is an iframe on an untrusted page; treat screenshots on untrusted
 - The single HTML file cannot start the local server. The extension bridge can still connect when the
   extension is allowed to access file URLs, but there are no server project-folder writes.
 - A web page cannot spawn a process. Restart and port changes work only while the server is alive;
-  after a hard stop, run `start.cmd` and reload the page — the app does not silently reconnect.
+  after a hard stop, run `start.cmd` and reload the page â€” the app does not silently reconnect.
 - The companion re-checks presence after a browser restart. A connection from the previous session
   never makes it appear, and no UI mounts until the app (or its server) answers.
 - Live media sync is capped at **8 MB per item**. Larger images/attachments and all media in a
@@ -294,15 +294,15 @@ The tracked application lives in `_source/`.
 
 ```text
 _source/
-├── index.html                  single-file web app (generated)
-├── extension/                  unpacked Manifest V3 extension
-├── src/                        web, panel and core sources
-├── scripts/                    build, server and README asset tools
-├── tests/                      golden, parity and browser e2e
-├── assets/                     logo.svg, logo-wordmark.svg
-├── README-assets/              reproducible README templates and images
-└── dist/                       release packages (generated)
-    └── request-ledger.html     single-file build for offline use
+â”œâ”€â”€ index.html                  single-file web app (generated)
+â”œâ”€â”€ extension/                  unpacked Manifest V3 extension
+â”œâ”€â”€ src/                        web, panel and core sources
+â”œâ”€â”€ scripts/                    build, server and README asset tools
+â”œâ”€â”€ tests/                      golden, parity and browser e2e
+â”œâ”€â”€ assets/                     logo.svg, logo-wordmark.svg
+â”œâ”€â”€ README-assets/              reproducible README templates and images
+â””â”€â”€ dist/                       release packages (generated)
+    â””â”€â”€ request-ledger.html     single-file build for offline use
 ```
 
 `index.html` and `extension/panel/panel.js` are generated from `src/`. Edit the fragments, then run:
@@ -337,7 +337,7 @@ node tests/e2e/file-bridge.e2e.cjs
 
 ## Contact
 
-- **Developer:** Taner ÜNER
+- **Developer:** Taner ÃœNER
 - **GitHub:** [github.com/TanerUNER](https://github.com/TanerUNER)
 - **Email:** [mail.taneruner@gmail.com](mailto:mail.taneruner@gmail.com)
 - **Support:** [Buy Me a Coffee](https://www.buymeacoffee.com/tnruner)
@@ -348,6 +348,6 @@ MIT. See [`LICENSE`](LICENSE).
 
 <p align="center">
   <img src="assets/logo.svg" width="42" alt="Request Ledger mark"><br>
-  <sub>Request Ledger · From idea to Markdown, in one calm flow.</sub><br>
+  <sub>Request Ledger Â· From idea to Markdown, in one calm flow.</sub><br>
   <sub>Runs locally. Your data stays yours.</sub>
 </p>

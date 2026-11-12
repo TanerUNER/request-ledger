@@ -224,8 +224,26 @@
     bridgeSaveTombstones();
   }
 
+  /* A live id must never keep a tombstone: ids are reused when the highest
+     request is deleted (nextId = max + 1), and a stale tombstone used to make
+     every merge skip the re-created row on the peer and then delete it here. */
+  function bridgeForgetTombstone(id){
+    if(typeof id !== "string" || !id || !Object.prototype.hasOwnProperty.call(bridgeTombstones, id)) return;
+    delete bridgeTombstones[id];
+    bridgeSaveTombstones();
+  }
+
   function bridgeTombstoneIds(){
     return Object.keys(bridgeTombstones).sort();
+  }
+
+  /* Envelopes carry only deletions for ids that are no longer live. Sending an
+     id in both `requests`/`upserts` and `deletedIds` let the peer apply the
+     deletion first and then skip the row it had just received. */
+  function bridgeDeletionIds(){
+    const live = {};
+    state.requests.forEach(function(req){ if(req && req.id) live[req.id] = true; });
+    return bridgeTombstoneIds().filter(function(id){ return !live[id]; });
   }
 
   function bridgeResetKnownIds(){
@@ -518,7 +536,7 @@
       agents:state.agents.map(function(agent){ return { id:agent.id, name:agent.name, role:agent.role, mdPath:agent.mdPath }; }),
       language:state.language,
       exportBehavior:state.exportBehavior,
-      deletedIds:bridgeTombstoneIds()
+      deletedIds:bridgeDeletionIds()
     };
     if(type === "RL_APP_PATCH"){
       message.upserts = message.requests.slice();
@@ -591,25 +609,36 @@
   function bridgeMergeRequests(incoming, deletedIds, stamp){
     const byId = new Map();
     const order = [];
+    const incomingIds = {};
     state.requests.forEach(function(req){
       if(!req || !req.id) return;
       byId.set(req.id, req);
       order.push(req.id);
     });
+    (Array.isArray(incoming) ? incoming : []).forEach(function(raw){
+      if(raw && typeof raw.id === "string" && raw.id) incomingIds[raw.id] = true;
+    });
 
     (Array.isArray(deletedIds) ? deletedIds : []).forEach(function(id){
       if(typeof id !== "string" || !id) return;
+      /* A row that travels in the same envelope is alive, not deleted. The
+         peer's stale tombstone used to win over its own freshly re-created
+         row and removed it here one round trip later. */
+      if(incomingIds[id]) return;
       const local = byId.get(id);
-      if(local && local.updatedAt && String(local.updatedAt) > String(stamp || "")) return;
+      const deletedAt = bridgeTombstones[id] ? String(bridgeTombstones[id]) : String(stamp || "");
+      if(local && local.updatedAt && String(local.updatedAt) > deletedAt) return;
       byId.delete(id);
-      bridgeRememberTombstone(id, stamp || nowISO());
+      bridgeRememberTombstone(id, deletedAt || nowISO());
       const at = order.indexOf(id);
       if(at >= 0) order.splice(at, 1);
     });
 
     (Array.isArray(incoming) ? incoming : []).forEach(function(raw, index){
       if(!raw || typeof raw.id !== "string" || !raw.id) return;
-      if(bridgeTombstones[raw.id] && String(bridgeTombstones[raw.id]) >= String(raw.updatedAt || "")) return;
+      /* The id is live in the ledger the peer just sent: drop any local
+         tombstone (ids are reused) instead of skipping the row. */
+      bridgeForgetTombstone(raw.id);
       const local = byId.get(raw.id);
       /* Equal timestamps keep the local object: replacing on a tie causes
          ping-pong and can drop a freshly written field when the peer's copy
@@ -711,17 +740,21 @@
     bridgeSuppress++;
     try{
       if(mode === "replace"){
-        /* a chosen ledger starts clean; old tombstones belong to the loser */
-        bridgeTombstones = {};
-        bridgeSaveTombstones();
-        state.requests = [];
+        /* A chosen ledger no longer wipes memory: it is merged by id so a row
+           created after the incoming snapshot (a blank draft) survives. Old
+           tombstones belong to the loser. */
+        const localRows = state.requests.slice();
+        const incomingRows = [];
         incoming.forEach(function(raw, index){
           if(!raw || typeof raw.id !== "string" || !raw.id) return;
           const normalized = normalizeRequest(raw, index);
           normalized.images = bridgeMediaList(raw.images, "image");
           normalized.attachments = bridgeMediaList(raw.attachments, "file");
-          state.requests.push(normalized);
+          incomingRows.push(normalized);
         });
+        bridgeTombstones = {};
+        bridgeSaveTombstones();
+        state.requests = mergeRequestsById(localRows, incomingRows, stamp);
         const incomingName = normalizeProjectName(bridgeEnvelopeProjectName(data));
         if(incomingName){
           state.project = incomingName;

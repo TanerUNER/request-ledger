@@ -179,6 +179,9 @@
     state.requests.forEach(function(item){ item.collapsed = true; });
     req.collapsed = false;
     state.requests.push(req);
+    /* nextId reuses max+1, so a new row can carry a previously deleted id.
+       Its stale tombstone must not delete the new row on the next save. */
+    if(typeof bridgeForgetTombstone === "function") bridgeForgetTombstone(req.id);
     rlTraceCommit("create", traceBefore);
     rlAudit("create", { id:req.id, type:typeId });
     activeRowId = req.id;

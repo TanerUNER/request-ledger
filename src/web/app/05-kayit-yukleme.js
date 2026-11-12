@@ -54,6 +54,44 @@
       console.warn("Proje defteri yazılamadı", err);
     }
   }
+  /* Id-keyed snapshot merge used by every load path (disk hydrate, archive
+     load, companion replacement). The row with the later `updatedAt` wins per
+     id. A local row that is newer than the snapshot cutoff is a draft created
+     after the snapshot and always survives it; a local row older than the
+     snapshot and absent from it was deleted there. */
+  function mergeRequestsById(localRows, incomingRows, cutoff){
+    const stamp = String(cutoff || "");
+    const incomingIds = {};
+    (Array.isArray(incomingRows) ? incomingRows : []).forEach(function(row){
+      if(row && row.id) incomingIds[row.id] = true;
+    });
+    const byId = new Map();
+    const order = [];
+    (Array.isArray(localRows) ? localRows : []).forEach(function(row){
+      if(!row || !row.id || byId.has(row.id)) return;
+      byId.set(row.id, row);
+      order.push(row.id);
+    });
+    (Array.isArray(incomingRows) ? incomingRows : []).forEach(function(row){
+      if(!row || !row.id) return;
+      const local = byId.get(row.id);
+      if(!local){
+        byId.set(row.id, row);
+        order.push(row.id);
+        return;
+      }
+      if(String(row.updatedAt || "") > String(local.updatedAt || "")) byId.set(row.id, row);
+    });
+    order.slice().forEach(function(id){
+      if(incomingIds[id]) return;
+      const row = byId.get(id);
+      if(!row) return;
+      if(stamp && String(row.updatedAt || "") > stamp) return;
+      byId.delete(id);
+      order.splice(order.indexOf(id), 1);
+    });
+    return order.map(function(id){ return byId.get(id); });
+  }
   function loadStateForProject(projectId, projectName){
     const fallbackLanguage = state.language === "tr" ? "tr" : "en";
     const traceBefore = rlTraceBegin();

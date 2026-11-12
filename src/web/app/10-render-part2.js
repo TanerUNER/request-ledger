@@ -441,11 +441,14 @@
       return normalizeRequest(JSON.parse(JSON.stringify(raw)), index);
     });
     rlAudit("archive-before", { snapshotId: currentSnapshot.id || "", incoming: rlAuditSnapshot(loaded) });
+    /* Keep a blank row created after this record was taken; it is newer than
+       the snapshot and the user has not had a chance to save it yet. */
+    const localRows = state.requests.slice();
     loaded.forEach(function(req){ req.collapsed = true; });
     state.project = currentSnapshot.project || state.project;
     state.projectCreated = true;
     state.ledgerId = currentSnapshot.ledgerId || state.ledgerId;
-    state.requests = loaded;
+    state.requests = mergeRequestsById(localRows, loaded, snapshotDate(currentSnapshot));
     stateDirtySinceExport = !isCurrentInHistory();
     barDismissed = false;
     lastJumpId = null;

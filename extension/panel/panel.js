@@ -11950,8 +11950,26 @@
     bridgeSaveTombstones();
   }
 
+  /* nextId reuses max+1, so a re-created row can carry a deleted id. A live
+     id must never keep a tombstone or the next merge skips/removes the row. */
+  function bridgeForgetTombstone(id){
+    if(typeof id !== "string" || !id || !Object.prototype.hasOwnProperty.call(bridgeTombstones, id)) return;
+    delete bridgeTombstones[id];
+    bridgeSaveTombstones();
+  }
+
   function bridgeTombstoneIds(){
     return Object.keys(bridgeTombstones).sort();
+  }
+
+  /* Only ids that are no longer part of the ledger leave as deletions; an id
+     present in `requests`/`upserts` must never be in `deletedIds` too. */
+  function bridgeDeletionIds(){
+    var live = {};
+    if(app && Array.isArray(app.requests)){
+      app.requests.forEach(function(req){ if(req && req.id) live[req.id] = true; });
+    }
+    return bridgeTombstoneIds().filter(function(id){ return !live[id]; });
   }
 
   /* Detect local deletions between two saves. */
@@ -12245,7 +12263,7 @@
       agents:app && Array.isArray(app.agents) ? app.agents.map(bridgeAgentOut) : [],
       language:app && app.language === "tr" ? "tr" : "en",
       exportBehavior:app && ["last","instant"].indexOf(app.exportBehavior) >= 0 ? app.exportBehavior : "default",
-      deletedIds:bridgeTombstoneIds()
+      deletedIds:bridgeDeletionIds()
     };
     if(type === "RL_APP_PATCH"){
       message.upserts = message.requests.slice();
@@ -12657,28 +12675,71 @@
     return String(project == null ? "" : project).trim().length > 0;
   }
 
+  /* A full replacement is merged by id: the newer row wins, and a local row
+     created after the incoming snapshot (a draft the user just opened) is
+     kept instead of being wiped by the adoption. */
+  function bridgeMergedRows(localRows, incomingRows, cutoff){
+    var stamp = String(cutoff || "");
+    var incomingIds = {};
+    var byId = {};
+    var order = [];
+    (Array.isArray(incomingRows) ? incomingRows : []).forEach(function(row){
+      if(row && row.id) incomingIds[row.id] = true;
+    });
+    (Array.isArray(localRows) ? localRows : []).forEach(function(row){
+      if(!row || !row.id || byId[row.id]) return;
+      byId[row.id] = row;
+      order.push(row.id);
+    });
+    (Array.isArray(incomingRows) ? incomingRows : []).forEach(function(row){
+      if(!row || !row.id) return;
+      var local = byId[row.id];
+      if(!local){ byId[row.id] = row; order.push(row.id); return; }
+      if(String(row.updatedAt || "") > String(local.updatedAt || "")) byId[row.id] = row;
+    });
+    order.slice().forEach(function(id){
+      if(incomingIds[id]) return;
+      var row = byId[id];
+      if(!row) return;
+      if(stamp && String(row.updatedAt || "") > stamp) return;
+      delete byId[id];
+      order.splice(order.indexOf(id), 1);
+    });
+    return order.map(function(id){ return byId[id]; });
+  }
+
   function bridgeMergeRequests(incoming, deletedIds, stamp){
     var byId = {};
     var order = [];
+    var incomingIds = {};
     (app && Array.isArray(app.requests) ? app.requests : []).forEach(function(req){
       if(!req || !req.id) return;
       byId[req.id] = req;
       order.push(req.id);
     });
+    (Array.isArray(incoming) ? incoming : []).forEach(function(raw){
+      if(raw && typeof raw.id === "string" && raw.id) incomingIds[raw.id] = true;
+    });
 
     (Array.isArray(deletedIds) ? deletedIds : []).forEach(function(id){
       if(typeof id !== "string" || !id) return;
+      /* The peer's own upsert wins: a live row in this envelope is not a
+         deletion, even when a stale tombstone still carries its id. */
+      if(incomingIds[id]) return;
       var local = byId[id];
-      if(local && local.updatedAt && String(local.updatedAt) > String(stamp || "")) return;
+      var deletedAt = bridgeTombstones[id] ? String(bridgeTombstones[id]) : String(stamp || "");
+      if(local && local.updatedAt && String(local.updatedAt) > deletedAt) return;
       delete byId[id];
-      bridgeRememberTombstone(id, stamp || bridgeNow());
+      bridgeRememberTombstone(id, deletedAt || bridgeNow());
       var at = order.indexOf(id);
       if(at >= 0) order.splice(at, 1);
     });
 
     (Array.isArray(incoming) ? incoming : []).forEach(function(raw, index){
       if(!raw || typeof raw.id !== "string" || !raw.id) return;
-      if(bridgeTombstones[raw.id] && String(bridgeTombstones[raw.id]) >= String(raw.updatedAt || "")) return;
+      /* The id is live in the envelope: clear any stale tombstone instead of
+         skipping a freshly re-created request. */
+      bridgeForgetTombstone(raw.id);
       var local = byId[raw.id];
       /* Equal timestamps keep the local object: replacing on a tie would let a
          lagging peer erase a just-written field during the same revision. */
@@ -12814,11 +12875,11 @@
     bridgeSuppress++;
     try{
       if(mode === "replace"){
-        /* A chosen ledger starts clean: old tombstones belong to the
-           losing ledger and must never delete the winner's requests. */
-        bridgeTombstones = {};
-        bridgeSaveTombstones();
-        app.requests = [];
+        /* A chosen ledger is merged, not pasted: a request the user created
+           after the incoming snapshot must survive the adoption. Old
+           tombstones belong to the losing ledger. */
+        var localRows = app.requests.slice();
+        var incomingRows = [];
         incoming.forEach(function(raw, index){
           if(!raw || typeof raw.id !== "string" || !raw.id) return;
           var normalized = core && core.requests && core.requests.normalize
@@ -12826,8 +12887,11 @@
             : raw;
           normalized.images = bridgeMediaList(raw.images, "image");
           normalized.attachments = bridgeMediaList(raw.attachments, "file");
-          app.requests.push(normalized);
+          incomingRows.push(normalized);
         });
+        bridgeTombstones = {};
+        bridgeSaveTombstones();
+        app.requests = bridgeMergedRows(localRows, incomingRows, stamp);
         var replacedName = bridgeEnvelopeProjectName(data);
         if(replacedName){
           app.project = replacedName;

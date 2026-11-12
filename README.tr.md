@@ -3,35 +3,35 @@
 </p>
 
 <p align="center">
-  <b>Fikirden Markdown’a, tek ve sakin bir akış.</b><br>
-  Ürün ekipleri, serbest çalışanlar ve yapay zekâ destekli geliştiriciler için yerel öncelikli istek masası.
+  <b>Fikirden Markdownâ€™a, tek ve sakin bir akÄ±ÅŸ.</b><br>
+  ÃœrÃ¼n ekipleri, serbest Ã§alÄ±ÅŸanlar ve yapay zekÃ¢ destekli geliÅŸtiriciler iÃ§in yerel Ã¶ncelikli istek masasÄ±.
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · Türkçe
+  <a href="README.md">English</a> Â· TÃ¼rkÃ§e
 </p>
 
 <p align="center">
-  <img alt="Web uygulaması 1.10.1" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.10.1-d13e27?style=for-the-badge">
-  <img alt="Uzantı 1.10.1" src="https://img.shields.io/badge/uzant%C4%B1-1.10.1-4f614b?style=for-the-badge">
+  <img alt="Web uygulamasÄ± 1.10.3" src="https://img.shields.io/badge/web%20uygulamas%C4%B1-1.10.3-d13e27?style=for-the-badge">
+  <img alt="UzantÄ± 1.10.3" src="https://img.shields.io/badge/uzant%C4%B1-1.10.3-4f614b?style=for-the-badge">
   <img alt="Tek dosya" src="https://img.shields.io/badge/tek%20dosya-ff6e50?style=for-the-badge">
   <img alt="TR / EN" src="https://img.shields.io/badge/TR%20%2F%20EN-%C3%A7ift%20dilli-1d2328?style=for-the-badge">
-  <img alt="MIT lisansı" src="https://img.shields.io/badge/lisans-MIT-444?style=for-the-badge">
+  <img alt="MIT lisansÄ±" src="https://img.shields.io/badge/lisans-MIT-444?style=for-the-badge">
 </p>
 
 <p align="center">
-  <a href="#nedir">Nedir?</a> ·
-  <a href="#nasil-calisir">Nasıl çalışır?</a> ·
-  <a href="#calisma-alani-ve-projeler">Projeler</a> ·
-  <a href="#iki-calistirma-modu">Çalıştırma modları</a> ·
-  <a href="#chrome-yardimcisi">Uzantı</a> ·
-  <a href="#yedekler">Yedekler</a> ·
-  <a href="#gizlilik">Gizlilik</a> ·
-  <a href="#sinirlamalar">Sınırlamalar</a>
+  <a href="#nedir">Nedir?</a> Â·
+  <a href="#nasil-calisir">NasÄ±l Ã§alÄ±ÅŸÄ±r?</a> Â·
+  <a href="#calisma-alani-ve-projeler">Projeler</a> Â·
+  <a href="#iki-calistirma-modu">Ã‡alÄ±ÅŸtÄ±rma modlarÄ±</a> Â·
+  <a href="#chrome-yardimcisi">UzantÄ±</a> Â·
+  <a href="#yedekler">Yedekler</a> Â·
+  <a href="#gizlilik">Gizlilik</a> Â·
+  <a href="#sinirlamalar">SÄ±nÄ±rlamalar</a>
 </p>
 
 <p align="center">
-  <img src="README-assets/en/hero.png" alt="Request Ledger masaüstü, dizüstü ve tablette">
+  <img src="README-assets/en/hero.png" alt="Request Ledger masaÃ¼stÃ¼, dizÃ¼stÃ¼ ve tablette">
 </p>
 
 ---
@@ -39,296 +39,296 @@
 <a id="nedir"></a>
 ## Nedir?
 
-Request Ledger, tarayıcıda çalışan **yerel öncelikli bir istek masasıdır**. Ürün isteklerini, hataları,
-soruları ve tasarım notlarını tek yerde toplar; eksik olup olmadığını kontrol eder; teslimatı planlar;
-açık bir onay ister ve **yapay zekâya hazır Markdown** olarak dışa aktarır.
+Request Ledger, tarayÄ±cÄ±da Ã§alÄ±ÅŸan **yerel Ã¶ncelikli bir istek masasÄ±dÄ±r**. ÃœrÃ¼n isteklerini, hatalarÄ±,
+sorularÄ± ve tasarÄ±m notlarÄ±nÄ± tek yerde toplar; eksik olup olmadÄ±ÄŸÄ±nÄ± kontrol eder; teslimatÄ± planlar;
+aÃ§Ä±k bir onay ister ve **yapay zekÃ¢ya hazÄ±r Markdown** olarak dÄ±ÅŸa aktarÄ±r.
 
-Hesap yok. Telemetri yok. Uzak kod yok. Veriler tarayıcı profilinizde kalır. Yerel sunucu isteğe
-bağlıdır; yalnızca sunucu modunu ve Chrome yardımcısı çevresindeki kolaylıkları ekler.
+Hesap yok. Telemetri yok. Uzak kod yok. Veriler tarayÄ±cÄ± profilinizde kalÄ±r. Yerel sunucu isteÄŸe
+baÄŸlÄ±dÄ±r; yalnÄ±zca sunucu modunu ve Chrome yardÄ±mcÄ±sÄ± Ã§evresindeki kolaylÄ±klarÄ± ekler.
 
-> Dağınık notlar, sohbet mesajları ve ekran görüntüleri → tek düzenli defter → net bir plan → teslimata
-> hazır tek Markdown dosyası.
+> DaÄŸÄ±nÄ±k notlar, sohbet mesajlarÄ± ve ekran gÃ¶rÃ¼ntÃ¼leri â†’ tek dÃ¼zenli defter â†’ net bir plan â†’ teslimata
+> hazÄ±r tek Markdown dosyasÄ±.
 
-### Hangi sorunu çözer?
+### Hangi sorunu Ã§Ã¶zer?
 
 | Request Ledger olmadan | Request Ledger ile |
 |---|---|
-| İstekler sohbette, e-postada, notlarda ve ekran görüntülerinde dağılır. | Her istek için tek satır, tek defter. |
-| Hangi isteğin tamamlandığı bilinmez. | Canlı hazır/eksik sayıları ve eksik alan listesi. |
-| Geliştiriciye veya yapay zekâ ajanına teslim doğaçlama olur. | Ajan, test ve runtime seçenekleriyle tutarlı Markdown planı. |
-| İsteğin eski sürümleri birbirine karışır. | Proje başına Kayıtlar, Taslaklar ve dışa aktarma geçmişi. |
-| Başka tarayıcıya geçince bağlam kaybolur. | Medyayı taşıyan sürümlü ZIP yedeği. |
+| Ä°stekler sohbette, e-postada, notlarda ve ekran gÃ¶rÃ¼ntÃ¼lerinde daÄŸÄ±lÄ±r. | Her istek iÃ§in tek satÄ±r, tek defter. |
+| Hangi isteÄŸin tamamlandÄ±ÄŸÄ± bilinmez. | CanlÄ± hazÄ±r/eksik sayÄ±larÄ± ve eksik alan listesi. |
+| GeliÅŸtiriciye veya yapay zekÃ¢ ajanÄ±na teslim doÄŸaÃ§lama olur. | Ajan, test ve runtime seÃ§enekleriyle tutarlÄ± Markdown planÄ±. |
+| Ä°steÄŸin eski sÃ¼rÃ¼mleri birbirine karÄ±ÅŸÄ±r. | Proje baÅŸÄ±na KayÄ±tlar, Taslaklar ve dÄ±ÅŸa aktarma geÃ§miÅŸi. |
+| BaÅŸka tarayÄ±cÄ±ya geÃ§ince baÄŸlam kaybolur. | MedyayÄ± taÅŸÄ±yan sÃ¼rÃ¼mlÃ¼ ZIP yedeÄŸi. |
 
-### Kimler için?
+### Kimler iÃ§in?
 
-- Birçok kişiden istek toplayan ürün yöneticileri ve kurucular.
-- Düzenli bir teslimat listesi isteyen bağımsız geliştiriciler ve küçük ekipler.
-- Sayfa, konum ve konsol bağlamıyla tekrarlanabilir hata kaydı isteyen QA mühendisleri.
-- İşi kodlama ajanlarına devreden ve temiz bir Markdown brief’i isteyen yapay zekâ destekli geliştiriciler.
-- Başka bir SaaS hesabı istemeyen, taşınabilir ve gizli bir çalışma alanı arayan serbest çalışanlar.
+- BirÃ§ok kiÅŸiden istek toplayan Ã¼rÃ¼n yÃ¶neticileri ve kurucular.
+- DÃ¼zenli bir teslimat listesi isteyen baÄŸÄ±msÄ±z geliÅŸtiriciler ve kÃ¼Ã§Ã¼k ekipler.
+- Sayfa, konum ve konsol baÄŸlamÄ±yla tekrarlanabilir hata kaydÄ± isteyen QA mÃ¼hendisleri.
+- Ä°ÅŸi kodlama ajanlarÄ±na devreden ve temiz bir Markdown briefâ€™i isteyen yapay zekÃ¢ destekli geliÅŸtiriciler.
+- BaÅŸka bir SaaS hesabÄ± istemeyen, taÅŸÄ±nabilir ve gizli bir Ã§alÄ±ÅŸma alanÄ± arayan serbest Ã§alÄ±ÅŸanlar.
 
 <p align="center">
-  <img src="README-assets/en/workflow.png" alt="Topla, planla, onayla, dışa aktar akışı">
+  <img src="README-assets/en/workflow.png" alt="Topla, planla, onayla, dÄ±ÅŸa aktar akÄ±ÅŸÄ±">
 </p>
 
 <a id="nasil-calisir"></a>
-## Nasıl çalışır?
+## NasÄ±l Ã§alÄ±ÅŸÄ±r?
 
-1. **Topla** — her isteği kendi satırına ekle. Altı türden birini seç; her tür yalnızca ilgili alanları
-   gösterir. Ekran görüntülerini `Ctrl+V` ile yapıştır, sürükle-bırak veya dosya seçiciyle ekle.
-2. **Planla** — tam, hafif veya özel bir koşu seç; ajanları ve testleri belirle; runtime paketinin nasıl
-   taşınacağına karar ver.
-3. **Onayla** — zorunlu alanlar tamamlandığında satırdaki tiki tıkla. Satır kilitlenir; düzenleme ancak
-   onay geri alındığında açılır.
-4. **Dışa aktar** — Markdown ve medya içeren ZIP, görselleri gömülü tek `.md` veya düz Markdown al.
-   Seçimleri bir kez kaydet; sonraki aktarımlar **Hemen aktar** ile aynı seçimleri kullanır.
-5. **Arşivle** — Kayıtları, Taslakları ve dışa aktarma geçmişini tut; düzenli olarak yedek al.
+1. **Topla** â€” her isteÄŸi kendi satÄ±rÄ±na ekle. AltÄ± tÃ¼rden birini seÃ§; her tÃ¼r yalnÄ±zca ilgili alanlarÄ±
+   gÃ¶sterir. Ekran gÃ¶rÃ¼ntÃ¼lerini `Ctrl+V` ile yapÄ±ÅŸtÄ±r, sÃ¼rÃ¼kle-bÄ±rak veya dosya seÃ§iciyle ekle.
+2. **Planla** â€” tam, hafif veya Ã¶zel bir koÅŸu seÃ§; ajanlarÄ± ve testleri belirle; runtime paketinin nasÄ±l
+   taÅŸÄ±nacaÄŸÄ±na karar ver.
+3. **Onayla** â€” zorunlu alanlar tamamlandÄ±ÄŸÄ±nda satÄ±rdaki tiki tÄ±kla. SatÄ±r kilitlenir; dÃ¼zenleme ancak
+   onay geri alÄ±ndÄ±ÄŸÄ±nda aÃ§Ä±lÄ±r.
+4. **DÄ±ÅŸa aktar** â€” Markdown ve medya iÃ§eren ZIP, gÃ¶rselleri gÃ¶mÃ¼lÃ¼ tek `.md` veya dÃ¼z Markdown al.
+   SeÃ§imleri bir kez kaydet; sonraki aktarÄ±mlar **Hemen aktar** ile aynÄ± seÃ§imleri kullanÄ±r.
+5. **ArÅŸivle** â€” KayÄ±tlarÄ±, TaslaklarÄ± ve dÄ±ÅŸa aktarma geÃ§miÅŸini tut; dÃ¼zenli olarak yedek al.
 
 <a id="calisma-alani-ve-projeler"></a>
-## Çalışma alanı ve projeler
+## Ã‡alÄ±ÅŸma alanÄ± ve projeler
 
-Çalışma alanı bir proje kayıt defteridir. Her proje kendi şunlarını ayrı tutar:
+Ã‡alÄ±ÅŸma alanÄ± bir proje kayÄ±t defteridir. Her proje kendi ÅŸunlarÄ±nÄ± ayrÄ± tutar:
 
-- istek defteri ve dışa aktarma hedefi;
-- görseller ve dosya ekleri;
-- Kayıtlar, Taslaklar ve dışa aktarma geçmişi;
-- arşiv durumu ve proje adı.
+- istek defteri ve dÄ±ÅŸa aktarma hedefi;
+- gÃ¶rseller ve dosya ekleri;
+- KayÄ±tlar, Taslaklar ve dÄ±ÅŸa aktarma geÃ§miÅŸi;
+- arÅŸiv durumu ve proje adÄ±.
 
-Projeler uygulamaya aittir; Chrome yardımcısı yalnızca etkin projeyi yansıtır ve kendi proje yönetim
-arayüzü yoktur. Proje değiştirirken kaydedilmemiş değişiklik onayı devreye girer. Proje kimlikleri
-hiçbir zaman birleştirilmez; benzer adlı iki proje ayrı kalır. Bir projeyi silmek diskteki
-`projects/<slug>/` klasörünü de kaldırır; isterseniz `deleted-projects/` altında ZIP kopyası saklanır
-ve sonradan geri yüklenir. Port değişikliği sessizdir: mevcut tarayıcı verisi önce diske aktarılır ve
-sayfa yeni sunucuya geçer.
+Projeler uygulamaya aittir; Chrome yardÄ±mcÄ±sÄ± yalnÄ±zca etkin projeyi yansÄ±tÄ±r ve kendi proje yÃ¶netim
+arayÃ¼zÃ¼ yoktur. Proje deÄŸiÅŸtirirken kaydedilmemiÅŸ deÄŸiÅŸiklik onayÄ± devreye girer. Proje kimlikleri
+hiÃ§bir zaman birleÅŸtirilmez; benzer adlÄ± iki proje ayrÄ± kalÄ±r. Bir projeyi silmek diskteki
+`projects/<slug>/` klasÃ¶rÃ¼nÃ¼ de kaldÄ±rÄ±r; isterseniz `deleted-projects/` altÄ±nda ZIP kopyasÄ± saklanÄ±r
+ve sonradan geri yÃ¼klenir. Port deÄŸiÅŸikliÄŸi sessizdir: mevcut tarayÄ±cÄ± verisi Ã¶nce diske aktarÄ±lÄ±r ve
+sayfa yeni sunucuya geÃ§er.
 
 <a id="iki-calistirma-modu"></a>
-## İki çalıştırma modu
+## Ä°ki Ã§alÄ±ÅŸtÄ±rma modu
 
-| | Tek HTML dosyası | Yerel sunucu |
+| | Tek HTML dosyasÄ± | Yerel sunucu |
 |---|---|---|
-| **Nasıl başlatılır** | `request-ledger.html` veya `index.html` dosyasını doğrudan açın ya da statik olarak yayınlayın. | Windows’ta `start.cmd`, her yerde `node scripts/serve.cjs 8080`. |
-| **En iyi olduğu yer** | Kopyalanabilen, arşivlenebilen veya çevrimdışı açılan taşınabilir dosya. | Sabit yerel adres, portu gösteren durum noktası ve hatırlanan port. |
-| **Uzantı köprüsü** | Uzantı kuruluysa ve dosya URL’lerine erişim izni varsa çalışır. | Uygulama sekmesi açıkken `localhost` veya `127.0.0.1` üzerinde çalışır. |
-| **Yerel sunucu** | Yok; dosya sunucu başlatamaz. | Başlatıcı açar; son uygulama sekmesi kapandıktan ~5 saniye sonra ya da canlı sayfa olmadan 5 dakika geçince (yedek davranış) kendiliğinden kapanır. |
-| **Gereksinim** | Güncel bir tarayıcı. | `PATH` üzerinde Node.js 18 veya daha yenisi. |
+| **NasÄ±l baÅŸlatÄ±lÄ±r** | `request-ledger.html` veya `index.html` dosyasÄ±nÄ± doÄŸrudan aÃ§Ä±n ya da statik olarak yayÄ±nlayÄ±n. | Windowsâ€™ta `start.cmd`, her yerde `node scripts/serve.cjs 8080`. |
+| **En iyi olduÄŸu yer** | Kopyalanabilen, arÅŸivlenebilen veya Ã§evrimdÄ±ÅŸÄ± aÃ§Ä±lan taÅŸÄ±nabilir dosya. | Sabit yerel adres, portu gÃ¶steren durum noktasÄ± ve hatÄ±rlanan port. |
+| **UzantÄ± kÃ¶prÃ¼sÃ¼** | UzantÄ± kuruluysa ve dosya URLâ€™lerine eriÅŸim izni varsa Ã§alÄ±ÅŸÄ±r. | Uygulama sekmesi aÃ§Ä±kken `localhost` veya `127.0.0.1` Ã¼zerinde Ã§alÄ±ÅŸÄ±r. |
+| **Yerel sunucu** | Yok; dosya sunucu baÅŸlatamaz. | BaÅŸlatÄ±cÄ± aÃ§ar; son uygulama sekmesi kapandÄ±ktan ~5 saniye sonra ya da canlÄ± sayfa olmadan 5 dakika geÃ§ince (yedek davranÄ±ÅŸ) kendiliÄŸinden kapanÄ±r. |
+| **Gereksinim** | GÃ¼ncel bir tarayÄ±cÄ±. | `PATH` Ã¼zerinde Node.js 18 veya daha yenisi. |
 
-`start.cmd` sunucuyu konsol penceresi olmadan başlatır, tarayıcıyı açar ve süreç kimliği ile portu
-`.rl-server.lock` dosyasına yazar. Son portu `.rl-port` içinde hatırlar (`0` otomatik demektir); port
-doluysa boş bir portta başlar ve bunu size söyler. `stop.cmd` kilidi okur ve sunucuyu kapatır.
+`start.cmd` sunucuyu konsol penceresi olmadan baÅŸlatÄ±r, tarayÄ±cÄ±yÄ± aÃ§ar ve sÃ¼reÃ§ kimliÄŸi ile portu
+`.rl-server.lock` dosyasÄ±na yazar. Son portu `.rl-port` iÃ§inde hatÄ±rlar (`0` otomatik demektir); port
+doluysa boÅŸ bir portta baÅŸlar ve bunu size sÃ¶yler. `stop.cmd` kilidi okur ve sunucuyu kapatÄ±r.
 
-### Sunucu yaşam döngüsü ve çalışma verileri
+### Sunucu yaÅŸam dÃ¶ngÃ¼sÃ¼ ve Ã§alÄ±ÅŸma verileri
 
-Uygulamayı yenilemek, gezinmek veya sekmeyi arka planda tutmak sunucuyu yaşatır. Son uygulama sekmesi
-kapanınca kapatma sinyali gider ve sunucu **5 saniyelik ek süreden** sonra durur; port serbest kalır ve
-kilit dosyası silinir. Bu pencerede açılan başka bir sekme veya yenileme kapanmayı iptal eder. Kapatma
-sinyali hiç ulaşmazsa (örneğin çökmüş bir sekme), başlatıcının 300 saniyelik boşta durma kuralı yedek
-davranıştır. `stop.cmd` yine hemen kapatır. Durdurma bir sayfa eylemi değildir: tarayıcı süreç
-başlatamaz, bu yüzden tamamen durmuş sunucu yalnızca **`start.cmd`** ile yeniden başlatılır.
+UygulamayÄ± yenilemek, gezinmek veya sekmeyi arka planda tutmak sunucuyu yaÅŸatÄ±r. Son uygulama sekmesi
+kapanÄ±nca kapatma sinyali gider ve sunucu **5 saniyelik ek sÃ¼reden** sonra durur; port serbest kalÄ±r ve
+kilit dosyasÄ± silinir. Bu pencerede aÃ§Ä±lan baÅŸka bir sekme veya yenileme kapanmayÄ± iptal eder. Kapatma
+sinyali hiÃ§ ulaÅŸmazsa (Ã¶rneÄŸin Ã§Ã¶kmÃ¼ÅŸ bir sekme), baÅŸlatÄ±cÄ±nÄ±n 300 saniyelik boÅŸta durma kuralÄ± yedek
+davranÄ±ÅŸtÄ±r. `stop.cmd` yine hemen kapatÄ±r. Durdurma bir sayfa eylemi deÄŸildir: tarayÄ±cÄ± sÃ¼reÃ§
+baÅŸlatamaz, bu yÃ¼zden tamamen durmuÅŸ sunucu yalnÄ±zca **`start.cmd`** ile yeniden baÅŸlatÄ±lÄ±r.
 
-Çalışma verileri `scripts/serve.cjs` yanında tutulur ve git’e girmez:
+Ã‡alÄ±ÅŸma verileri `scripts/serve.cjs` yanÄ±nda tutulur ve gitâ€™e girmez:
 
-| Yol | İçerik |
+| Yol | Ä°Ã§erik |
 |---|---|
-| `projects/<slug>/` | Canlı proje verisi: `project.json`, `ledger.json`, `archive.json`, `media.json`, `media/` ve `exports/`. |
-| `backups/` | Uygulamanın yazdığı tam yedek ZIP’leri. Tam sıfırlamada korunur. |
-| `deleted-projects/` | “Yedek sakla” seçilerek silinen projelerin ZIP arşivleri. |
-| `rl-config.json` | Sunucu tarafı arayüz yapılandırması (dil, tema, son port). |
+| `projects/<slug>/` | CanlÄ± proje verisi: `project.json`, `ledger.json`, `archive.json`, `media.json`, `media/` ve `exports/`. |
+| `backups/` | UygulamanÄ±n yazdÄ±ÄŸÄ± tam yedek ZIPâ€™leri. Tam sÄ±fÄ±rlamada korunur. |
+| `deleted-projects/` | â€œYedek saklaâ€ seÃ§ilerek silinen projelerin ZIP arÅŸivleri. |
+| `rl-config.json` | Sunucu tarafÄ± arayÃ¼z yapÄ±landÄ±rmasÄ± (dil, tema, son port). |
 
-Sunucu modunda her proje uygulama dizininde `projects/<proje-adı>/` klasörüne sahiptir. **Kaydet** geçerli
-defter anlık görüntüsünü buraya (`ledger.json`) yazar; **Dışa Aktar** hedef klasör seçiliyse oraya,
-seçili değilse proje klasöründeki `exports/` dizinine yazar. Arşiv proje listesi/kayıtları bu klasör
-bilgisini okur. `file://` modunda sunucu klasörü yazımı yoktur: Kaydet/Dışa Aktar açık bir “klasör
-kaydı için sunucu modu gerekli” mesajı gösterir ve tarayıcı indirmesine düşer.
+Sunucu modunda her proje uygulama dizininde `projects/<proje-adÄ±>/` klasÃ¶rÃ¼ne sahiptir. **Kaydet** geÃ§erli
+defter anlÄ±k gÃ¶rÃ¼ntÃ¼sÃ¼nÃ¼ buraya (`ledger.json`) yazar; **DÄ±ÅŸa Aktar** hedef klasÃ¶r seÃ§iliyse oraya,
+seÃ§ili deÄŸilse proje klasÃ¶rÃ¼ndeki `exports/` dizinine yazar. ArÅŸiv proje listesi/kayÄ±tlarÄ± bu klasÃ¶r
+bilgisini okur. `file://` modunda sunucu klasÃ¶rÃ¼ yazÄ±mÄ± yoktur: Kaydet/DÄ±ÅŸa Aktar aÃ§Ä±k bir â€œklasÃ¶r
+kaydÄ± iÃ§in sunucu modu gerekliâ€ mesajÄ± gÃ¶sterir ve tarayÄ±cÄ± indirmesine dÃ¼ÅŸer.
 
-Sunucu açıkken Ayarlar **Sunucuyu yeniden başlat** ve **Port** seçeneklerini sunar. İkisi de yerine
-geçecek bir süreç başlatır; port değişikliği ancak yeni süreç `/__rl/status` üzerinde kendi pid ve
-portuyla yanıt verdikten sonra uygulanır, böylece sayfa ölü bir adrese düşmez. Yeni süreç açılamazsa
-eski sunucu çalışmaya devam eder ve portun değiştirilemediğini bildiren bir uyarı gösterilir.
+Sunucu aÃ§Ä±kken Ayarlar **Sunucuyu yeniden baÅŸlat** ve **Port** seÃ§eneklerini sunar. Ä°kisi de yerine
+geÃ§ecek bir sÃ¼reÃ§ baÅŸlatÄ±r; port deÄŸiÅŸikliÄŸi ancak yeni sÃ¼reÃ§ `/__rl/status` Ã¼zerinde kendi pid ve
+portuyla yanÄ±t verdikten sonra uygulanÄ±r, bÃ¶ylece sayfa Ã¶lÃ¼ bir adrese dÃ¼ÅŸmez. Yeni sÃ¼reÃ§ aÃ§Ä±lamazsa
+eski sunucu Ã§alÄ±ÅŸmaya devam eder ve portun deÄŸiÅŸtirilemediÄŸini bildiren bir uyarÄ± gÃ¶sterilir.
 
 <a id="chrome-yardimcisi"></a>
-## Chrome yardımcısı
+## Chrome yardÄ±mcÄ±sÄ±
 
-`extension/` klasörü Chrome ve Edge 114+ için paketlenmemiş bir **Manifest V3** uzantısıdır. Bir
-**yardımcıdır**: yalnızca Request Ledger uygulaması açıkken görünür. Sayfaların sağ alt köşesine 44 px
-bir açıcı ve 360 px bir panel ekler; sayfayı yeniden akıtmaz.
+`extension/` klasÃ¶rÃ¼ Chrome ve Edge 114+ iÃ§in paketlenmemiÅŸ bir **Manifest V3** uzantÄ±sÄ±dÄ±r. Bir
+**yardÄ±mcÄ±dÄ±r**: yalnÄ±zca Request Ledger uygulamasÄ± aÃ§Ä±kken gÃ¶rÃ¼nÃ¼r. SayfalarÄ±n saÄŸ alt kÃ¶ÅŸesine 44 px
+bir aÃ§Ä±cÄ± ve 360 px bir panel ekler; sayfayÄ± yeniden akÄ±tmaz.
 
 | Yetenek | Ne yapar? |
 |---|---|
-| **Canlı yardımcı** | Uygulama gerekir. Açıkken istekler, medya ve etkin proje iki yönde eşitlenir. Uygulama kapalıyken **hiçbir uzantı arayüzü görünmez** - ray, açıcı, iframe veya kilit kartı yoktur. Uygulama açılınca kendiliğinden geri gelir. Tarayıcı yeniden başlatıldığında hiçbir şey göstermeden önce uygulamayı doğrular: önceki oturumdan kalan bağlantı durumu yeniden başlatmayı atlatmaz ve uygulama kapalıyken hiçbir sayfada arayüz görünmez. |
-| **Uygulama sahipli projeler** | Projeler yalnızca uygulamada oluşturulur, yeniden adlandırılır, değiştirilir ve silinir. Uzantı her zaman uygulamanın etkin projesini izler; proje listesi, seçici veya oluşturma arayüzü yoktur. |
-| **Medya eşitleme** | Yapıştırma, dosya yükleme, ekran görüntüsü ve öğe+ekran görüntüsü görselleri köprüden geçer. Öğe başına sınır 8 MB'tır; daha büyük öğeler yalnızca yedek ZIP ile taşınır. Blob'u henüz gelmeyen küçük resim “Görsel bulunamadı” yerine “Görsel yükleniyor…” durumu gösterir. |
-| **Öğe seçici** | Geçerli sayfada veya uygulamadan seçilen başka bir sekmede öğe seçin. Tekrarlanan seçimler iki yüzeyde de `" | "` ile eklenir (yinelenenler ayıklanır, 200 karakter sınırı). |
-| **Ekran görüntüsü** | Bir sekme seçin, bölgeyi kırpın ve görseli etkin isteğe ekleyin. Sayfa yolu otomatik dolar. |
-| **Panelde istek masası** | Sayfadan ayrılmadan istek oluşturun, düzenleyin, arayın, sıralayın ve onaylayın. Hazır/kilitli isteklerde görsel önizleme açılır; düzenleme açılmaz. |
-| **Sekme başına sabitleme ve tema** | Sabitleme durumu ve açık/koyu panel teması tarayıcı sekmesi başına oturum depolamasında tutulur; bir sayfadaki değişiklik diğerini etkilemez. Yeni sekme varsayılanlarla başlar, kapanınca anahtarları silinir. |
-| **Araç çubuğu penceresi** | Tarayıcı eylem düğmesi ad, sürüm, depo, destek bağlantısı ve MIT lisansını gösteren küçük bir Hakkında kartı açar; uygulamanın açık olması gerektiğini belirtir. Sayfa içi panel değişmez. |
-| **Yedek ve aktarım** | ZIP yedeği indirin, geri yükleyin ya da veriyi uzantı ile web uygulaması arasında taşıyın. |
+| **CanlÄ± yardÄ±mcÄ±** | Uygulama gerekir. AÃ§Ä±kken istekler, medya ve etkin proje iki yÃ¶nde eÅŸitlenir. Uygulama kapalÄ±yken **hiÃ§bir uzantÄ± arayÃ¼zÃ¼ gÃ¶rÃ¼nmez** - ray, aÃ§Ä±cÄ±, iframe veya kilit kartÄ± yoktur. Uygulama aÃ§Ä±lÄ±nca kendiliÄŸinden geri gelir. TarayÄ±cÄ± yeniden baÅŸlatÄ±ldÄ±ÄŸÄ±nda hiÃ§bir ÅŸey gÃ¶stermeden Ã¶nce uygulamayÄ± doÄŸrular: Ã¶nceki oturumdan kalan baÄŸlantÄ± durumu yeniden baÅŸlatmayÄ± atlatmaz ve uygulama kapalÄ±yken hiÃ§bir sayfada arayÃ¼z gÃ¶rÃ¼nmez. |
+| **Uygulama sahipli projeler** | Projeler yalnÄ±zca uygulamada oluÅŸturulur, yeniden adlandÄ±rÄ±lÄ±r, deÄŸiÅŸtirilir ve silinir. UzantÄ± her zaman uygulamanÄ±n etkin projesini izler; proje listesi, seÃ§ici veya oluÅŸturma arayÃ¼zÃ¼ yoktur. |
+| **Medya eÅŸitleme** | YapÄ±ÅŸtÄ±rma, dosya yÃ¼kleme, ekran gÃ¶rÃ¼ntÃ¼sÃ¼ ve Ã¶ÄŸe+ekran gÃ¶rÃ¼ntÃ¼sÃ¼ gÃ¶rselleri kÃ¶prÃ¼den geÃ§er. Ã–ÄŸe baÅŸÄ±na sÄ±nÄ±r 8 MB'tÄ±r; daha bÃ¼yÃ¼k Ã¶ÄŸeler yalnÄ±zca yedek ZIP ile taÅŸÄ±nÄ±r. Blob'u henÃ¼z gelmeyen kÃ¼Ã§Ã¼k resim â€œGÃ¶rsel bulunamadÄ±â€ yerine â€œGÃ¶rsel yÃ¼kleniyorâ€¦â€ durumu gÃ¶sterir. |
+| **Ã–ÄŸe seÃ§ici** | GeÃ§erli sayfada veya uygulamadan seÃ§ilen baÅŸka bir sekmede Ã¶ÄŸe seÃ§in. Tekrarlanan seÃ§imler iki yÃ¼zeyde de `" | "` ile eklenir (yinelenenler ayÄ±klanÄ±r, 200 karakter sÄ±nÄ±rÄ±). |
+| **Ekran gÃ¶rÃ¼ntÃ¼sÃ¼** | Bir sekme seÃ§in, bÃ¶lgeyi kÄ±rpÄ±n ve gÃ¶rseli etkin isteÄŸe ekleyin. Sayfa yolu otomatik dolar. |
+| **Panelde istek masasÄ±** | Sayfadan ayrÄ±lmadan istek oluÅŸturun, dÃ¼zenleyin, arayÄ±n, sÄ±ralayÄ±n ve onaylayÄ±n. HazÄ±r/kilitli isteklerde gÃ¶rsel Ã¶nizleme aÃ§Ä±lÄ±r; dÃ¼zenleme aÃ§Ä±lmaz. |
+| **Sekme baÅŸÄ±na sabitleme ve tema** | Sabitleme durumu ve aÃ§Ä±k/koyu panel temasÄ± tarayÄ±cÄ± sekmesi baÅŸÄ±na oturum depolamasÄ±nda tutulur; bir sayfadaki deÄŸiÅŸiklik diÄŸerini etkilemez. Yeni sekme varsayÄ±lanlarla baÅŸlar, kapanÄ±nca anahtarlarÄ± silinir. |
+| **AraÃ§ Ã§ubuÄŸu penceresi** | TarayÄ±cÄ± eylem dÃ¼ÄŸmesi ad, sÃ¼rÃ¼m, depo, destek baÄŸlantÄ±sÄ± ve MIT lisansÄ±nÄ± gÃ¶steren kÃ¼Ã§Ã¼k bir HakkÄ±nda kartÄ± aÃ§ar; uygulamanÄ±n aÃ§Ä±k olmasÄ± gerektiÄŸini belirtir. Sayfa iÃ§i panel deÄŸiÅŸmez. |
+| **Yedek ve aktarÄ±m** | ZIP yedeÄŸi indirin, geri yÃ¼kleyin ya da veriyi uzantÄ± ile web uygulamasÄ± arasÄ±nda taÅŸÄ±yÄ±n. |
 
-Uzantı `chrome://extensions` üzerinden kendini etkinleştirip devre dışı bırakamaz. Orada devre dışı
-bırakırsanız kendiliğinden geri gelemez; elle yeniden etkinleştirin. Uygulama kapalıyken uzantı
-devre dışı değil, yalnızca görünmezdir. Varlık doğrulanır, varsayılmaz: her varlık yazımı bir zaman
-damgası taşır, ~12 saniyeden eski değer yok sayılır ve panel ancak uygulama veya sunucusu canlı bir
-kontrolle yanıt verdikten sonra bağlanır. Bu nedenle önceki tarayıcı oturumundan kalan `true` değeri
-başlangıçta arayüzü açamaz.
+UzantÄ± `chrome://extensions` Ã¼zerinden kendini etkinleÅŸtirip devre dÄ±ÅŸÄ± bÄ±rakamaz. Orada devre dÄ±ÅŸÄ±
+bÄ±rakÄ±rsanÄ±z kendiliÄŸinden geri gelemez; elle yeniden etkinleÅŸtirin. Uygulama kapalÄ±yken uzantÄ±
+devre dÄ±ÅŸÄ± deÄŸil, yalnÄ±zca gÃ¶rÃ¼nmezdir. VarlÄ±k doÄŸrulanÄ±r, varsayÄ±lmaz: her varlÄ±k yazÄ±mÄ± bir zaman
+damgasÄ± taÅŸÄ±r, ~12 saniyeden eski deÄŸer yok sayÄ±lÄ±r ve panel ancak uygulama veya sunucusu canlÄ± bir
+kontrolle yanÄ±t verdikten sonra baÄŸlanÄ±r. Bu nedenle Ã¶nceki tarayÄ±cÄ± oturumundan kalan `true` deÄŸeri
+baÅŸlangÄ±Ã§ta arayÃ¼zÃ¼ aÃ§amaz.
 
-Kurulum: `chrome://extensions` → **Geliştirici modu** → **Paketlenmemiş öğe yükle** → `extension/`
-klasörünü seçin (veya `request-ledger-extension.zip` dosyasını açıp klasörü seçin). Sabit uzantı
-kimliği `hapajcbgcfllhkiohhkechekajencdod`’dur; `manifest.json` içindeki `key` değişirse yeni bir
-kaynak oluşur ve depolama boş başlar.
+Kurulum: `chrome://extensions` â†’ **GeliÅŸtirici modu** â†’ **PaketlenmemiÅŸ Ã¶ÄŸe yÃ¼kle** â†’ `extension/`
+klasÃ¶rÃ¼nÃ¼ seÃ§in (veya `request-ledger-extension.zip` dosyasÄ±nÄ± aÃ§Ä±p klasÃ¶rÃ¼ seÃ§in). Sabit uzantÄ±
+kimliÄŸi `hapajcbgcfllhkiohhkechekajencdod`â€™dur; `manifest.json` iÃ§indeki `key` deÄŸiÅŸirse yeni bir
+kaynak oluÅŸur ve depolama boÅŸ baÅŸlar.
 
 <a id="yedekler"></a>
 ## Yedekler
 
-İki ürün aynı yedek ailesini kullanır. Web uygulaması **v4** yazar; uzantı **v3** yazar ve **v4**
-okur. Yalnızca tam ZIP yedeği kaldı: her zaman sıkıştırılmış bir arşivdir ve varsa medyayı içerir.
+Ä°ki Ã¼rÃ¼n aynÄ± yedek ailesini kullanÄ±r. Web uygulamasÄ± **v4** yazar; uzantÄ± **v3** yazar ve **v4**
+okur. YalnÄ±zca tam ZIP yedeÄŸi kaldÄ±: her zaman sÄ±kÄ±ÅŸtÄ±rÄ±lmÄ±ÅŸ bir arÅŸivdir ve varsa medyayÄ± iÃ§erir.
 
-| Biçim | İçerik | Ne zaman kullanılır? |
+| BiÃ§im | Ä°Ã§erik | Ne zaman kullanÄ±lÄ±r? |
 |---|---|---|
-| **ZIP (v4)** | Tüm projeler, istekler, Kayıtlar, Taslaklar, ajanlar, görseller ve dosya ekleri. | Eksiksiz ve taşınabilir bir arşiv istediğinizde. |
+| **ZIP (v4)** | TÃ¼m projeler, istekler, KayÄ±tlar, Taslaklar, ajanlar, gÃ¶rseller ve dosya ekleri. | Eksiksiz ve taÅŸÄ±nabilir bir arÅŸiv istediÄŸinizde. |
 
-Sunucu modunda tam yedek ayrıca diskteki `backups/` klasörüne yazılır; yedekleme ekranı saklanan
-yedekleri (en yeni önce) geri yükleme işlemiyle listeler ve `deleted-projects/` arşivlerini de
-gösterir. **Proje verilerini temizle** artık tam sıfırlamadır: tüm canlı projeleri ve silinen proje
-arşivlerini kaldırır, `backups/` korunur ve önce yedek almayı önerir.
+Sunucu modunda tam yedek ayrÄ±ca diskteki `backups/` klasÃ¶rÃ¼ne yazÄ±lÄ±r; yedekleme ekranÄ± saklanan
+yedekleri (en yeni Ã¶nce) geri yÃ¼kleme iÅŸlemiyle listeler ve `deleted-projects/` arÅŸivlerini de
+gÃ¶sterir. **Proje verilerini temizle** artÄ±k tam sÄ±fÄ±rlamadÄ±r: tÃ¼m canlÄ± projeleri ve silinen proje
+arÅŸivlerini kaldÄ±rÄ±r, `backups/` korunur ve Ã¶nce yedek almayÄ± Ã¶nerir.
 
-Geri yükleme, verilere dokunmadan önce paketi doğrular ve medyayı önceden silmez. v4 yedeği tüm
-projeleri geri yükler; v3 yedeği tek projeye geri yüklenir. Yedekler düz metindir; hassas belge gibi
-davranın.
+Geri yÃ¼kleme, verilere dokunmadan Ã¶nce paketi doÄŸrular ve medyayÄ± Ã¶nceden silmez. v4 yedeÄŸi tÃ¼m
+projeleri geri yÃ¼kler; v3 yedeÄŸi tek projeye geri yÃ¼klenir. Yedekler dÃ¼z metindir; hassas belge gibi
+davranÄ±n.
 
-## Ekran görüntüleri
+## Ekran gÃ¶rÃ¼ntÃ¼leri
 
-Arayüz masaüstü, dizüstü ve tablet genişlikleri için tasarlandı. Mobil bu sürümde bilinçli olarak
-kapsam dışıdır.
+ArayÃ¼z masaÃ¼stÃ¼, dizÃ¼stÃ¼ ve tablet geniÅŸlikleri iÃ§in tasarlandÄ±. Mobil bu sÃ¼rÃ¼mde bilinÃ§li olarak
+kapsam dÄ±ÅŸÄ±dÄ±r.
 
-| Masaüstü · 1440 px | Dizüstü · 1280 px | Tablet · 1024 px |
+| MasaÃ¼stÃ¼ Â· 1440 px | DizÃ¼stÃ¼ Â· 1280 px | Tablet Â· 1024 px |
 |---|---|---|
-| ![Masaüstü panel](README-assets/en/screens/01-dashboard-desktop.png) | ![Dizüstü panel](README-assets/en/screens/02-dashboard-laptop.png) | ![Tablet panel](README-assets/en/screens/03-dashboard-tablet.png) |
+| ![MasaÃ¼stÃ¼ panel](README-assets/en/screens/01-dashboard-desktop.png) | ![DizÃ¼stÃ¼ panel](README-assets/en/screens/02-dashboard-laptop.png) | ![Tablet panel](README-assets/en/screens/03-dashboard-tablet.png) |
 
 <p align="center">
   <img src="README-assets/en/responsive-devices.png" alt="Request Ledger 1440, 1280 ve 1024 pikselde">
 </p>
 
-| Planlama | Ayarlar | Karanlık tema | İlk kurulum |
+| Planlama | Ayarlar | KaranlÄ±k tema | Ä°lk kurulum |
 |---|---|---|---|
-| ![Dışa aktarma planlaması](README-assets/en/screens/04-export-planning.png) | ![Sistem ayarları](README-assets/en/screens/05-settings-system.png) | ![Karanlık panel](README-assets/en/screens/06-dashboard-dark.png) | ![İlk kurulum](README-assets/en/screens/07-onboarding.png) |
+| ![DÄ±ÅŸa aktarma planlamasÄ±](README-assets/en/screens/04-export-planning.png) | ![Sistem ayarlarÄ±](README-assets/en/screens/05-settings-system.png) | ![KaranlÄ±k panel](README-assets/en/screens/06-dashboard-dark.png) | ![Ä°lk kurulum](README-assets/en/screens/07-onboarding.png) |
 
-## Markdown çıktısı
+## Markdown Ã§Ä±ktÄ±sÄ±
 
 ```md
-# Nova Dashboard — Geliştirme İstekleri
+# Nova Dashboard â€” GeliÅŸtirme Ä°stekleri
 
-> 8 Kasım 2026, Pazar · 6 istek · 4 görsel · 1 dosya
+> 8 KasÄ±m 2026, Pazar Â· 6 istek Â· 4 gÃ¶rsel Â· 1 dosya
 
-## Özet
+## Ã–zet
 
-| # | Tür | Başlık | Öncelik |
+| # | TÃ¼r | BaÅŸlÄ±k | Ã–ncelik |
 |---|---|---|---|
-| IST-001 | Yeni Özellik | Siparişler tablosuna toplu işlem çubuğu ekle | Yüksek |
+| IST-001 | Yeni Ã–zellik | SipariÅŸler tablosuna toplu iÅŸlem Ã§ubuÄŸu ekle | YÃ¼ksek |
 
 ## Planlama
 
-**Koşu türü:** Tam koşu
+**KoÅŸu tÃ¼rÃ¼:** Tam koÅŸu
 
-## IST-001 — Siparişler tablosuna toplu işlem çubuğu ekle
+## IST-001 â€” SipariÅŸler tablosuna toplu iÅŸlem Ã§ubuÄŸu ekle
 
-- **Tür:** Yeni Özellik
-- **Öncelik:** Yüksek
-- **Durum:** Hazır
+- **TÃ¼r:** Yeni Ã–zellik
+- **Ã–ncelik:** YÃ¼ksek
+- **Durum:** HazÄ±r
 
-### İstek
+### Ä°stek
 
-Kullanıcılar seçili siparişlerin durumunu değiştirsin, CSV indirsin ve etiket uygulasın.
+KullanÄ±cÄ±lar seÃ§ili sipariÅŸlerin durumunu deÄŸiÅŸtirsin, CSV indirsin ve etiket uygulasÄ±n.
 ```
 
-- **ZIP + `.md`** — Markdown ayrı dosyada; medya `gorseller/` ve `dosyalar/` içinde.
-- **Tek `.md`** — görseller base64 olarak gömülür; dosya ekleri ZIP gerektirir.
-- **TR / EN** — sistem etiketleri arayüz dilini izler. Kullanıcı içeriği hiçbir zaman çevrilmez.
+- **ZIP + `.md`** â€” Markdown ayrÄ± dosyada; medya `gorseller/` ve `dosyalar/` iÃ§inde.
+- **Tek `.md`** â€” gÃ¶rseller base64 olarak gÃ¶mÃ¼lÃ¼r; dosya ekleri ZIP gerektirir.
+- **TR / EN** â€” sistem etiketleri arayÃ¼z dilini izler. KullanÄ±cÄ± iÃ§eriÄŸi hiÃ§bir zaman Ã§evrilmez.
 
 <a id="gizlilik"></a>
 ## Gizlilik
 
-- **Hesap yok, telemetri yok, analitik yok.** Hiçbir şey yüklenmez.
-- **Uzak kod yok.** Uygulama dış betik, stil veya yazı tipi yüklemez. Destek bağlantısı düz bir
-  bağlantıdır ve hiçbir şey yüklemez.
-- **Yerel sunucu yalnızca döngüye bağlıdır.** `scripts/serve.cjs` `127.0.0.1` adresine bağlanır ve
-  yalnızca proje klasöründeki dosyaları sunar.
-- **Uzantı yerel kalır.** Dışarıya istek yapmaz; yakalamalar ve indirmeler makinenizde kalır.
-- **Dışa aktarmayı siz kontrol edersiniz.** Dosyalar yalnızca seçtiğiniz yere yazılır; File System
-  Access olmayan tarayıcılarda İndirilenler’e düşer.
-- **Tarayıcı verisi temizlenirse defter silinir.** ZIP yedeği tutun.
+- **Hesap yok, telemetri yok, analitik yok.** HiÃ§bir ÅŸey yÃ¼klenmez.
+- **Uzak kod yok.** Uygulama dÄ±ÅŸ betik, stil veya yazÄ± tipi yÃ¼klemez. Destek baÄŸlantÄ±sÄ± dÃ¼z bir
+  baÄŸlantÄ±dÄ±r ve hiÃ§bir ÅŸey yÃ¼klemez.
+- **Yerel sunucu yalnÄ±zca dÃ¶ngÃ¼ye baÄŸlÄ±dÄ±r.** `scripts/serve.cjs` `127.0.0.1` adresine baÄŸlanÄ±r ve
+  yalnÄ±zca proje klasÃ¶rÃ¼ndeki dosyalarÄ± sunar.
+- **UzantÄ± yerel kalÄ±r.** DÄ±ÅŸarÄ±ya istek yapmaz; yakalamalar ve indirmeler makinenizde kalÄ±r.
+- **DÄ±ÅŸa aktarmayÄ± siz kontrol edersiniz.** Dosyalar yalnÄ±zca seÃ§tiÄŸiniz yere yazÄ±lÄ±r; File System
+  Access olmayan tarayÄ±cÄ±larda Ä°ndirilenlerâ€™e dÃ¼ÅŸer.
+- **TarayÄ±cÄ± verisi temizlenirse defter silinir.** ZIP yedeÄŸi tutun.
 
-Köprü yalnızca `file://`, `localhost` ve `127.0.0.1` kaynaklarını kabul eder. Yine de bu kaynaklardan
-birindeki yerel bir süreç veya sayfa köprüyle konuşabilir; uygulama açıkken yalnızca güvendiğiniz
-yerel sunucuları çalıştırın. Uzantı paneli güvenilmeyen bir sayfada iframe olarak durur; güvenilmeyen
-sayfalardaki ekran görüntülerini herkese açık kabul edin.
+KÃ¶prÃ¼ yalnÄ±zca `file://`, `localhost` ve `127.0.0.1` kaynaklarÄ±nÄ± kabul eder. Yine de bu kaynaklardan
+birindeki yerel bir sÃ¼reÃ§ veya sayfa kÃ¶prÃ¼yle konuÅŸabilir; uygulama aÃ§Ä±kken yalnÄ±zca gÃ¼vendiÄŸiniz
+yerel sunucularÄ± Ã§alÄ±ÅŸtÄ±rÄ±n. UzantÄ± paneli gÃ¼venilmeyen bir sayfada iframe olarak durur; gÃ¼venilmeyen
+sayfalardaki ekran gÃ¶rÃ¼ntÃ¼lerini herkese aÃ§Ä±k kabul edin.
 
 ## Gereksinimler
 
-| Gereksinim | Ayrıntı |
+| Gereksinim | AyrÄ±ntÄ± |
 |---|---|
-| Tarayıcı | Web uygulaması için güncel Chromium, Firefox veya Safari. Uzantı için Chrome veya Edge **114+**. |
-| Node.js | **18 veya daha yenisi**, yalnızca yerel sunucu için. Tek HTML dosyası çalışma zamanı istemez. |
-| Windows başlatıcıları | `start.cmd` / `stop.cmd` Windows toplu iş dosyalarıdır. `scripts/serve.cjs` macOS ve Linux’ta da çalışır. |
-| Klasöre aktarım | File System Access API (Chromium). Diğer tarayıcılar dosyayı indirir. |
-| Dosya URL’leri | `file://` Chrome 157’de ölçüldü. Diğer tarayıcılar depolamayı yalıtabilir veya kısıtlayabilir. |
+| TarayÄ±cÄ± | Web uygulamasÄ± iÃ§in gÃ¼ncel Chromium, Firefox veya Safari. UzantÄ± iÃ§in Chrome veya Edge **114+**. |
+| Node.js | **18 veya daha yenisi**, yalnÄ±zca yerel sunucu iÃ§in. Tek HTML dosyasÄ± Ã§alÄ±ÅŸma zamanÄ± istemez. |
+| Windows baÅŸlatÄ±cÄ±larÄ± | `start.cmd` / `stop.cmd` Windows toplu iÅŸ dosyalarÄ±dÄ±r. `scripts/serve.cjs` macOS ve Linuxâ€™ta da Ã§alÄ±ÅŸÄ±r. |
+| KlasÃ¶re aktarÄ±m | File System Access API (Chromium). DiÄŸer tarayÄ±cÄ±lar dosyayÄ± indirir. |
+| Dosya URLâ€™leri | `file://` Chrome 157â€™de Ã¶lÃ§Ã¼ldÃ¼. DiÄŸer tarayÄ±cÄ±lar depolamayÄ± yalÄ±tabilir veya kÄ±sÄ±tlayabilir. |
 
 <a id="sinirlamalar"></a>
-## Sınırlamalar
+## SÄ±nÄ±rlamalar
 
-- **Mobil kapsam dışıdır.** Düzen masaüstü (1440 px), dizüstü (1280 px) ve tablet (1024 px)
-  genişliklerini hedefler.
-- Tek HTML dosyası yerel sunucu başlatamaz. Uzantının dosya URL'lerine erişim izni varsa köprü yine
-  bağlanabilir; ancak sunucu proje klasörüne yazım yoktur.
-- Bir web sayfası süreç başlatamaz. Yeniden başlatma ve port değişikliği yalnızca sunucu açıkken
-  çalışır; tamamen durmuş bir sunucu için `start.cmd` çalıştırıp sayfayı yenileyin — uygulama sessizce
-  kendiliğinden bağlanmaz.
-- Yardımcı, tarayıcı yeniden başlatıldığında varlığı yeniden kontrol eder. Önceki oturumun bağlantısı
-  arayüzü açmaz; uygulama (veya sunucusu) yanıt verene kadar hiçbir şey bağlanmaz.
-- Canlı medya eşitleme **öğe başına 8 MB** ile sınırlıdır. Daha büyük görseller/ekler ve taşınabilir
-  arşivdeki tüm medya yedek ZIP ile taşınır.
-- Uzantı bir yardımcıdır: uygulama çalışmıyorken hiçbir sayfada arayüz göstermez. `chrome://extensions`
-  üzerinden devre dışı bırakılırsa kendini yeniden etkinleştiremez.
-- Projeler uygulama tarafından yönetilir; uzantı tek başına proje oluşturamaz, listeleyemez veya
-  değiştiremez.
-- Yedekler düz metindir. Tema ve dışa aktarma geçmişi yedeğe dahil değildir.
-- Geri yükleme uygulamanın sakladığı ZIP girdilerini bekler; yeniden sıkıştırılmış bir arşiv
+- **Mobil kapsam dÄ±ÅŸÄ±dÄ±r.** DÃ¼zen masaÃ¼stÃ¼ (1440 px), dizÃ¼stÃ¼ (1280 px) ve tablet (1024 px)
+  geniÅŸliklerini hedefler.
+- Tek HTML dosyasÄ± yerel sunucu baÅŸlatamaz. UzantÄ±nÄ±n dosya URL'lerine eriÅŸim izni varsa kÃ¶prÃ¼ yine
+  baÄŸlanabilir; ancak sunucu proje klasÃ¶rÃ¼ne yazÄ±m yoktur.
+- Bir web sayfasÄ± sÃ¼reÃ§ baÅŸlatamaz. Yeniden baÅŸlatma ve port deÄŸiÅŸikliÄŸi yalnÄ±zca sunucu aÃ§Ä±kken
+  Ã§alÄ±ÅŸÄ±r; tamamen durmuÅŸ bir sunucu iÃ§in `start.cmd` Ã§alÄ±ÅŸtÄ±rÄ±p sayfayÄ± yenileyin â€” uygulama sessizce
+  kendiliÄŸinden baÄŸlanmaz.
+- YardÄ±mcÄ±, tarayÄ±cÄ± yeniden baÅŸlatÄ±ldÄ±ÄŸÄ±nda varlÄ±ÄŸÄ± yeniden kontrol eder. Ã–nceki oturumun baÄŸlantÄ±sÄ±
+  arayÃ¼zÃ¼ aÃ§maz; uygulama (veya sunucusu) yanÄ±t verene kadar hiÃ§bir ÅŸey baÄŸlanmaz.
+- CanlÄ± medya eÅŸitleme **Ã¶ÄŸe baÅŸÄ±na 8 MB** ile sÄ±nÄ±rlÄ±dÄ±r. Daha bÃ¼yÃ¼k gÃ¶rseller/ekler ve taÅŸÄ±nabilir
+  arÅŸivdeki tÃ¼m medya yedek ZIP ile taÅŸÄ±nÄ±r.
+- UzantÄ± bir yardÄ±mcÄ±dÄ±r: uygulama Ã§alÄ±ÅŸmÄ±yorken hiÃ§bir sayfada arayÃ¼z gÃ¶stermez. `chrome://extensions`
+  Ã¼zerinden devre dÄ±ÅŸÄ± bÄ±rakÄ±lÄ±rsa kendini yeniden etkinleÅŸtiremez.
+- Projeler uygulama tarafÄ±ndan yÃ¶netilir; uzantÄ± tek baÅŸÄ±na proje oluÅŸturamaz, listeleyemez veya
+  deÄŸiÅŸtiremez.
+- Yedekler dÃ¼z metindir. Tema ve dÄ±ÅŸa aktarma geÃ§miÅŸi yedeÄŸe dahil deÄŸildir.
+- Geri yÃ¼kleme uygulamanÄ±n sakladÄ±ÄŸÄ± ZIP girdilerini bekler; yeniden sÄ±kÄ±ÅŸtÄ±rÄ±lmÄ±ÅŸ bir arÅŸiv
   reddedilebilir.
-- Çok büyük görseller veya dosyalar tarayıcı depolamasını tüketir. Yedek alın ve eski medyayı temizleyin.
-- Firefox ve Safari web uygulamasını çalıştırır; Manifest V3 uzantısı yalnızca Chromium içindir.
-- Kullanıcı tarafından yazılan içerik hiçbir zaman çevrilmez.
+- Ã‡ok bÃ¼yÃ¼k gÃ¶rseller veya dosyalar tarayÄ±cÄ± depolamasÄ±nÄ± tÃ¼ketir. Yedek alÄ±n ve eski medyayÄ± temizleyin.
+- Firefox ve Safari web uygulamasÄ±nÄ± Ã§alÄ±ÅŸtÄ±rÄ±r; Manifest V3 uzantÄ±sÄ± yalnÄ±zca Chromium iÃ§indir.
+- KullanÄ±cÄ± tarafÄ±ndan yazÄ±lan iÃ§erik hiÃ§bir zaman Ã§evrilmez.
 
-## Proje düzeni ve derleme
+## Proje dÃ¼zeni ve derleme
 
-İzlenen uygulama `_source/` altında yaşar.
+Ä°zlenen uygulama `_source/` altÄ±nda yaÅŸar.
 
 ```text
 _source/
-├── index.html                  tek dosyalık web uygulaması (üretilir)
-├── extension/                  paketlenmemiş Manifest V3 uzantısı
-├── src/                        web, panel ve çekirdek kaynakları
-├── scripts/                    derleme, sunucu ve README görsel araçları
-├── tests/                      golden, eşlik ve tarayıcı uçtan uca testleri
-├── assets/                     logo.svg, logo-wordmark.svg
-├── README-assets/              yeniden üretilebilir README şablonları ve görselleri
-└── dist/                       sürüm paketleri (üretilir)
-    └── request-ledger.html     çevrimdışı kullanım için tek dosyalık derleme
+â”œâ”€â”€ index.html                  tek dosyalÄ±k web uygulamasÄ± (Ã¼retilir)
+â”œâ”€â”€ extension/                  paketlenmemiÅŸ Manifest V3 uzantÄ±sÄ±
+â”œâ”€â”€ src/                        web, panel ve Ã§ekirdek kaynaklarÄ±
+â”œâ”€â”€ scripts/                    derleme, sunucu ve README gÃ¶rsel araÃ§larÄ±
+â”œâ”€â”€ tests/                      golden, eÅŸlik ve tarayÄ±cÄ± uÃ§tan uca testleri
+â”œâ”€â”€ assets/                     logo.svg, logo-wordmark.svg
+â”œâ”€â”€ README-assets/              yeniden Ã¼retilebilir README ÅŸablonlarÄ± ve gÃ¶rselleri
+â””â”€â”€ dist/                       sÃ¼rÃ¼m paketleri (Ã¼retilir)
+    â””â”€â”€ request-ledger.html     Ã§evrimdÄ±ÅŸÄ± kullanÄ±m iÃ§in tek dosyalÄ±k derleme
 ```
 
-`index.html` ve `extension/panel/panel.js` `src/` altından üretilir. Parçaları düzenleyip şunları
-çalıştırın:
+`index.html` ve `extension/panel/panel.js` `src/` altÄ±ndan Ã¼retilir. ParÃ§alarÄ± dÃ¼zenleyip ÅŸunlarÄ±
+Ã§alÄ±ÅŸtÄ±rÄ±n:
 
 ```powershell
 cd _source
-node scripts/build.cjs                 # dist/, request-ledger.html, uzantı ZIP’leri
-node scripts/build.cjs --check         # üretilen dosyalar ve özetler güncel mi?
-node scripts/check-inline.cjs          # satır içi betik sözdizimi
+node scripts/build.cjs                 # dist/, request-ledger.html, uzantÄ± ZIPâ€™leri
+node scripts/build.cjs --check         # Ã¼retilen dosyalar ve Ã¶zetler gÃ¼ncel mi?
+node scripts/check-inline.cjs          # satÄ±r iÃ§i betik sÃ¶zdizimi
 $env:TZ='UTC'; node scripts/generate-golden.cjs --check
 node tests/parity/model.parity.mjs
 node tests/parity/drift.parity.mjs
-node scripts/render-readme-assets.cjs  # gerçek ekran görüntüleri + HTML pazarlama görselleri
+node scripts/render-readme-assets.cjs  # gerÃ§ek ekran gÃ¶rÃ¼ntÃ¼leri + HTML pazarlama gÃ¶rselleri
 ```
 
-Tarayıcı uçtan uca testleri yerel sunucu ve Chrome/Edge ister:
+TarayÄ±cÄ± uÃ§tan uca testleri yerel sunucu ve Chrome/Edge ister:
 
 ```powershell
 node scripts/serve.cjs 8080
@@ -339,15 +339,15 @@ node tests/e2e/capture-tools.e2e.cjs
 node tests/e2e/file-bridge.e2e.cjs
 ```
 
-## Katkı
+## KatkÄ±
 
-- Hata veya öneri için bir issue açın.
-- Kod değişikliği için önce amacı açıklayın.
-- Markdown çıktısını değiştirirseniz örnek ekleyin ve golden dosyaları bilinçli olarak güncelleyin.
+- Hata veya Ã¶neri iÃ§in bir issue aÃ§Ä±n.
+- Kod deÄŸiÅŸikliÄŸi iÃ§in Ã¶nce amacÄ± aÃ§Ä±klayÄ±n.
+- Markdown Ã§Ä±ktÄ±sÄ±nÄ± deÄŸiÅŸtirirseniz Ã¶rnek ekleyin ve golden dosyalarÄ± bilinÃ§li olarak gÃ¼ncelleyin.
 
-## İletişim
+## Ä°letiÅŸim
 
-- **Geliştirici:** Taner ÜNER
+- **GeliÅŸtirici:** Taner ÃœNER
 - **GitHub:** [github.com/TanerUNER](https://github.com/TanerUNER)
 - **E-posta:** [mail.taneruner@gmail.com](mailto:mail.taneruner@gmail.com)
 - **Destek:** [Buy Me a Coffee](https://www.buymeacoffee.com/tnruner)
@@ -357,7 +357,7 @@ node tests/e2e/file-bridge.e2e.cjs
 MIT. Bkz. [`LICENSE`](LICENSE).
 
 <p align="center">
-  <img src="assets/logo.svg" width="42" alt="Request Ledger işareti"><br>
-  <sub>Request Ledger · Fikirden Markdown’a, tek ve sakin bir akış.</sub><br>
-  <sub>Yerelde çalışır. Verileriniz sizde kalır.</sub>
+  <img src="assets/logo.svg" width="42" alt="Request Ledger iÅŸareti"><br>
+  <sub>Request Ledger Â· Fikirden Markdownâ€™a, tek ve sakin bir akÄ±ÅŸ.</sub><br>
+  <sub>Yerelde Ã§alÄ±ÅŸÄ±r. Verileriniz sizde kalÄ±r.</sub>
 </p>
